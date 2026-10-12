@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TNJA Tournament System & Repechage Workflow Guide</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    @page {
+      size: A4;
+      margin: 15mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: #0f172a;
+      background: #f8fafc;
+      padding: 30px;
+      line-height: 1.5;
+    }
+
+    .no-print-bar {
+      max-width: 900px;
+      margin: 0 auto 20px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0f172a;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 12px;
+    }
+
+    .btn-print {
+      background: #ff7400;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-weight: 700;
+      font-size: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-print:hover {
+      background: #e06600;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e2e8f0;
+    }
+
+    .header {
+      border-bottom: 3px solid #ff7400;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .logo-title h1 {
+      font-size: 26px;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-title p {
+      font-size: 13px;
+      color: #ff7400;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+
+    .doc-meta {
+      text-align: right;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .section {
+      margin-bottom: 35px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 15px;
+      border-left: 4px solid #ff7400;
+      padding-left: 10px;
+    }
+
+    p.description {
+      font-size: 14px;
+      color: #475569;
+      margin-bottom: 15px;
+    }
+
+    /* Diagrams & Cards */
+    .flow-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .flow-box h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 10px;
+    }
+
+    .step-list {
+      list-style: none;
+      counter-reset: step-counter;
+    }
+
+    .step-list li {
+      counter-increment: step-counter;
+      position: relative;
+      padding-left: 35px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #334155;
+    }
+
+    .step-list li::before {
+      content: counter(step-counter);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 24px;
+      height: 24px;
+      background: #ff7400;
+      color: white;
+      font-weight: 800;
+      font-size: 12px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Comparison Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 10px 14px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .badge-gold { background: #fef3c7; color: #b45309; }
+    .badge-silver { background: #f1f5f9; color: #475569; }
+    .badge-bronze { background: #ffedd5; color: #c2410c; }
+
+    .footer {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 15px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: white;
+      }
+      .no-print-bar {
+        display: none;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print-bar">
+    <div>
+      <strong>Print / Save as PDF</strong> — Official Client Presentation Document
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ Download PDF / Print</button>
+  </div>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo-title">
+        <h1>TNJA TOURNAMENT SYSTEM</h1>
+        <p>Repechage & Tournament Match Flow Architecture</p>
+      </div>
+      <div class="doc-meta">
+        <strong>Confidential Client Guide</strong><br>
+        Date: July 2026<br>
+        Version 2.0
+      </div>
+    </div>
+
+    <!-- Section 1: Executive Overview -->
+    <div class="section">
+      <div class="section-header">1. Executive Overview</div>
+      <p class="description">
+        The TNJA Tournament Management System implements official International Judo Federation (IJF) bracket rules, offering both <strong>Single Repechage</strong> and <strong>Double Repechage</strong> draw algorithms alongside Round Robin pool systems.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Repechage Model</th>
+            <th>Bronze Medals Awarded</th>
+            <th>Who Enters Repechage</th>
+            <th>Primary Use Case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Double Repechage</strong></td>
+            <td><span class="badge badge-bronze">2 Bronze Medals (3rd Place)</span></td>
+            <td>All 4 Quarterfinal Losers + 2 Semifinal Losers</td>
+            <td>Official IJF Standard / World Circuit / Olympics</td>
+          </tr>
+          <tr>
+            <td><strong>Single Repechage</strong></td>
+            <td><span class="badge badge-bronze">1 Bronze Medal (3rd Place)</span></td>
+            <td>Only players defeated by the 2 Finalists</td>
+            <td>Regional / National Cup Championships</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section 2: Double Repechage Detailed Flow -->
+    <div class="section">
+      <div class="section-header">2. Double Repechage Match Flow (IJF Standard)</div>
+      <p class="description">
+        In Double Repechage, <strong>2 Bronze Medals</strong> are awarded. Every athlete who reaches the Quarterfinals is guaranteed a chance to compete for a medal even if defeated.
+      </p>
+
+      <div class="flow-box">
+        <h4>Match-by-Match Execution Flow</h4>
+        <ol class="step-list">
+          <li>
+            <strong>Quarterfinals (4 Matches)</strong>: The 4 winners advance to the Semifinals. The 4 defeated players (QF 1, QF 2, QF 3, QF 4 losers) enter <em>Repechage Round 1</em>.
+          </li>
+          <li>
+            <strong>Repechage Round 1 (2 Matches)</strong>:<br>
+            • <strong>Rep Match 1</strong>: QF 1 Loser vs QF 2 Loser → Winner moves to <em>Bronze Match 1</em>.<br>
+            • <strong>Rep Match 2</strong>: QF 3 Loser vs QF 4 Loser → Winner moves to <em>Bronze Match 2</em>.
+          </li>
+          <li>
+            <strong>Semifinals Crossover (2 Matches)</strong>:<br>
+            • <strong>SF 1 Loser</strong> crosses over to <em>Bronze Match 2</em>.<br>
+            • <strong>SF 2 Loser</strong> crosses over to <em>Bronze Match 1</em>.
+          </li>
+          <li>
+            <strong>Bronze Medal Finals (2 Matches)</strong>:<br>
+            • <strong>Bronze Match 1</strong>: Winner Rep 1 vs SF 2 Loser → Winner gets <span class="badge badge-bronze">3rd Place 🥉</span><br>
+            • <strong>Bronze Match 2</strong>: Winner Rep 2 vs SF 1 Loser → Winner gets <span class="badge badge-bronze">3rd Place 🥉</span>
+          </li>
+          <li>
+            <strong>Gold Medal Final</strong>:<br>
+            • Winner SF 1 vs Winner SF 2 → Winner gets <span class="badge badge-gold">1st Place 🥇</span>, Loser gets <span class="badge badge-silver">2nd Place 🥈</span>.
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- Section 3: Single Repechage Detailed Flow -->
+    <div class="section">
+      <div class="section-header">3. Single Repechage Match Flow</div>
+      <p class="description">
+        In Single Repechage, <strong>1 Bronze Medal</strong> is awarded. The system traces the path of the Finalists after the final match completes.
+      </p>
+
+      <div class="flow-box">
+        <h4>Match-by-Match Execution Flow</h4>
+        <ol class="step-list">
+          <li>
+            <strong>Final Match Completion</strong>: Main bracket concludes to identify Champion (Gold) and Runner-up (Silver).
+          </li>
+          <li>
+            <strong>Trace Finalist Competitors</strong>: System retrieves the specific athletes defeated by the Champion in the Quarterfinals & Semifinals.
+          </li>
+          <li>
+            <strong>Repechage Match</strong>:<br>
+            • Champion's QF Defeated Player vs Champion's SF Defeated Player → Winner advances to Bronze Contest.
+          </li>
+          <li>
+            <strong>Bronze Medal Final Match</strong>:<br>
+            • Repechage Winner vs Runner-Up's Defeated Contender → Winner receives <span class="badge badge-bronze">3rd Place 🥉</span>.
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Section 4: End-to-End System Integration -->
+    <div class="section">
+      <div class="section-header">4. Full Tournament System Capabilities</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Module</th>
+            <th>Capabilities & Automated Rules</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Seeding & Draw</strong></td>
+            <td>Up to 4 IJF Seeds + Club-Separated Shuffling to prevent same-club Round 1 clashes.</td>
+          </tr>
+          <tr>
+            <td><strong>Live Scoring</strong></td>
+            <td>Digital Mat consoles with live timer, Ippon, Waza-Ari, Yuko, and Shido penalty tracking.</td>
+          </tr>
+          <tr>
+            <td><strong>Auto-Placement</strong></td>
+            <td>Real-time automatic calculation of 1st, 2nd, and 3rd place rankings upon bracket conclusion.</td>
+          </tr>
+          <tr>
+            <td><strong>Exports & Certificates</strong></td>
+            <td>Instant download of Excel (.xlsx) reports, printable PDF tables, and player Merit Certificates.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      TNJA Tournament Management System · Official Client Specification & Workflow Document
+    </div>
+  </div>
+
+</body>
+</html>

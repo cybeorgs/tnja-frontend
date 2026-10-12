@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node _backfill_paid.cjs)",
+      "Bash(rm \"c:/Users/Administrator/Documents/tnja-backend/_backfill_paid.cjs\")",
+      "Bash(git add *)",
+      "Bash(git restore *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node -e ' *)",
+      "Bash(powershell -NoProfile -Command \"Get-Content 'c:\\\\Users\\\\Administrator\\\\Documents\\\\tnja-backend\\\\package.json' | Select-String -Pattern 'pdf|puppeteer|jspdf'\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Administrator\\Documents\\tnja-backend"
+    ]
+  }
+}
