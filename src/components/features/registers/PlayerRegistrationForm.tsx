@@ -6,6 +6,7 @@ import Button from '@/components/common/Button';
 import { Search, Check, Asterisk, User, Mail, Smartphone, MapPin, GraduationCap, Calendar } from 'lucide-react';
 import { PlayerRegistrationData } from '@/types/registration';
 import FileUpload from '@/components/common/FileUpload';
+import { useAadhaarDigilocker } from './useAadhaarDigilocker';
 
 const RequiredSymbol = () => <Asterisk size={10} className="text-red-500 stroke-[4px]" />;
 
@@ -246,11 +247,7 @@ const PlayerRegistrationForm = () => {
   const [success, setSuccess] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [otpValue, setOtpValue] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
+  const aadhaar = useAadhaarDigilocker();
 
   const [districts, setDistricts] = useState<{ id: string, name: string }[]>([]);
   const [taluks, setTaluks] = useState<{ id: string, name: string }[]>([]);
@@ -406,66 +403,6 @@ const PlayerRegistrationForm = () => {
     }
   };
 
-  const handleSendOtp = async () => {
-    if (!formData.aadhaarNumber || formData.aadhaarNumber.length !== 12) {
-      setOtpError("Please enter a valid 12-digit Aadhaar Number.");
-      return;
-    }
-    if (!formData.email) {
-      setOtpError("Please enter your Email Address first to receive the OTP.");
-      return;
-    }
-    setOtpLoading(true);
-    setOtpError(null);
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
-      const res = await fetch(`${apiUrl}/auth/send-aadhaar-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aadhaarNumber: formData.aadhaarNumber, email: formData.email })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setOtpSent(true);
-        setOtpError(null);
-      } else {
-        setOtpError(data.error || "Failed to send OTP.");
-      }
-    } catch (err) {
-      setOtpError("Failed to connect to server.");
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otpValue || otpValue.length !== 6) {
-      setOtpError("Please enter a valid 6-digit OTP.");
-      return;
-    }
-    setOtpLoading(true);
-    setOtpError(null);
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
-      const res = await fetch(`${apiUrl}/auth/verify-aadhaar-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aadhaarNumber: formData.aadhaarNumber, otp: otpValue })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setOtpVerified(true);
-        setOtpError(null);
-      } else {
-        setOtpError(data.error || "Failed to verify OTP.");
-      }
-    } catch (err) {
-      setOtpError("Failed to connect to server.");
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -551,7 +488,7 @@ const PlayerRegistrationForm = () => {
       setError("Please enter a valid email address (e.g., max 64 characters before @).");
       return;
     }
-    if (!otpVerified) {
+    if (!aadhaar.verified) {
       setError("Please verify your Aadhaar Number before submitting.");
       return;
     }
@@ -576,7 +513,8 @@ const PlayerRegistrationForm = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          dob: apiDob
+          dob: apiDob,
+          aadhaarVerificationToken: aadhaar.verificationToken
         }),
       });
 
@@ -784,18 +722,18 @@ const PlayerRegistrationForm = () => {
                         maxLength={12}
                         value={formData.aadhaarNumber}
                         onChange={handleInputChange}
-                        disabled={otpVerified}
-                        className={`w-full px-4 py-3 bg-white border border-[#DEE2E6] rounded text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all placeholder:text-gray-400 ${otpVerified ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        disabled={aadhaar.verified || aadhaar.loading}
+                        className={`w-full px-4 py-3 bg-white border border-[#DEE2E6] rounded text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all placeholder:text-gray-400 ${aadhaar.verified || aadhaar.loading ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
                       />
-                      {!otpVerified ? (
+                      {!aadhaar.verified ? (
                         <Button 
                           type="button" 
                           variant="primary" 
-                          onClick={handleSendOtp} 
-                          disabled={otpLoading || formData.aadhaarNumber.length !== 12 || !formData.email}
+                          onClick={() => aadhaar.start(formData.aadhaarNumber, formData.email)}
+                          disabled={aadhaar.loading || formData.aadhaarNumber.length !== 12}
                           className="whitespace-nowrap px-6"
                         >
-                          {otpLoading && !otpSent ? 'Sending...' : otpSent ? 'Resend OTP' : 'Verify'}
+                          {aadhaar.waiting ? 'Waiting...' : aadhaar.loading ? 'Starting...' : 'Verify'}
                         </Button>
                       ) : (
                         <div className="flex items-center justify-center px-4 bg-green-50 border border-green-200 text-green-600 rounded whitespace-nowrap font-bold text-sm">
@@ -803,29 +741,16 @@ const PlayerRegistrationForm = () => {
                         </div>
                       )}
                     </div>
-                    {otpError && <p className="text-red-500 text-xs font-medium">{otpError}</p>}
+                    {aadhaar.error && <p className="text-red-500 text-xs font-medium">{aadhaar.error}</p>}
                     
-                    {otpSent && !otpVerified && (
-                      <div className="mt-2 p-4 bg-blue-50 border border-blue-100 rounded flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                        <p className="text-xs text-blue-800 font-medium">An OTP has been sent to your email <strong>{formData.email}</strong>.</p>
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="Enter 6-digit OTP" 
-                            maxLength={6}
-                            value={otpValue}
-                            onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ''))}
-                            className="w-full px-3 py-2 bg-white border border-blue-200 rounded text-sm focus:outline-none focus:border-blue-500"
-                          />
-                          <Button 
-                            type="button" 
-                            variant="primary" 
-                            onClick={handleVerifyOtp}
-                            disabled={otpLoading || otpValue.length !== 6}
-                            className="whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
-                          >
-                            {otpLoading ? 'Verifying...' : 'Verify'}
-                          </Button>
+                    {aadhaar.waiting && (
+                      <div className="mt-2 p-4 bg-blue-50 border border-blue-100 rounded flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <p className="text-xs text-blue-800 font-medium">Complete the verification in the DigiLocker window: sign in with the OTP sent to your Aadhaar-linked mobile and allow access to your Aadhaar. This page updates automatically.</p>
+                        <div className="flex gap-4 text-xs font-bold">
+                          {aadhaar.authorizationUrl && (
+                            <a href={aadhaar.authorizationUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">Open DigiLocker</a>
+                          )}
+                          <button type="button" onClick={aadhaar.cancel} className="text-gray-500 underline">Cancel</button>
                         </div>
                       </div>
                     )}
@@ -863,7 +788,7 @@ const PlayerRegistrationForm = () => {
                     icon={Mail}
                     value={formData.email}
                     onChange={handleInputChange}
-                    disabled={otpVerified}
+                    disabled={aadhaar.verified}
                   />
                   <InputField
                     label="Nationality"
