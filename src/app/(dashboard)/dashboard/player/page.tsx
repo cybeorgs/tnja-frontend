@@ -419,17 +419,13 @@ export default function PlayerDashboard() {
       const resScript = await loadRazorpayScript();
       if (!resScript) throw new Error("Razorpay SDK failed to load.");
 
+      // The backend derives the applicant from the token and the fee from settings.
       const orderRes = await fetch(`${API_BASE}/application/create-order`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ 
-          id: playerData.id,
-          type: "student"
-          // Amount is now handled by the backend from GlobalSettings
-        }),
       });
 
       const orderData = await orderRes.json();
@@ -437,12 +433,12 @@ export default function PlayerDashboard() {
 
       // 3. Open Razorpay Checkout
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: orderData.keyId,
         amount: orderData.amount,
         currency: orderData.currency,
         name: "Tamil Nadu Judo Association",
         description: "Membership Registration Fee",
-        order_id: orderData.id,
+        order_id: orderData.orderId,
         handler: async function (response: any) {
           // 4. Verify Payment on Backend
           try {
@@ -453,8 +449,6 @@ export default function PlayerDashboard() {
                 "Authorization": `Bearer ${token}`
               },
               body: JSON.stringify({
-                id: playerData.id,
-                type: "student",
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature
@@ -463,6 +457,11 @@ export default function PlayerDashboard() {
 
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Verification failed");
+
+            if (verifyData.status === "PENDING") {
+              alert("Payment received and awaiting confirmation from the bank. Your Player ID will be issued automatically and emailed to you shortly.");
+              return;
+            }
 
             // Success!
             alert("Payment successful! Your Player ID has been issued. You will now be logged out. Please log in using your new Player ID to change your password and secure your account.");

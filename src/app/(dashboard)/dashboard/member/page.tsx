@@ -136,34 +136,25 @@ function MemberDashboardContent() {
         throw new Error("Razorpay SDK failed to load.");
       }
 
-      // Determine backend type from userRole
-      let type = "member";
-      if (userRole.toLowerCase() === "coach") type = "coach";
-      if (userRole.toLowerCase() === "club") type = "club";
-
+      // The backend derives the applicant from the token and the fee from settings.
       const orderRes = await fetch(`${API_BASE}/application/create-order`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ 
-          id: memberData.id,
-          type: type
-          // Amount is now handled by the backend from GlobalSettings
-        }),
       });
 
       const orderData = await orderRes.json();
       if (!orderRes.ok) throw new Error(orderData.error || "Failed to create order");
 
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: orderData.keyId,
         amount: orderData.amount,
         currency: orderData.currency,
         name: "Tamil Nadu Judo Association",
         description: `${userRole} Membership Fee`,
-        order_id: orderData.id,
+        order_id: orderData.orderId,
         handler: async function (response: any) {
           try {
             const verifyRes = await fetch(`${API_BASE}/application/verify-payment`, {
@@ -173,8 +164,6 @@ function MemberDashboardContent() {
                 "Authorization": `Bearer ${token}`
               },
               body: JSON.stringify({
-                id: memberData.id,
-                type: type,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature
@@ -183,6 +172,11 @@ function MemberDashboardContent() {
 
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Verification failed");
+
+            if (verifyData.status === "PENDING") {
+              alert(`Payment received and awaiting confirmation from the bank. Your ${idLabel} will be issued automatically and emailed to you shortly.`);
+              return;
+            }
 
             alert(`Payment successful! Your ${idLabel} has been issued. You will now be logged out. Please log in using your new ${idLabel} to change your password and secure your account.`);
             localStorage.clear();
