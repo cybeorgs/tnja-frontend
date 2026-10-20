@@ -3,10 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/common/Button';
-import { Search, Check, Asterisk, User, Mail, Smartphone, Award, Briefcase, MapPin, Calendar } from 'lucide-react';
+import { Search, Check, Asterisk, User, Smartphone, Award, Briefcase, MapPin, Calendar } from 'lucide-react';
 import { CoachRegistrationData } from '@/types/registration';
 import FileUpload from '@/components/common/FileUpload';
 import { useAadhaarDigilocker } from './useAadhaarDigilocker';
+import EmailVerificationField, { useEmailOtp } from './EmailVerificationField';
 
 const RequiredSymbol = () => <Asterisk size={10} className="text-red-500 stroke-[4px]" />;
 
@@ -246,6 +247,7 @@ const CoachRegistrationForm = () => {
   const [error, setError] = useState<string | null>(null);
   
   const aadhaar = useAadhaarDigilocker();
+  const emailOtp = useEmailOtp();
   
   const [districts, setDistricts] = useState<{id: string, name: string}[]>([]);
   const [taluks, setTaluks] = useState<{id: string, name: string}[]>([]);
@@ -418,6 +420,10 @@ const CoachRegistrationForm = () => {
       setError("Please verify your Aadhaar Number before submitting.");
       return;
     }
+    if (!emailOtp.verified) {
+      setError("Please verify your Email Address before submitting.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -435,7 +441,8 @@ const CoachRegistrationForm = () => {
         body: JSON.stringify({
           ...formData,
           dob: apiDob,
-          aadhaarVerificationToken: aadhaar.verificationToken
+          aadhaarVerificationToken: aadhaar.verificationToken,
+          emailVerificationToken: emailOtp.verificationToken
         }),
       });
 
@@ -703,16 +710,13 @@ const CoachRegistrationForm = () => {
                   />
                 </div>
                 <div className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <InputField 
-                    label="Email Address" 
-                    name="email" 
-                    type="email"
-                    placeholder="Enter Email Address" 
-                    required 
-                    icon={Mail}
+                  <EmailVerificationField
+                    label="Email Address"
+                    name="email"
+                    placeholder="Enter Email Address"
                     value={formData.email}
                     onChange={handleInputChange}
-                    disabled={aadhaar.verified}
+                    emailOtp={emailOtp}
                   />
                   <InputField
                     label="Nationality"
