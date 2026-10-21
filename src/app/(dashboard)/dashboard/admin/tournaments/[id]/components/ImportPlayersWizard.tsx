@@ -77,12 +77,12 @@ export function ImportPlayersWizard({
 
   return createPortal(
     <div style={{ position: "fixed", inset: 0, top: 0, left: 0, right: 0, bottom: 0, width: "100vw", height: "100vh", backgroundColor: "rgba(15,23,42,0.7)", zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-      <div style={{ background: "#fff", borderRadius: "24px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", width: "100%", maxWidth: "700px", display: "flex", flexDirection: "column", maxHeight: "90vh", overflow: "hidden" }}>
+      <div style={{ background: "#fff", borderRadius: "2px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", width: "100%", maxWidth: "700px", display: "flex", flexDirection: "column", maxHeight: "90vh", overflow: "hidden" }}>
         
         {/* Header */}
         <div style={{ padding: "20px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "36px", height: "36px", background: "#eff6ff", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: "36px", height: "36px", background: "#eff6ff", borderRadius: "2px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Upload size={18} style={{ color: "#2563eb" }} />
             </div>
             <div>
@@ -91,14 +91,14 @@ export function ImportPlayersWizard({
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700 }}>
-            <span style={{ color: step === "upload" ? "#2563eb" : "#10b981", padding: "4px 10px", background: step === "upload" ? "#eff6ff" : "#f0fdf4", borderRadius: "20px" }}>1. Upload</span>
+            <span style={{ color: step === "upload" ? "#2563eb" : "#10b981", padding: "4px 10px", background: step === "upload" ? "#eff6ff" : "#f0fdf4", borderRadius: "2px" }}>1. Upload</span>
             <ChevronRight size={14} style={{ color: "#94a3b8" }} />
-            <span style={{ color: (step === "validating" || step === "summary") ? "#2563eb" : (step === "importing" || step === "complete") ? "#10b981" : "#94a3b8", padding: "4px 10px", background: (step === "validating" || step === "summary") ? "#eff6ff" : (step === "importing" || step === "complete") ? "#f0fdf4" : "transparent", borderRadius: "20px" }}>2. Validate</span>
+            <span style={{ color: (step === "validating" || step === "summary") ? "#2563eb" : (step === "importing" || step === "complete") ? "#10b981" : "#94a3b8", padding: "4px 10px", background: (step === "validating" || step === "summary") ? "#eff6ff" : (step === "importing" || step === "complete") ? "#f0fdf4" : "transparent", borderRadius: "2px" }}>2. Validate</span>
             <ChevronRight size={14} style={{ color: "#94a3b8" }} />
-            <span style={{ color: step === "importing" ? "#2563eb" : step === "complete" ? "#10b981" : "#94a3b8", padding: "4px 10px", background: step === "importing" ? "#eff6ff" : step === "complete" ? "#f0fdf4" : "transparent", borderRadius: "20px" }}>3. Import</span>
+            <span style={{ color: step === "importing" ? "#2563eb" : step === "complete" ? "#10b981" : "#94a3b8", padding: "4px 10px", background: step === "importing" ? "#eff6ff" : step === "complete" ? "#f0fdf4" : "transparent", borderRadius: "2px" }}>3. Import</span>
           </div>
           {step !== "validating" && step !== "importing" && (
-            <button type="button" onClick={handleClose} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "8px", display: "flex", alignItems: "center", color: "#64748b" }}>
+            <button type="button" onClick={handleClose} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "2px", display: "flex", alignItems: "center", color: "#64748b" }}>
               <X size={20} />
             </button>
           )}
@@ -113,19 +113,19 @@ export function ImportPlayersWizard({
               <a
                 href="/templates/players_import_template.xlsx"
                 download
-                style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "8px 14px", borderRadius: "10px", textDecoration: "none" }}
+                style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "8px 14px", borderRadius: "2px", textDecoration: "none" }}
               >
                 <Download size={14} /> Download Excel Template
               </a>
               {errorMsg && (
-                <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "12px", color: "#dc2626", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "2px", color: "#dc2626", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
                   <AlertCircle size={16} /> {errorMsg}
                 </div>
               )}
               <div
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) onFileChange(f); }}
-                style={{ border: `2px dashed ${file ? "#10b981" : "#cbd5e1"}`, borderRadius: "20px", padding: "48px 24px", textAlign: "center", background: file ? "#f0fdf4" : "#f8fafc", cursor: "pointer", transition: "all 0.2s" }}
+                style={{ border: `2px dashed ${file ? "#10b981" : "#cbd5e1"}`, borderRadius: "2px", padding: "48px 24px", textAlign: "center", background: file ? "#f0fdf4" : "#f8fafc", cursor: "pointer", transition: "all 0.2s" }}
                 onClick={() => fileRef.current?.click()}
               >
                 {file ? (
@@ -145,7 +145,7 @@ export function ImportPlayersWizard({
               </div>
               <input type="file" accept=".xlsx,.xls,.csv" ref={fileRef} style={{ display: "none" }} onChange={e => onFileChange(e.target.files?.[0] || null)} />
 
-              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "2px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
                 <p style={{ margin: 0, fontSize: "11px", fontWeight: 900, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px" }}>Import Options</p>
                 <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                   <input type="checkbox" checked={validateBefore} onChange={e => setValidateBefore(e.target.checked)} style={{ width: "16px", height: "16px" }} />
@@ -185,14 +185,14 @@ export function ImportPlayersWizard({
           {/* STEP 3: Summary */}
           {step === "summary" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "16px", padding: "16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "2px", padding: "16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
                 <CheckCircle2 size={24} style={{ color: "#2563eb", flexShrink: 0 }} />
                 <div>
                   <h4 style={{ margin: "0 0 4px", fontWeight: 900, color: "#1e3a8a" }}>File Scanned Successfully</h4>
                   <p style={{ margin: 0, fontSize: "13px", color: "#1d4ed8" }}>File looks valid. Click "Confirm & Import" to begin importing players into the tournament database.</p>
                 </div>
               </div>
-              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "2px", padding: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div><p style={{ margin: "0 0 4px", fontSize: "11px", fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>File</p><p style={{ margin: 0, fontWeight: 700, color: "#334155" }}>{file?.name}</p></div>
                 <div><p style={{ margin: "0 0 4px", fontSize: "11px", fontWeight: 900, color: "#94a3b8", textTransform: "uppercase" }}>Size</p><p style={{ margin: 0, fontWeight: 700, color: "#334155" }}>{((file?.size || 0) / 1024 / 1024).toFixed(2)} MB</p></div>
               </div>
@@ -202,7 +202,7 @@ export function ImportPlayersWizard({
           {/* STEP 5: Complete */}
           {step === "complete" && result && (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div style={{ background: result.failedCount === 0 ? "#f0fdf4" : "#fffbeb", border: `1px solid ${result.failedCount === 0 ? "#bbf7d0" : "#fde68a"}`, borderRadius: "20px", padding: "24px", display: "flex", gap: "16px", alignItems: "center" }}>
+              <div style={{ background: result.failedCount === 0 ? "#f0fdf4" : "#fffbeb", border: `1px solid ${result.failedCount === 0 ? "#bbf7d0" : "#fde68a"}`, borderRadius: "2px", padding: "24px", display: "flex", gap: "16px", alignItems: "center" }}>
                 <CheckCircle2 size={48} style={{ color: result.failedCount === 0 ? "#10b981" : "#f59e0b", flexShrink: 0 }} />
                 <div>
                   <h3 style={{ margin: "0 0 4px", fontSize: "22px", fontWeight: 900, color: result.failedCount === 0 ? "#065f46" : "#92400e" }}>Import Complete!</h3>
@@ -210,11 +210,11 @@ export function ImportPlayersWizard({
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "16px", padding: "20px", textAlign: "center" }}>
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "2px", padding: "20px", textAlign: "center" }}>
                   <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#059669" }}>Successfully Imported</p>
                   <p style={{ margin: 0, fontSize: "36px", fontWeight: 900, color: "#047857" }}>{result.successCount}</p>
                 </div>
-                <div style={{ background: result.failedCount > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${result.failedCount > 0 ? "#fecaca" : "#e2e8f0"}`, borderRadius: "16px", padding: "20px", textAlign: "center" }}>
+                <div style={{ background: result.failedCount > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${result.failedCount > 0 ? "#fecaca" : "#e2e8f0"}`, borderRadius: "2px", padding: "20px", textAlign: "center" }}>
                   <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: result.failedCount > 0 ? "#dc2626" : "#64748b" }}>Failed Rows</p>
                   <p style={{ margin: 0, fontSize: "36px", fontWeight: 900, color: result.failedCount > 0 ? "#b91c1c" : "#334155" }}>{result.failedCount}</p>
                 </div>
@@ -222,7 +222,7 @@ export function ImportPlayersWizard({
               {result.errors.length > 0 && (
                 <div>
                   <h4 style={{ margin: "0 0 10px", fontWeight: 900, color: "#0f172a", display: "flex", alignItems: "center", gap: "8px" }}><AlertCircle size={16} style={{ color: "#ef4444" }} /> Row Errors</h4>
-                  <div style={{ border: "1px solid #fecaca", borderRadius: "12px", overflow: "hidden", maxHeight: "200px", overflowY: "auto" }}>
+                  <div style={{ border: "1px solid #fecaca", borderRadius: "2px", overflow: "hidden", maxHeight: "200px", overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                       <thead><tr style={{ background: "#fee2e2" }}><th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 900, color: "#b91c1c", width: "60px" }}>Row</th><th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 900, color: "#b91c1c" }}>Error</th></tr></thead>
                       <tbody>{result.errors.map((e, i) => <tr key={i} style={{ borderTop: "1px solid #fecaca" }}><td style={{ padding: "8px 12px", fontWeight: 900, color: "#dc2626" }}>{e.row}</td><td style={{ padding: "8px 12px", color: "#dc2626" }}>{e.error}</td></tr>)}</tbody>
@@ -241,21 +241,21 @@ export function ImportPlayersWizard({
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
             {(step === "upload" || step === "summary") && (
-              <button type="button" onClick={handleClose} style={{ padding: "10px 20px", borderRadius: "12px", fontWeight: 700, fontSize: "13px", background: "none", border: "1px solid #e2e8f0", cursor: "pointer", color: "#64748b" }}>Cancel</button>
+              <button type="button" onClick={handleClose} style={{ padding: "10px 20px", borderRadius: "2px", fontWeight: 700, fontSize: "13px", background: "none", border: "1px solid #e2e8f0", cursor: "pointer", color: "#64748b" }}>Cancel</button>
             )}
             {step === "upload" && (
               <button type="button" onClick={() => { if (!file) return; if (validateBefore) { setStep("validating"); simulateProgress("summary"); } else doImport(); }} disabled={!file}
-                style={{ padding: "10px 24px", borderRadius: "12px", fontWeight: 900, fontSize: "13px", background: file ? "#2563eb" : "#94a3b8", color: "#fff", border: "none", cursor: file ? "pointer" : "not-allowed", display: "flex", alignItems: "center", gap: "6px" }}>
+                style={{ padding: "10px 24px", borderRadius: "2px", fontWeight: 900, fontSize: "13px", background: file ? "#2563eb" : "#94a3b8", color: "#fff", border: "none", cursor: file ? "pointer" : "not-allowed", display: "flex", alignItems: "center", gap: "6px" }}>
                 Continue <ChevronRight size={16} />
               </button>
             )}
             {step === "summary" && (
-              <button type="button" onClick={doImport} style={{ padding: "10px 24px", borderRadius: "12px", fontWeight: 900, fontSize: "13px", background: "#059669", color: "#fff", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+              <button type="button" onClick={doImport} style={{ padding: "10px 24px", borderRadius: "2px", fontWeight: 900, fontSize: "13px", background: "#059669", color: "#fff", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
                 <CheckCircle2 size={16} /> Confirm & Import
               </button>
             )}
             {step === "complete" && (
-              <button type="button" onClick={handleClose} style={{ padding: "10px 24px", borderRadius: "12px", fontWeight: 900, fontSize: "13px", background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
+              <button type="button" onClick={handleClose} style={{ padding: "10px 24px", borderRadius: "2px", fontWeight: 900, fontSize: "13px", background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
                 Close &amp; View Players
               </button>
             )}

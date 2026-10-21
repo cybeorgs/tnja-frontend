@@ -829,8 +829,8 @@ export default function ClubTournamentsPage() {
                               {/* Bottom row */}
                               <div className="flex items-center px-4 py-3 border-t border-slate-100">
                                 {/* Send Reply — fixed width, orange border */}
-                                <div className="w-72 rounded-[10px] p-[1.5px]" style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}>
-                                  <div className="flex items-center gap-2 bg-white rounded-[8.5px] px-3 py-2">
+                                <div className="w-72 rounded-[2px] p-[1.5px]" style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}>
+                                  <div className="flex items-center gap-2 bg-white rounded-[2px] px-3 py-2">
                                     <input
                                       type="text"
                                       placeholder="Send Reply"
@@ -971,7 +971,7 @@ export default function ClubTournamentsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-8">
                 <div>
@@ -1174,7 +1174,7 @@ export default function ClubTournamentsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-8">
                 <div>

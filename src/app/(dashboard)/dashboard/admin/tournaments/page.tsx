@@ -661,7 +661,7 @@ export default function AdminTournamentsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Pending my approval */}
         {hasApprovalRole && (
-          <div className="bg-white p-6 rounded-[14px] border border-b-[4px] border-amber-400 shadow-md flex flex-col justify-between h-[120px]">
+          <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-amber-400 shadow-md flex flex-col justify-between h-[120px]">
             <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">PENDING MY APPROVAL</p>
             <div className="flex items-center justify-between">
               <h3 className="text-4xl font-black text-slate-900">{pendingQueue}</h3>
@@ -674,7 +674,7 @@ export default function AdminTournamentsPage() {
 
         {/* My tournaments */}
         {canCreate && (
-          <div className="bg-white p-6 rounded-[14px] border border-b-[4px] border-[#FF7400] shadow-md flex flex-col justify-between h-[120px]">
+          <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-[#FF7400] shadow-md flex flex-col justify-between h-[120px]">
             <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">MY TOURNAMENTS</p>
             <div className="flex items-center justify-between">
               <h3 className="text-4xl font-black text-slate-900">{totalMine}</h3>
@@ -687,7 +687,7 @@ export default function AdminTournamentsPage() {
 
         {/* Fully approved (creator view) or Total in system (approver view) */}
         {canCreate ? (
-          <div className="bg-white p-6 rounded-[14px] border border-b-[4px] border-emerald-500 shadow-md flex flex-col justify-between h-[120px]">
+          <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-emerald-500 shadow-md flex flex-col justify-between h-[120px]">
             <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">FULLY APPROVED</p>
             <div className="flex items-center justify-between">
               <h3 className="text-4xl font-black text-slate-900">{approvedMine}</h3>
@@ -698,7 +698,7 @@ export default function AdminTournamentsPage() {
           </div>
         ) : (
           <>
-            <div className="bg-white p-6 rounded-[14px] border border-b-[4px] border-[#FF7400] shadow-md flex flex-col justify-between h-[120px]">
+            <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-[#FF7400] shadow-md flex flex-col justify-between h-[120px]">
               <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">PENDING IN QUEUE</p>
               <div className="flex items-center justify-between">
                 <h3 className="text-4xl font-black text-slate-900">{allTournaments.length}</h3>
@@ -707,7 +707,7 @@ export default function AdminTournamentsPage() {
                 </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-[14px] border border-b-[4px] border-emerald-500 shadow-md flex flex-col justify-between h-[120px]">
+            <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-emerald-500 shadow-md flex flex-col justify-between h-[120px]">
               <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">APPROVED BY ME</p>
               <div className="flex items-center justify-between">
                 <h3 className="text-4xl font-black text-slate-900">{approvedByMeList.length}</h3>
@@ -752,7 +752,7 @@ export default function AdminTournamentsPage() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search tournaments..."
-            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 font-medium text-sm text-slate-700 shadow-sm"
+            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[2px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 font-medium text-sm text-slate-700 shadow-sm"
           />
         </div>
 
@@ -760,19 +760,19 @@ export default function AdminTournamentsPage() {
         {activeTab === "mine" && (
           <div className="relative" ref={filterRef}>
             <div
-              className="p-[1.5px] rounded-[10px] shrink-0 inline-flex shadow-sm"
+              className="p-[1.5px] rounded-[2px] shrink-0 inline-flex shadow-sm"
               style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}
             >
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[8.5px] hover:bg-slate-50 transition-all text-sm"
+                className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[2px] hover:bg-slate-50 transition-all text-sm"
               >
                 <Filter size={16} />
                 {filter === "ALL" ? "Filter" : filter}
               </button>
             </div>
             {isFilterOpen && (
-              <div className="absolute top-full mt-2 right-0 bg-white border border-slate-200 shadow-xl rounded-[10px] overflow-hidden z-50 w-44">
+              <div className="absolute top-full mt-2 right-0 bg-white border border-slate-200 shadow-xl rounded-[2px] overflow-hidden z-50 w-44">
                 {["ALL", "APPROVED", "PENDING", "REJECTED"].map(f => (
                   <button
                     key={f}
@@ -873,8 +873,8 @@ export default function AdminTournamentsPage() {
                       {/* Bottom row */}
                       <div className="flex items-center px-4 py-3 border-t border-slate-100">
                         {/* Send Reply — fixed width, orange border */}
-                        <div className="w-72 rounded-[10px] p-[1.5px]" style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}>
-                          <div className="flex items-center gap-2 bg-white rounded-[8.5px] px-3 py-2">
+                        <div className="w-72 rounded-[2px] p-[1.5px]" style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}>
+                          <div className="flex items-center gap-2 bg-white rounded-[2px] px-3 py-2">
                             <input
                               type="text"
                               placeholder="Send Reply"
@@ -950,7 +950,7 @@ export default function AdminTournamentsPage() {
                     <motion.div
                       key={t.id}
                       whileHover={{ y: -4 }}
-                      className="bg-white rounded-[20px] shadow-lg overflow-hidden flex flex-col"
+                      className="bg-white rounded-[2px] shadow-lg overflow-hidden flex flex-col"
                     >
                       <div className="h-32 bg-gradient-to-br from-emerald-900 via-emerald-700 to-[#FF7400] relative overflow-hidden">
                         {t.bannerImage && <img src={t.bannerImage} alt="Banner" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-60" />}
@@ -1045,7 +1045,7 @@ export default function AdminTournamentsPage() {
                     <motion.div
                       key={t.id}
                       whileHover={{ y: -4 }}
-                      className="bg-white rounded-[20px] shadow-lg overflow-hidden flex flex-col"
+                      className="bg-white rounded-[2px] shadow-lg overflow-hidden flex flex-col"
                     >
                       {/* Card banner */}
                       <div className="h-28 bg-gradient-to-br from-[#FF7400]/15 to-amber-50 flex items-center justify-center relative overflow-hidden">
@@ -1181,7 +1181,7 @@ export default function AdminTournamentsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl lg:max-w-4xl bg-white rounded-[1.75rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl lg:max-w-4xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-6">
                 <div>
@@ -1482,7 +1482,7 @@ export default function AdminTournamentsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl lg:max-w-4xl bg-white rounded-[1.75rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl lg:max-w-4xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-6">
                 <div>

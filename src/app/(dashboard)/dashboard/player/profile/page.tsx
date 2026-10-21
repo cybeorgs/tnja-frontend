@@ -157,10 +157,10 @@ export default function PlayerProfilePage() {
         style={{
           background: "linear-gradient(135deg, #FF7400 0%, #FFB020 100%)",
           padding: "2px",
-          borderRadius: "18px",
+          borderRadius: "2px",
         }}
       >
-        <div className="bg-white rounded-[16px] p-6 relative">
+        <div className="bg-white rounded-[2px] p-6 relative">
           {/* Role badge */}
           <div className="absolute top-4 left-4">
             <span

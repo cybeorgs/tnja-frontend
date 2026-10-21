@@ -122,7 +122,7 @@ export default function ChangePasswordPage() {
                     name="currentPassword"
                     value={passwords.currentPassword}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-12 py-4 bg-[#F8F9FA] border border-[#DEE2E6] rounded text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all"
+                    className="w-full pl-10 pr-12 py-4 bg-[#F8F9FA] border border-[#DEE2E6] rounded-sm text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all"
                     placeholder="Enter current password"
                     required
                   />
@@ -145,7 +145,7 @@ export default function ChangePasswordPage() {
                     name="newPassword"
                     value={passwords.newPassword}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-12 py-4 bg-[#F8F9FA] border border-[#DEE2E6] rounded text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all"
+                    className="w-full pl-10 pr-12 py-4 bg-[#F8F9FA] border border-[#DEE2E6] rounded-sm text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all"
                     placeholder="Enter new password"
                     required
                   />
@@ -168,7 +168,7 @@ export default function ChangePasswordPage() {
                     name="confirmPassword"
                     value={passwords.confirmPassword}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-4 bg-[#F8F9FA] border border-[#DEE2E6] rounded text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all"
+                    className="w-full pl-10 pr-4 py-4 bg-[#F8F9FA] border border-[#DEE2E6] rounded-sm text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all"
                     placeholder="Confirm new password"
                     required
                   />

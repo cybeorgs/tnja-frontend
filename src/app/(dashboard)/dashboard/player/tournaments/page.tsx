@@ -486,7 +486,7 @@ export default function PlayerTournamentsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   whileHover={{ y: -4 }}
-                  className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col group"
+                  className="bg-white rounded-[2px] border border-slate-200 shadow-sm overflow-hidden flex flex-col group"
                 >
                   {/* Card Top Banner */}
                   <div
@@ -555,7 +555,7 @@ export default function PlayerTournamentsPage() {
                           {tournament.entryFee === 0 ? "Free" : `₹${tournament.entryFee}`}
                         </span>
                         {tournament.allowBPL && (
-                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold ml-1">BPL FREE</span>
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-sm text-xs font-bold ml-1">BPL FREE</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">

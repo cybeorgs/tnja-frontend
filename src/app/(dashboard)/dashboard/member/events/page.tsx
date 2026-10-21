@@ -486,7 +486,7 @@ export default function MemberEventsPage() {
               key={event.id}
               whileHover={{ y: -5 }}
               onClick={() => setSelectedEvent(event)}
-              className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col group cursor-pointer"
+              className="bg-white rounded-[2px] border border-slate-200 shadow-sm overflow-hidden flex flex-col group cursor-pointer"
             >
               <div className="h-32 bg-slate-100 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#FF7400]/20 to-[#FFDA00]/20 group-hover:opacity-100 transition-opacity"></div>
@@ -536,7 +536,7 @@ export default function MemberEventsPage() {
                   </div>
                   {(event.district?.name || event.zoneId) && (
                     <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mt-1">
-                      <div className="w-4 h-4 rounded bg-slate-100 flex items-center justify-center">
+                      <div className="w-4 h-4 rounded-sm bg-slate-100 flex items-center justify-center">
                         <MapPin size={10} className="text-slate-400" />
                       </div>
                       <span className="text-xs">Region: {event.district?.name || event.zoneId}</span>
@@ -661,7 +661,7 @@ export default function MemberEventsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-10">
                 <div>
@@ -905,7 +905,7 @@ export default function MemberEventsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-10">
                 <div>
@@ -1150,7 +1150,7 @@ export default function MemberEventsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-6">
                 <div>

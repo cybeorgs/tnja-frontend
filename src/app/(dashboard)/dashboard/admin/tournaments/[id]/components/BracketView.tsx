@@ -252,7 +252,7 @@ export function BracketView({
                     {/* Player A row */}
                     <div className={`flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 min-h-[34px] ${match.slotA.isBye ? "opacity-25" : ""} ${isWinnerA ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors`}>
                       {match.slotA.seedNumber && (
-                        <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded flex items-center justify-center">
+                        <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
                           {match.slotA.seedNumber}
                         </span>
                       )}
@@ -268,7 +268,7 @@ export function BracketView({
                     {/* Player B row */}
                     <div className={`flex items-center gap-1.5 px-3 py-2 min-h-[34px] ${match.slotB.isBye ? "opacity-25" : ""} ${isWinnerB ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors`}>
                       {match.slotB.seedNumber && (
-                        <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded flex items-center justify-center">
+                        <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
                           {match.slotB.seedNumber}
                         </span>
                       )}
@@ -466,14 +466,14 @@ export function RoundRobinLeaderboard({
         <div className="flex items-center gap-2">
           <button
             onClick={() => exportCategoryChartPDF(tournament || null, currentKey || "", currentDraw as DrawCategory, players)}
-            className="text-xs bg-white text-emerald-700 hover:bg-emerald-50 px-2.5 py-1 rounded font-bold transition-all flex items-center gap-1 shadow-sm"
+            className="text-xs bg-white text-emerald-700 hover:bg-emerald-50 px-2.5 py-1 rounded-sm font-bold transition-all flex items-center gap-1 shadow-sm"
             title="Download Official Visual Pool Chart as PDF"
           >
             <Download size={12} /> Download Chart (PDF)
           </button>
           <button
             onClick={() => exportRoundRobinPoolSheet(tournament || null, currentKey || "", currentDraw as DrawCategory, players)}
-            className="text-xs bg-white/20 hover:bg-white/35 px-2.5 py-1 rounded font-bold transition-all flex items-center gap-1 text-white border border-white/10"
+            className="text-xs bg-white/20 hover:bg-white/35 px-2.5 py-1 rounded-sm font-bold transition-all flex items-center gap-1 text-white border border-white/10"
             title="Print Official IJF Round Robin Pool Sheet"
           >
             <Printer size={12} /> Print Sheet

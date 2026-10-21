@@ -177,7 +177,7 @@ export function DrawCategoryFilters({
                       }`}
                     >
                       {label}
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${weightFilter === w ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
+                      <span className={`px-1.5 py-0.5 rounded-sm text-[10px] ${weightFilter === w ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
                         {approvedCount}/{count}
                       </span>
                       <MatchStatusBadges stats={weightStats} />

@@ -133,7 +133,8 @@ const loadRazorpayScript = () =>
 function TrackPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [tempId, setTempId] = useState("");
+  // Emails link here as /track?tempId=… so the ID is pre-filled.
+  const [tempId, setTempId] = useState(() => searchParams.get("tempId") ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [result, setResult] = useState<TrackResult | null>(null);
@@ -145,11 +146,6 @@ function TrackPageContent() {
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [newBplProof, setNewBplProof] = useState("");
-
-  useEffect(() => {
-    const paramId = searchParams.get("tempId");
-    if (paramId) setTempId(paramId);
-  }, [searchParams]);
 
   const role = result?.role || "";
   const idLabel = ID_LABEL[role] || "Member ID";
@@ -323,319 +319,366 @@ function TrackPageContent() {
 
   const cfg = result ? statusConfig[result.status] ?? statusConfig.PENDING : null;
   const showRemark = !!result?.rejectionRemark && ["REPLAY", "REJECTED", "BPL_REJECTED"].includes(result.status);
+  const showDashboardButton = !!result && (!!result.permanentId || result.status === "REPLAY" || (result.status === "APPROVED" && !needsPayment));
+
+  const statusMessage = !result || !cfg
+    ? ""
+    : result.status === "APPROVED"
+      ? result.permanentId
+        ? `Your ${idLabel} has been issued. You can now log in to your dashboard.`
+        : needsPayment
+          ? `Pay the registration fee to receive your ${idLabel}.`
+          : `Your ${idLabel} is being issued.`
+      : cfg.desc;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex flex-col items-center justify-center px-4 py-12">
-      {/* Back */}
-      <div className="w-full max-w-lg mb-6">
+    <main className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 px-4 py-8 md:py-12">
+      <div className="max-w-6xl mx-auto">
         <Link
           href="/login"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-[#FF7400] transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-[#FF7400] transition-colors mb-6"
         >
           <ChevronLeft size={16} />
           Back to Login
         </Link>
-      </div>
 
-      {/* Header */}
-      <div className="text-center mb-8">
-        <div
-          style={{ backgroundColor: "#FF7400" }}
-          className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-200"
-        >
-          <ClipboardCheck size={28} color="#fff" />
-        </div>
-        <h1 className="text-2xl font-black text-slate-800">Track Registration</h1>
-        <p className="text-sm text-slate-500 mt-1 font-medium">
-          Enter your Temporary ID and Password to check your application status
-        </p>
-      </div>
-
-      {/* Search card */}
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl shadow-orange-100/60 border border-orange-100 p-5 sm:p-6">
-        <form onSubmit={handleTrack} className="space-y-4">
-          <div className="relative">
-            <Hash size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={tempId}
-              onChange={(e) => setTempId(e.target.value)}
-              placeholder="Temporary ID (e.g. TEMP-STU-XXXXXX)"
-              required
-              className="w-full pl-9 pr-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-[#FF7400]/10 transition-all"
-            />
-          </div>
-          <div className="relative">
-            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Temporary Password (sent to your email)"
-              required
-              className="w-full pl-9 pr-12 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-[#FF7400]/10 transition-all"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-            >
-              {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
-            </button>
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !tempId.trim() || !password.trim()}
-            style={{ backgroundColor: "#FF7400" }}
-            className="w-full py-3 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 hover:opacity-90 transition-all shadow-md shadow-orange-200"
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-            {loading ? "Checking…" : "Track Application"}
-          </button>
-        </form>
-
-        {/* Error */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium"
-            >
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Result */}
-        <AnimatePresence>
-          {result && cfg && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mt-6 space-y-4"
-            >
-              {/* Status banner */}
-              <div className={`flex flex-col gap-2.5 px-4 py-3.5 rounded-2xl border ${cfg.bg} ${cfg.border}`}>
-                <div className="flex items-center gap-3">
-                  {cfg.icon}
-                  <div>
-                    <p className={`text-sm font-black ${cfg.color}`}>{cfg.label}</p>
-                    <p className="text-xs text-slate-500 font-medium leading-snug mt-0.5">
-                      {result.status === "APPROVED"
-                        ? result.permanentId
-                          ? `Your ${idLabel} has been issued. You can now log in to your dashboard.`
-                          : needsPayment
-                            ? `Pay the registration fee below to receive your ${idLabel}.`
-                            : `Your ${idLabel} is being issued.`
-                        : cfg.desc}
-                    </p>
-                  </div>
-                </div>
-                {showRemark && (
-                  <div className="ml-9 p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Admin Remarks</p>
-                    <p className={`text-xs font-bold mt-0.5 whitespace-pre-line ${cfg.color}`}>{result.rejectionRemark}</p>
-                  </div>
-                )}
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
+          {/* ── Left: sign in with temporary credentials ── */}
+          <aside className="bg-white rounded-3xl shadow-xl shadow-orange-100/60 border border-orange-100 p-6 lg:sticky lg:top-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div
+                style={{ backgroundColor: "#FF7400" }}
+                className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-200"
+              >
+                <ClipboardCheck size={24} color="#fff" />
               </div>
+              <div>
+                <h1 className="text-xl font-black text-slate-800">Track Registration</h1>
+                <p className="text-xs text-slate-500 font-medium">Use the Temporary ID and password from your email</p>
+              </div>
+            </div>
 
-              {/* Info card */}
-              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    style={{ backgroundColor: "#FF7400" }}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white font-black text-base"
-                  >
-                    {(result.fullName || "?").charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-extrabold text-slate-800 truncate">{result.fullName || "—"}</p>
-                    <p className="text-xs text-slate-400 font-medium capitalize">
-                      {result.role?.replace(/_/g, " ").toLowerCase() || "Member"}
-                      {role === "PLAYER" && result.isBPL ? " · BPL" : ""}
-                    </p>
-                  </div>
-                </div>
+            <form onSubmit={handleTrack} className="space-y-4">
+              <div className="relative">
+                <Hash size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={tempId}
+                  onChange={(e) => setTempId(e.target.value)}
+                  placeholder="Temporary ID (e.g. TEMP-STU-XXXXXX)"
+                  required
+                  className="w-full pl-9 pr-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-[#FF7400]/10 transition-all"
+                />
+              </div>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Temporary Password"
+                  required
+                  className="w-full pl-9 pr-12 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-[#FF7400]/10 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={loading || !tempId.trim() || !password.trim()}
+                style={{ backgroundColor: "#FF7400" }}
+                className="w-full py-3 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 hover:opacity-90 transition-all shadow-md shadow-orange-200"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                {loading ? "Checking…" : result ? "Refresh Status" : "Track Application"}
+              </button>
+            </form>
 
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <Hash size={13} className="text-slate-400 mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Temp ID</p>
-                      <p className="text-xs font-bold text-slate-700 font-mono break-all">{result.tempId}</p>
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium"
+                >
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </aside>
+
+          {/* ── Right: application status ── */}
+          <section className="min-w-0">
+            <AnimatePresence mode="wait">
+              {result && cfg ? (
+                <motion.div
+                  key="result"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="space-y-6"
+                >
+                  {/* Summary: who, status, progress */}
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          style={{ backgroundColor: "#FF7400" }}
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-white font-black text-lg"
+                        >
+                          {(result.fullName || "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-lg font-black text-slate-800 truncate">{result.fullName || "—"}</p>
+                          <p className="text-xs text-slate-400 font-semibold capitalize">
+                            {result.role?.replace(/_/g, " ").toLowerCase() || "Member"}
+                            {role === "PLAYER" && result.isBPL ? " · BPL" : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-2 self-start sm:self-auto px-4 py-2 rounded-full border text-sm font-black ${cfg.bg} ${cfg.border} ${cfg.color}`}>
+                        {cfg.icon}
+                        {cfg.label}
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-slate-500 font-medium mt-4">{statusMessage}</p>
+                    {showRemark && (
+                      <div className={`mt-3 p-3 rounded-xl border ${cfg.bg} ${cfg.border}`}>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Admin Remarks</p>
+                        <p className={`text-sm font-bold mt-0.5 whitespace-pre-line ${cfg.color}`}>{result.rejectionRemark}</p>
+                      </div>
+                    )}
+
+                    {/* Progress steps */}
+                    <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-100">
+                      {steps.map((step, idx) => {
+                        const state = getStepState(result, step.key);
+                        const next = idx < steps.length - 1 ? getStepState(result, steps[idx + 1].key) : null;
+                        return (
+                          <React.Fragment key={step.key}>
+                            <div className="flex flex-col items-center gap-1.5">
+                              <div
+                                className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
+                                  state === "rejected"
+                                    ? "bg-red-500 border-red-500"
+                                    : state === "done"
+                                      ? "bg-emerald-500 border-emerald-500"
+                                      : state === "active"
+                                        ? "border-amber-400 bg-amber-50"
+                                        : "border-slate-200 bg-white"
+                                }`}
+                              >
+                                {state === "rejected" ? (
+                                  <XCircle size={18} color="#fff" />
+                                ) : state === "done" ? (
+                                  <CheckCircle2 size={18} color="#fff" />
+                                ) : state === "active" ? (
+                                  <Clock size={16} className="text-amber-500" />
+                                ) : (
+                                  <div className="w-2 h-2 rounded-full bg-slate-200" />
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold text-slate-500 text-center leading-tight">{step.label}</span>
+                            </div>
+                            {next && (
+                              <div className={`grow h-0.5 mx-2 mb-5 rounded-full ${next !== "pending" ? "bg-[#FF7400]" : "bg-slate-200"}`} />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {result.permanentId && (
-                    <div className="flex items-start gap-2 min-w-0">
-                      <Hash size={13} className="text-emerald-400 mt-0.5 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{idLabel}</p>
-                        <p className="text-xs font-bold text-emerald-600 font-mono break-all">{result.permanentId}</p>
-                      </div>
+                  {(notice || actionError) && (
+                    <div className="space-y-3">
+                      {notice && (
+                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">{notice}</div>
+                      )}
+                      {actionError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">{actionError}</div>
+                      )}
                     </div>
                   )}
 
-                  <div className="flex items-start gap-2">
-                    <Calendar size={13} className="text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Applied On</p>
-                      <p className="text-xs font-bold text-slate-700">
-                        {new Date(result.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                      </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    {/* Application details */}
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-4">Application Details</p>
+                      <dl className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <Hash size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Temporary ID</dt>
+                            <dd className="text-sm font-bold text-slate-700 font-mono break-all">{result.tempId}</dd>
+                          </div>
+                        </div>
+                        {result.permanentId && (
+                          <div className="flex items-start gap-3">
+                            <BadgeCheck size={16} className="text-emerald-500 mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{idLabel}</dt>
+                              <dd className="text-sm font-bold text-emerald-600 font-mono break-all">{result.permanentId}</dd>
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-3">
+                          <Calendar size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                          <div>
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Applied On</dt>
+                            <dd className="text-sm font-bold text-slate-700">
+                              {new Date(result.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                            </dd>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <User size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                          <div>
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location</dt>
+                            <dd className="text-sm font-bold text-slate-700">{result.district?.name || result.city || "—"}</dd>
+                          </div>
+                        </div>
+                      </dl>
                     </div>
-                  </div>
 
-                  <div className="flex items-start gap-2">
-                    <User size={13} className="text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location</p>
-                      <p className="text-xs font-bold text-slate-700">{result.district?.name || result.city || "—"}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                    {/* Next step */}
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 space-y-4">
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Next Step</p>
 
-              {/* Progress steps */}
-              <div className="flex items-center justify-between px-1 sm:px-2 pt-1">
-                {steps.map((step, idx) => {
-                  const state = getStepState(result, step.key);
-                  const next = idx < steps.length - 1 ? getStepState(result, steps[idx + 1].key) : null;
-                  return (
-                    <React.Fragment key={step.key}>
-                      <div className="flex flex-col items-center gap-1.5">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
-                            state === "rejected"
-                              ? "bg-red-500 border-red-500"
-                              : state === "done"
-                                ? "bg-emerald-500 border-emerald-500"
-                                : state === "active"
-                                  ? "border-amber-400 bg-amber-50"
-                                  : "border-slate-200 bg-white"
-                          }`}
-                        >
-                          {state === "rejected" ? (
-                            <XCircle size={16} color="#fff" />
-                          ) : state === "done" ? (
-                            <CheckCircle2 size={16} color="#fff" />
-                          ) : state === "active" ? (
-                            <Clock size={14} className="text-amber-500" />
-                          ) : (
-                            <div className="w-2 h-2 rounded-full bg-slate-200" />
+                      {needsPayment && (
+                        <>
+                          <div className="flex items-end justify-between">
+                            <span className="text-sm font-bold text-slate-600">Registration fee</span>
+                            <span className="text-3xl font-black text-[#FF7400]">{fee !== null ? `₹${fee.toLocaleString("en-IN")}` : "…"}</span>
+                          </div>
+                          <button
+                            onClick={handlePayment}
+                            disabled={!!actionLoading}
+                            style={{ backgroundColor: "#FF7400" }}
+                            className="w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 flex items-center justify-center gap-2 disabled:opacity-60 hover:opacity-90 transition-all"
+                          >
+                            {actionLoading === "pay" ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                            {actionLoading === "pay" ? "Processing…" : `Pay & Get ${idLabel}`}
+                          </button>
+                          <p className="text-[11px] text-slate-400 text-center">Secure payment via Razorpay. Your {idLabel} is issued as soon as payment succeeds.</p>
+                        </>
+                      )}
+
+                      {result.permanentId && (
+                        <div className="p-4 border border-emerald-200 bg-emerald-50 rounded-2xl text-center space-y-1">
+                          <BadgeCheck size={28} className="text-emerald-500 mx-auto" />
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your {idLabel}</p>
+                          <p className="text-2xl font-black text-emerald-600 font-mono break-all">{result.permanentId}</p>
+                          <p className="text-xs text-slate-500">Also sent to your registered email.</p>
+                        </div>
+                      )}
+
+                      {result.status === "PENDING" && (
+                        <p className="text-sm text-slate-500">
+                          No action needed. The admin will review your application and you will get an email with the decision. Check back here any time.
+                        </p>
+                      )}
+                      {result.status === "BPL_REJECTED" && (
+                        <p className="text-sm text-slate-500">Choose one of the two options below to continue your registration.</p>
+                      )}
+                      {result.status === "REJECTED" && (
+                        <p className="text-sm text-slate-500">This decision is final. Please contact the TNJA office if you have questions.</p>
+                      )}
+                      {result.status === "REPLAY" && (
+                        <p className="text-sm text-slate-500">Update your application using the admin remarks above, then resubmit it for review.</p>
+                      )}
+
+                      {showDashboardButton && (
+                        <div>
+                          <button
+                            onClick={goToDashboard}
+                            style={{ backgroundColor: "#FF7400" }}
+                            className="flex justify-center items-center gap-2 w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 hover:opacity-90 transition-all"
+                          >
+                            {result.status === "REPLAY" ? "Update My Application" : "Go to Dashboard"} <ArrowRight size={16} />
+                          </button>
+                          {result.permanentId && result.mustChangePassword && (
+                            <p className="text-[11px] text-slate-400 text-center mt-2">You will be asked to set a new password first.</p>
                           )}
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500 text-center leading-tight max-w-[64px]">
-                          {step.label}
-                        </span>
-                      </div>
-                      {next && (
-                        <div className={`grow h-0.5 mx-1 sm:mx-2 mb-4 rounded-full ${next !== "pending" ? "bg-[#FF7400]" : "bg-slate-200"}`} />
                       )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-
-              {/* Messages from actions */}
-              {notice && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">{notice}</div>
-              )}
-              {actionError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">{actionError}</div>
-              )}
-
-              {/* BPL not accepted: resubmit proof or continue without BPL */}
-              {result.status === "BPL_REJECTED" && (
-                <div className="space-y-3 pt-2">
-                  <div className="p-4 border border-slate-200 rounded-2xl space-y-3">
-                    <p className="text-sm font-black text-slate-800 flex items-center gap-2">
-                      <Upload size={16} className="text-[#FF7400]" /> Option 1: Resubmit BPL proof
-                    </p>
-                    <FileUpload
-                      label="New BPL proof"
-                      value={newBplProof}
-                      onChange={setNewBplProof}
-                      helperText="Upload a clear photo or PDF of your BPL card (max 5MB)"
-                      required
-                    />
-                    <button
-                      onClick={handleResubmitBpl}
-                      disabled={!!actionLoading || !newBplProof}
-                      className="w-full py-3 bg-slate-800 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-slate-900 transition-all"
-                    >
-                      {actionLoading === "resubmit" && <Loader2 size={16} className="animate-spin" />}
-                      Resubmit for Review
-                    </button>
+                    </div>
                   </div>
-                  <div className="p-4 border border-slate-200 rounded-2xl space-y-3">
-                    <p className="text-sm font-black text-slate-800 flex items-center gap-2">
-                      <CreditCard size={16} className="text-[#FF7400]" /> Option 2: Continue without BPL
-                    </p>
-                    <p className="text-xs text-slate-500">You will pay the registration fee and receive your Player ID straight away.</p>
-                    <button
-                      onClick={handleContinueWithoutBpl}
-                      disabled={!!actionLoading}
-                      style={{ backgroundColor: "#FF7400" }}
-                      className="w-full py-3 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:opacity-90 transition-all"
-                    >
-                      {actionLoading === "decline" && <Loader2 size={16} className="animate-spin" />}
-                      Continue without BPL
-                    </button>
-                  </div>
-                </div>
-              )}
 
-              {/* Approved, fee due */}
-              {needsPayment && (
-                <div className="p-4 border border-orange-200 bg-orange-50/50 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-slate-600">Registration fee</span>
-                    <span className="text-2xl font-black text-[#FF7400]">{fee !== null ? `₹${fee.toLocaleString("en-IN")}` : "…"}</span>
-                  </div>
-                  <button
-                    onClick={handlePayment}
-                    disabled={!!actionLoading}
-                    style={{ backgroundColor: "#FF7400" }}
-                    className="w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 flex items-center justify-center gap-2 disabled:opacity-60 hover:opacity-90 transition-all"
-                  >
-                    {actionLoading === "pay" ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-                    {actionLoading === "pay" ? "Processing…" : `Pay & Get ${idLabel}`}
-                  </button>
-                </div>
-              )}
-
-              {/* ID issued */}
-              {result.permanentId && (
-                <div className="p-4 border border-emerald-200 bg-emerald-50 rounded-2xl text-center space-y-1">
-                  <BadgeCheck size={28} className="text-emerald-500 mx-auto" />
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your {idLabel}</p>
-                  <p className="text-2xl font-black text-emerald-600 font-mono">{result.permanentId}</p>
-                  <p className="text-xs text-slate-500">Also sent to your registered email.</p>
-                </div>
-              )}
-
-              {(result.permanentId || result.status === "REPLAY" || (result.status === "APPROVED" && !needsPayment)) && (
-                <div className="pt-4 border-t border-slate-100">
-                  <button
-                    onClick={goToDashboard}
-                    style={{ backgroundColor: "#FF7400" }}
-                    className="flex justify-center items-center gap-2 w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 hover:opacity-90 transition-all"
-                  >
-                    {result.status === "REPLAY" ? "Update My Application" : "Go to Dashboard"} <ArrowRight size={16} />
-                  </button>
-                  {result.permanentId && result.mustChangePassword && (
-                    <p className="text-[11px] text-slate-400 text-center mt-2">You will be asked to set a new password first.</p>
+                  {/* BPL not accepted: resubmit proof or continue without BPL */}
+                  {result.status === "BPL_REJECTED" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 space-y-3">
+                        <p className="text-sm font-black text-slate-800 flex items-center gap-2">
+                          <Upload size={16} className="text-[#FF7400]" /> Option 1: Resubmit BPL proof
+                        </p>
+                        <FileUpload
+                          label="New BPL proof"
+                          value={newBplProof}
+                          onChange={setNewBplProof}
+                          helperText="Upload a clear photo or PDF of your BPL card (max 5MB)"
+                          required
+                        />
+                        <button
+                          onClick={handleResubmitBpl}
+                          disabled={!!actionLoading || !newBplProof}
+                          className="w-full py-3 bg-slate-800 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-slate-900 transition-all"
+                        >
+                          {actionLoading === "resubmit" && <Loader2 size={16} className="animate-spin" />}
+                          Resubmit for Review
+                        </button>
+                      </div>
+                      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 space-y-3">
+                        <p className="text-sm font-black text-slate-800 flex items-center gap-2">
+                          <CreditCard size={16} className="text-[#FF7400]" /> Option 2: Continue without BPL
+                        </p>
+                        <p className="text-sm text-slate-500">Pay the registration fee and receive your Player ID straight away.</p>
+                        <button
+                          onClick={handleContinueWithoutBpl}
+                          disabled={!!actionLoading}
+                          style={{ backgroundColor: "#FF7400" }}
+                          className="w-full py-3 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:opacity-90 transition-all"
+                        >
+                          {actionLoading === "decline" && <Loader2 size={16} className="animate-spin" />}
+                          Continue without BPL
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="hidden lg:flex flex-col items-center justify-center text-center min-h-[420px] rounded-3xl border-2 border-dashed border-orange-200 bg-white/50 p-10"
+                >
+                  <ClipboardCheck size={40} className="text-orange-300 mb-4" />
+                  <p className="text-lg font-black text-slate-700">Your application status will appear here</p>
+                  <p className="text-sm text-slate-500 mt-1 max-w-sm">
+                    Enter your Temporary ID and password on the left to see your progress, admin remarks and next steps.
+                  </p>
+                  <div className="flex items-center gap-2 mt-8 text-[11px] font-bold text-slate-400">
+                    {steps.map((step, idx) => (
+                      <React.Fragment key={step.key}>
+                        <span className="px-3 py-1.5 rounded-full bg-white border border-slate-200">{step.label}</span>
+                        {idx < steps.length - 1 && <span className="w-4 h-px bg-slate-300" />}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </motion.div>
               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </AnimatePresence>
+          </section>
+        </div>
       </div>
     </main>
   );

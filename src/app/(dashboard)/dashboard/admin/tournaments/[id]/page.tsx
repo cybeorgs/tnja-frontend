@@ -2449,7 +2449,7 @@ export default function TournamentDetailPage() {
                                             <div className="flex items-center gap-4">
                                               <span className="text-[10px] font-black text-slate-400 min-w-[80px] flex flex-col gap-0.5">
                                                 <span>Mat {draw.matNumber || 1} · #{match.matchNumber}</span>
-                                                {isBronze && <span className="text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded inline-block w-max mt-1">🥉 BRONZE</span>}
+                                                {isBronze && <span className="text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm inline-block w-max mt-1">🥉 BRONZE</span>}
                                               </span>
                                               <div className="flex items-center gap-2">
                                                 <span className={`text-sm font-bold flex items-center gap-1 ${match.slotA.isBye ? "text-slate-300" : match.winnerId === match.slotA.playerId ? "text-emerald-600" : match.status === "COMPLETED" ? "text-slate-400 line-through" : "text-slate-800"}`}>
@@ -2506,7 +2506,7 @@ export default function TournamentDetailPage() {
                   </div>
                 ) : (
                   <div className="p-5">
-                    <div className="flex flex-col xl:flex-row items-center justify-between bg-white border-2 border-slate-100 rounded-[1.5rem] p-4 mb-6 shadow-sm gap-6">
+                    <div className="flex flex-col xl:flex-row items-center justify-between bg-white border-2 border-slate-100 rounded-[2px] p-4 mb-6 shadow-sm gap-6">
                       {/* Left Side: Status */}
                       <div className="flex items-center gap-4 w-full xl:w-auto">
                         <div className="flex items-center justify-center w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 shrink-0">
@@ -2660,10 +2660,10 @@ export default function TournamentDetailPage() {
                               </button>
                             </div>
                             <div className="flex items-center gap-1">
-                              {seeds[1]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">S1</span>}
-                              {seeds[2]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">S2</span>}
-                              {seeds[3]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">S3</span>}
-                              {seeds[4]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">S4</span>}
+                              {seeds[1]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S1</span>}
+                              {seeds[2]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S2</span>}
+                              {seeds[3]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S3</span>}
+                              {seeds[4]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S4</span>}
                             </div>
                           </div>
                         </motion.div>
@@ -2689,7 +2689,7 @@ export default function TournamentDetailPage() {
                       {ageFilter !== "ALL" ? ageFilter : ""} {genderFilter !== "ALL" ? genderFilter : ""} {weightFilter !== "ALL" ? `${weightFilter}kg` : ""}
                     </span>
                     {currentDraw.matNumber && (
-                      <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                      <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-bold bg-indigo-100 text-indigo-800">
                         MAT {currentDraw.matNumber}
                       </span>
                     )}
@@ -2800,7 +2800,7 @@ export default function TournamentDetailPage() {
                               <div className="flex items-center gap-4">
                                 <span className="text-[10px] font-black text-slate-400 min-w-[80px] flex flex-col gap-0.5">
                                   <span>Mat {currentDraw.matNumber || 1} · #{match.matchNumber}</span>
-                                  {isBronze && <span className="text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded inline-block w-max mt-1">🥉 BRONZE</span>}
+                                  {isBronze && <span className="text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm inline-block w-max mt-1">🥉 BRONZE</span>}
                                 </span>
                                 <div className="flex items-center gap-2">
                                   <span className={`text-sm font-bold flex items-center gap-1 ${match.slotA.isBye ? "text-slate-300" : match.winnerId === match.slotA.playerId ? "text-emerald-600" : match.status === "COMPLETED" ? "text-slate-400 line-through" : "text-slate-800"}`}>
@@ -2992,7 +2992,7 @@ export default function TournamentDetailPage() {
                     const round = fullRound.filter(m => matchStatusFilter === "ALL" || m.status === matchStatusFilter);
                     if (round.length === 0) return null;
                     return (
-                    <div key={ri} className="bg-white rounded-[2rem] border border-slate-100 shadow-lg shadow-slate-200/40 overflow-hidden">
+                    <div key={ri} className="bg-white rounded-[2px] border border-slate-100 shadow-lg shadow-slate-200/40 overflow-hidden">
                       <div className="px-6 py-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm">

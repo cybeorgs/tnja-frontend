@@ -8,6 +8,7 @@ import { PlayerRegistrationData } from '@/types/registration';
 import FileUpload from '@/components/common/FileUpload';
 import { useAadhaarDigilocker } from './useAadhaarDigilocker';
 import OtpVerificationField, { useOtpVerification } from './OtpVerificationField';
+import { usePincodeLookup, PincodeHint } from './usePincodeLookup';
 
 const RequiredSymbol = () => <Asterisk size={10} className="text-red-500 stroke-[4px]" />;
 
@@ -348,54 +349,17 @@ const PlayerRegistrationForm = () => {
     selectDistrict(e.target.value);
   };
 
-  // Once all 6 pincode digits are in, look up the district/taluk and fill them
-  // in. A taluk is only auto-selected when the pincode maps to exactly one.
-  const [pincodeHint, setPincodeHint] = useState<{ text: string, tone: 'info' | 'error' } | null>(null);
-  useEffect(() => {
-    const pincode = formData.pincode;
-    if (pincode.length !== 6) {
-      setPincodeHint(null);
-      return;
-    }
-    const controller = new AbortController();
-    const lookup = async () => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
-      setPincodeHint({ text: 'Looking up pincode...', tone: 'info' });
-      try {
-        const res = await fetch(`${apiUrl}/locations/pincode/${pincode}`, { signal: controller.signal });
-        const data = await res.json();
-        if (!res.ok) {
-          setPincodeHint({ text: data.error || 'Pincode not found. Please select district and taluk manually.', tone: 'error' });
-          return;
-        }
-        const matchedTaluks: { id: string, name: string }[] = data.taluks;
-        const onlyTaluk = matchedTaluks.length === 1 ? matchedTaluks[0] : undefined;
-        await selectDistrict(data.district.id, onlyTaluk);
-        setPincodeHint({
-          text: matchedTaluks.length > 1
-            ? `${data.district.name} district. This pincode covers ${matchedTaluks.map(t => t.name).join(' / ')} — please choose your taluk.`
-            : onlyTaluk
-              ? `${data.district.name} district, ${onlyTaluk.name} taluk.`
-              : `${data.district.name} district. Please choose your taluk.`,
-          tone: 'info'
-        });
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        console.error("Pincode lookup failed:", err);
-        setPincodeHint({ text: 'Could not look up pincode. Please select district and taluk manually.', tone: 'error' });
-      }
-    };
-    lookup();
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.pincode]);
+  const { hint: pincodeHint, clearHint: clearPincodeHint } = usePincodeLookup(
+    formData.pincode,
+    (match, onlyTaluk) => selectDistrict(match.district.id, onlyTaluk)
+  );
 
   const handleTalukChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const talukId = e.target.value;
     const selectedTaluk = taluks.find(t => t.id === talukId);
 
     if (selectedTaluk) {
-      setPincodeHint(null);
+      clearPincodeHint();
       setFormData(prev => ({
         ...prev,
         talukId,
@@ -633,11 +597,7 @@ const PlayerRegistrationForm = () => {
                     maxLength={6}
                     autoComplete="off"
                   />
-                  {pincodeHint && (
-                    <p className={`text-xs ${pincodeHint.tone === 'error' ? 'text-red-500' : 'text-[#FF7400] font-medium'}`}>
-                      {pincodeHint.text}
-                    </p>
-                  )}
+                  <PincodeHint hint={pincodeHint} />
                 </div>
               </div>
             </div>

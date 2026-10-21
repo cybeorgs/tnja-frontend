@@ -135,7 +135,7 @@ export default function ResubmitPage() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-white rounded-[2.5rem] p-10 shadow-xl border border-slate-200 text-center"
+          className="max-w-md w-full bg-white rounded-[2px] p-10 shadow-xl border border-slate-200 text-center"
         >
           <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={40} />
@@ -161,7 +161,7 @@ export default function ResubmitPage() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-white rounded-[2.5rem] p-10 shadow-xl border border-slate-200 text-center"
+          className="max-w-md w-full bg-white rounded-[2px] p-10 shadow-xl border border-slate-200 text-center"
         >
           <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={40} />
@@ -188,7 +188,7 @@ export default function ResubmitPage() {
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border-2 border-red-100 rounded-[2rem] p-8 flex items-start gap-6"
+          className="bg-red-50 border-2 border-red-100 rounded-[2px] p-8 flex items-start gap-6"
         >
           <div className="p-4 bg-red-100 text-red-600 rounded-2xl">
             <AlertCircle size={32} />
@@ -196,7 +196,7 @@ export default function ResubmitPage() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <h2 className="text-xl font-bold text-red-900">Application Rejected</h2>
-              <span className="text-xs font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded uppercase">Replay Required</span>
+              <span className="text-xs font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded-sm uppercase">Replay Required</span>
             </div>
             <p className="text-red-700 font-medium mb-4">{profileData?.rejectionRemark || "No specific remark provided."}</p>
           </div>
@@ -207,7 +207,7 @@ export default function ResubmitPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-200"
+          className="bg-white rounded-[2px] p-10 shadow-sm border border-slate-200"
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
@@ -249,7 +249,7 @@ export default function ResubmitPage() {
                             id={key}
                             checked={val} 
                             onChange={(e) => handleInputChange(key, e.target.checked)}
-                            className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            className="w-5 h-5 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
                           <label htmlFor={key} className="text-sm font-bold text-slate-700 capitalize cursor-pointer">
                             {label}

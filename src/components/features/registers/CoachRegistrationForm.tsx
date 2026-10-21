@@ -8,6 +8,7 @@ import { CoachRegistrationData } from '@/types/registration';
 import FileUpload from '@/components/common/FileUpload';
 import { useAadhaarDigilocker } from './useAadhaarDigilocker';
 import OtpVerificationField, { useOtpVerification } from './OtpVerificationField';
+import { usePincodeLookup, PincodeHint } from './usePincodeLookup';
 
 const RequiredSymbol = () => <Asterisk size={10} className="text-red-500 stroke-[4px]" />;
 
@@ -310,9 +311,8 @@ const CoachRegistrationForm = () => {
 
 
 
-  const handleDistrictChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const districtId = e.target.value;
-    setFormData(prev => ({ ...prev, districtId, talukId: '', taluk: '' }));
+  const selectDistrict = async (districtId: string, preselectTaluk?: { id: string, name: string }) => {
+    setFormData(prev => ({ ...prev, districtId, talukId: preselectTaluk?.id ?? '', taluk: preselectTaluk?.name ?? '' }));
     setTaluks([]);
     
     if (districtId) {
@@ -328,11 +328,21 @@ const CoachRegistrationForm = () => {
     }
   };
 
+  const handleDistrictChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    selectDistrict(e.target.value);
+  };
+
+  const { hint: pincodeHint, clearHint: clearPincodeHint } = usePincodeLookup(
+    formData.pincode,
+    (match, onlyTaluk) => selectDistrict(match.district.id, onlyTaluk)
+  );
+
   const handleTalukChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const talukId = e.target.value;
     const selectedTaluk = taluks.find(t => t.id === talukId);
     
     if (selectedTaluk) {
+      clearPincodeHint();
       setFormData(prev => ({ 
         ...prev, 
         talukId,
@@ -548,16 +558,19 @@ const CoachRegistrationForm = () => {
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <InputField 
-                  label="Pincode" 
-                  name="pincode" 
-                  placeholder="6 Digit Pincode" 
-                  required 
-                  value={formData.pincode}
-                  onChange={handleInputChange}
-                  maxLength={6}
-                  autoComplete="off"
-                />
+                <div className="flex flex-col gap-2">
+                  <InputField 
+                    label="Pincode" 
+                    name="pincode" 
+                    placeholder="6 Digit Pincode" 
+                    required 
+                    value={formData.pincode}
+                    onChange={handleInputChange}
+                    maxLength={6}
+                    autoComplete="off"
+                  />
+                  <PincodeHint hint={pincodeHint} />
+                </div>
               </div>
             </div>
           </section>

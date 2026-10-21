@@ -1005,9 +1005,9 @@ export default function PlayerDashboard() {
                           <div className="flex-1 space-y-3">
                             <div className="flex items-center gap-3 mb-1">
                               {isWin ? (
-                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">WIN</span>
+                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wider">WIN</span>
                               ) : (
-                                <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">LOSS</span>
+                                <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wider">LOSS</span>
                               )}
                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tournament</span>
                             </div>

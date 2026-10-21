@@ -162,7 +162,7 @@ export default function AdminGrievancePage() {
 
       <div className="grid grid-cols-1 gap-4">
         {filteredGrievances.length === 0 ? (
-          <div className="bg-white rounded-[2rem] p-12 text-center border border-slate-100">
+          <div className="bg-white rounded-[2px] p-12 text-center border border-slate-100">
             <div className="w-16 h-16 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-4">
               <MessageSquare size={32} />
             </div>
@@ -242,13 +242,13 @@ export default function AdminGrievancePage() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+              className="relative w-full max-w-2xl bg-white rounded-[2px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             >
               <div className="p-8 space-y-6 overflow-y-auto flex-grow">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-orange-100 text-[#FF7400] rounded text-[10px] font-bold uppercase">{selectedGrievance.role}</span>
+                      <span className="px-2 py-0.5 bg-orange-100 text-[#FF7400] rounded-sm text-[10px] font-bold uppercase">{selectedGrievance.role}</span>
                       <span className="text-xs text-slate-400 font-medium">#{selectedGrievance.userId}</span>
                     </div>
                     <h2 className="text-2xl font-bold text-slate-800">{selectedGrievance.subject}</h2>

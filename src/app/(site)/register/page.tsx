@@ -1,15 +1,6 @@
-import RegisterSelection from "@/components/features/RegisterSelection";
-import { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "New Registration | TNJA",
-  description: "Select your role to create a new account with Tamil Nadu Judo Association.",
-};
-
+// Registration opens straight on the player form; the toggle on that page switches to the other types.
 export default function RegisterPage() {
-  return (
-    <main>
-      <RegisterSelection />
-    </main>
-  );
+  redirect("/register/player");
 }

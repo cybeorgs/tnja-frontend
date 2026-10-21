@@ -178,7 +178,7 @@ export function AddPlayerModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 w-screen h-screen bg-slate-900/70 z-[999999] flex items-center justify-center p-4">
+    <div className="tnja-dashboard fixed inset-0 w-screen h-screen bg-slate-900/70 z-[999999] flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl flex flex-col max-h-[90vh] overflow-hidden">
 
         {/* Header */}

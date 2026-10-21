@@ -327,12 +327,12 @@ export default function EventsPage() {
           <p className="text-slate-500 text-sm mt-1">Create and Monitor Events within your jurisdiction</p>
         </div>
         <div
-          className="p-[1.5px] rounded-[10px] shrink-0 inline-flex"
+          className="p-[1.5px] rounded-[2px] shrink-0 inline-flex"
           style={{ background: 'linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)' }}
         >
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[8.5px] hover:bg-slate-50 transition-all text-sm shadow-sm cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[2px] hover:bg-slate-50 transition-all text-sm shadow-sm cursor-pointer"
           >
             <Plus size={18} className="stroke-[2.5]" />
             Create Event
@@ -347,7 +347,7 @@ export default function EventsPage() {
           { label: "APPROVED", value: approvedCount, icon: CheckCircle2, borderColor: "border-[#FFDA00] border-b-[4px]", shadowColor: "shadow-[0_14px_28px_-6px_rgba(255,218,0,0.65)]", iconColor: "text-[#FFDA00]" },
           { label: "PENDING APPROVAL", value: pendingCount, icon: AlertCircle, borderColor: "border-[#552700] border-b-[4px]", shadowColor: "shadow-[0_14px_28px_-6px_rgba(85,39,0,0.65)]", iconColor: "text-[#8B4513]" },
         ].map((stat) => (
-          <div key={stat.label} className={`bg-white p-6 rounded-[14px] transition-shadow border ${stat.borderColor} ${stat.shadowColor} flex flex-col justify-between h-[130px]`}>
+          <div key={stat.label} className={`bg-white p-6 rounded-[2px] transition-shadow border ${stat.borderColor} ${stat.shadowColor} flex flex-col justify-between h-[130px]`}>
             <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">{stat.label}</p>
             <div className="flex items-center justify-between">
               <h3 className="text-4xl font-black text-slate-900 leading-none">{stat.value}</h3>
@@ -368,24 +368,24 @@ export default function EventsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search events"
-            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 transition-all font-medium text-sm text-slate-700 shadow-sm"
+            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[2px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 transition-all font-medium text-sm text-slate-700 shadow-sm"
           />
         </div>
         <div className="relative" ref={filterRef}>
           <div
-            className="p-[1.5px] rounded-[10px] shrink-0 inline-flex shadow-sm"
+            className="p-[1.5px] rounded-[2px] shrink-0 inline-flex shadow-sm"
             style={{ background: 'linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)' }}
           >
             <button
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[8.5px] hover:bg-slate-50 transition-all text-sm cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[2px] hover:bg-slate-50 transition-all text-sm cursor-pointer"
             >
               <Filter size={16} />
               {filter === "ALL" ? "Filter" : filter}
             </button>
           </div>
           {isFilterOpen && (
-            <div className="absolute top-full mt-2 right-0 bg-white border border-slate-200 shadow-xl rounded-[10px] overflow-hidden z-50 w-44">
+            <div className="absolute top-full mt-2 right-0 bg-white border border-slate-200 shadow-xl rounded-[2px] overflow-hidden z-50 w-44">
               {["ALL", "APPROVED", "PENDING", "REJECTED"].map((f) => (
                 <button
                   key={f}
@@ -407,7 +407,7 @@ export default function EventsPage() {
           <Loader2 size={40} className="animate-spin text-[#FF7400]" />
         </div>
       ) : filteredEvents.length === 0 ? (
-        <div className="text-center py-20 bg-white border border-slate-200 rounded-[20px] shadow-sm">
+        <div className="text-center py-20 bg-white border border-slate-200 rounded-[2px] shadow-sm">
           <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
             <Calendar size={32} />
           </div>
@@ -420,7 +420,7 @@ export default function EventsPage() {
               key={event.id}
               whileHover={{ y: -5 }}
               onClick={() => setSelectedEvent(event)}
-              className="bg-white rounded-[20px] shadow-xl shadow-slate-200/60 overflow-hidden flex flex-col group cursor-pointer"
+              className="bg-white rounded-[2px] shadow-xl shadow-slate-200/60 overflow-hidden flex flex-col group cursor-pointer"
             >
               <div
                 className="h-44 relative overflow-hidden"
@@ -430,7 +430,7 @@ export default function EventsPage() {
                 <div className="absolute inset-0 backdrop-blur-[2px]"></div>
               </div>
 
-              <div className="p-6 flex-grow flex flex-col bg-white rounded-t-[20px] -mt-5 relative z-10 border-t-[4px] border-[#FFDA00]">
+              <div className="p-6 flex-grow flex flex-col bg-white rounded-t-[2px] -mt-5 relative z-10 border-t-[4px] border-[#FFDA00]">
                 <h3 className="text-[22px] font-bold text-black mb-5 leading-tight">
                   {event.title}
                 </h3>
@@ -498,7 +498,7 @@ export default function EventsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-10">
                 <div>
@@ -772,7 +772,7 @@ export default function EventsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-10">
                 <div>
@@ -1018,7 +1018,7 @@ export default function EventsPage() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-2xl bg-white rounded-[2.5rem] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="w-full max-w-2xl bg-white rounded-[2px] p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-start mb-6">
                 <div>

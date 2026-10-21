@@ -6,6 +6,7 @@ import Button from '@/components/common/Button';
 import { Search, Upload, Check, Asterisk } from 'lucide-react';
 import { ClubRegistrationData } from '@/types/registration';
 import FileUpload from '@/components/common/FileUpload';
+import { usePincodeLookup, PincodeHint } from './usePincodeLookup';
 
 const RequiredSymbol = () => <Asterisk size={10} className="text-red-500 stroke-[4px]" />;
 
@@ -122,11 +123,37 @@ const ClubRegistrationForm = ({ initialData = null, isResubmit = false }: { init
     fetchDistricts();
   }, []);
 
-  const handleDistrictChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const districtId = e.target.value;
-    setFormData(prev => ({ ...prev, districtId, talukId: '', taluk: '' }));
+  // Selecting a taluk also loads the coaches and members who can be named as office bearers.
+  const selectTaluk = async (districtId: string, selectedTaluk: { id: string, name: string }) => {
+    const talukId = selectedTaluk.id;
+    setFormData(prev => ({
+      ...prev,
+      talukId,
+      taluk: selectedTaluk.name,
+      president: '',
+      secretary: '',
+      coach: ''
+    }));
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
+    try {
+      const [coachesRes, membersRes] = await Promise.all([
+        fetch(`${apiUrl}/coaches?talukId=${talukId}&districtId=${districtId}`),
+        fetch(`${apiUrl}/members?talukId=${talukId}&districtId=${districtId}`)
+      ]);
+      if (coachesRes.ok) setCoaches(await coachesRes.json());
+      if (membersRes.ok) setMembers(await membersRes.json());
+    } catch (err) {
+      console.error("Failed to fetch coaches/members:", err);
+    }
+  };
+
+  const selectDistrict = async (districtId: string, preselectTaluk?: { id: string, name: string }) => {
+    setFormData(prev => ({ ...prev, districtId, talukId: '', taluk: '', president: '', secretary: '', coach: '' }));
     setTaluks([]);
-    
+    setCoaches([]);
+    setMembers([]);
+
     if (districtId) {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
       try {
@@ -137,35 +164,25 @@ const ClubRegistrationForm = ({ initialData = null, isResubmit = false }: { init
       } catch (err) {
         console.error("Failed to fetch taluks:", err);
       }
+      if (preselectTaluk) await selectTaluk(districtId, preselectTaluk);
     }
   };
 
-  const handleTalukChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const talukId = e.target.value;
-    const selectedTaluk = taluks.find(t => t.id === talukId);
-    
-    if (selectedTaluk) {
-      setFormData(prev => ({ 
-        ...prev, 
-        talukId,
-        taluk: selectedTaluk.name, 
-        president: '',
-        secretary: '',
-        coach: ''
-      }));
+  const handleDistrictChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    selectDistrict(e.target.value);
+  };
 
-      // Fetch coaches and members for this taluk
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
-      try {
-        const [coachesRes, membersRes] = await Promise.all([
-          fetch(`${apiUrl}/coaches?talukId=${talukId}&districtId=${formData.districtId}`),
-          fetch(`${apiUrl}/members?talukId=${talukId}&districtId=${formData.districtId}`)
-        ]);
-        if (coachesRes.ok) setCoaches(await coachesRes.json());
-        if (membersRes.ok) setMembers(await membersRes.json());
-      } catch (err) {
-        console.error("Failed to fetch coaches/members:", err);
-      }
+  const { hint: pincodeHint, clearHint: clearPincodeHint } = usePincodeLookup(
+    formData.pincode,
+    (match, onlyTaluk) => selectDistrict(match.district.id, onlyTaluk)
+  );
+
+  const handleTalukChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedTaluk = taluks.find(t => t.id === e.target.value);
+
+    if (selectedTaluk) {
+      clearPincodeHint();
+      await selectTaluk(formData.districtId, selectedTaluk);
     } else {
       setFormData(prev => ({ ...prev, talukId: '', taluk: '', president: '', secretary: '', coach: '' }));
       setCoaches([]);
@@ -438,16 +455,19 @@ const ClubRegistrationForm = ({ initialData = null, isResubmit = false }: { init
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <InputField 
-                  label="Pincode" 
-                  name="pincode" 
-                  placeholder="Enter Pincode" 
-                  required 
-                  maxLength={6}
-                  value={formData.pincode}
-                  onChange={handleInputChange}
-                  autoComplete="off"
-                />
+                <div className="flex flex-col gap-2">
+                  <InputField 
+                    label="Pincode" 
+                    name="pincode" 
+                    placeholder="6 Digit Pincode" 
+                    required 
+                    maxLength={6}
+                    value={formData.pincode}
+                    onChange={handleInputChange}
+                    autoComplete="off"
+                  />
+                  <PincodeHint hint={pincodeHint} />
+                </div>
               </div>
             </div>
           </section>

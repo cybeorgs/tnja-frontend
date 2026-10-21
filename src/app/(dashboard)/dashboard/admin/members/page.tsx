@@ -138,12 +138,12 @@ export default function MembersListPage() {
           <p className="text-slate-600 text-[13px] font-medium mt-1">Manage all registered members in your location</p>
         </div>
         <div 
-          className="p-[1.5px] rounded-[10px] shrink-0 inline-flex"
+          className="p-[1.5px] rounded-[2px] shrink-0 inline-flex"
           style={{ background: 'linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)' }}
         >
           <button 
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[8.5px] hover:bg-slate-50 transition-all text-sm shadow-sm cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[2px] hover:bg-slate-50 transition-all text-sm shadow-sm cursor-pointer"
           >
             <FileText size={18} className="stroke-[2.5]" />
             Export CSV
@@ -160,15 +160,15 @@ export default function MembersListPage() {
             placeholder="Search Members"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 transition-all text-[13px] font-medium shadow-sm"
+            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[2px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 transition-all text-[13px] font-medium shadow-sm"
           />
         </div>
-        <div className="flex gap-2 shrink-0 bg-slate-100 p-1.5 rounded-[12px]">
+        <div className="flex gap-2 shrink-0 bg-slate-100 p-1.5 rounded-[2px]">
           {(["ALL", "MALE", "FEMALE"] as const).map(g => (
             <button
               key={g}
               onClick={() => setGenderFilter(g)}
-              className={`px-5 py-2 text-[13px] font-bold rounded-[8px] transition-all cursor-pointer ${
+              className={`px-5 py-2 text-[13px] font-bold rounded-[2px] transition-all cursor-pointer ${
                 genderFilter === g 
                   ? "bg-white text-[#FF7400] shadow-sm" 
                   : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
@@ -211,7 +211,7 @@ export default function MembersListPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              className="bg-white rounded-[16px] shadow-sm hover:shadow-md transition-all p-4 px-8 flex flex-col md:grid md:grid-cols-[1.2fr_1.2fr_1fr_1.8fr_1fr_1fr_60px] md:items-center gap-6 border border-slate-100"
+              className="bg-white rounded-[2px] shadow-sm hover:shadow-md transition-all p-4 px-8 flex flex-col md:grid md:grid-cols-[1.2fr_1.2fr_1fr_1.8fr_1fr_1fr_60px] md:items-center gap-6 border border-slate-100"
             >
               {/* Member */}
               <div className="flex items-center gap-3">

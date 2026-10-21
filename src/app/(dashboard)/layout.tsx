@@ -16,6 +16,7 @@ import {
   X,
   Bell,
   Settings,
+  IndianRupee,
   MessageSquare,
   Loader2,
   Trophy,
@@ -219,6 +220,7 @@ export default function DashboardLayout({
   if (userRole === "SUPER_ADMIN" || userRole === "CEO") {
     adminNavItems.push({ name: "Locations", href: "/dashboard/admin/locations", icon: MapPin });
     adminNavItems.push({ name: "User Management", href: "/dashboard/admin/users", icon: Users });
+    adminNavItems.push({ name: "Payments", href: "/dashboard/admin/payments", icon: IndianRupee });
     adminNavItems.push({ name: "Settings", href: "/dashboard/admin/settings", icon: Settings });
   }
 
@@ -282,7 +284,7 @@ export default function DashboardLayout({
   const currentNavItems = userStatus === "REPLAY" ? replayNavItems : navItems;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex overflow-hidden print:overflow-visible print:bg-white print:min-h-0 print:block">
+    <div className="tnja-dashboard min-h-screen bg-slate-50 flex overflow-hidden print:overflow-visible print:bg-white print:min-h-0 print:block">
       {/* Global Toast */}
       <AnimatePresence>
         {toast && (

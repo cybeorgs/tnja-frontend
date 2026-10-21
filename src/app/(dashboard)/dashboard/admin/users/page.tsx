@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { adminStudentSchema, adminClubSchema, adminMemberSchema } from "@/validation/adminEntitySchema";
+import { usePincodeLookup, PincodeHint } from "@/components/features/registers/usePincodeLookup";
 import {
   Search,
   Filter,
@@ -247,6 +248,15 @@ export default function UserManagementPage() {
       setTaluksList([]);
     }
   }, [createForm.districtId]);
+
+  // Clubs record a location pincode; players and members only have an address pincode.
+  const { hint: pincodeHint } = usePincodeLookup(
+    createType === "CLUB" ? createForm.pincode : createForm.addressPincode,
+    (match, onlyTaluk) => {
+      setCreateForm(prev => ({ ...prev, districtId: match.district.id, talukId: onlyTaluk?.id ?? "" }));
+      setFormErrors(prev => ({ ...prev, districtId: "", talukId: "" }));
+    }
+  );
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -795,7 +805,7 @@ export default function UserManagementPage() {
                       {getRoleIcon(u.role)}
                       {getRoleLabel(u.role)}
                     </span>
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-widest ${
+                    <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black tracking-widest ${
                       u.status === "APPROVED" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : 
                       u.status === "REJECTED" ? "bg-red-100 text-red-700 border border-red-200" : "bg-amber-100 text-amber-700 border border-amber-200"
                     }`}>
@@ -837,7 +847,7 @@ export default function UserManagementPage() {
                   <div className="text-[10px] font-semibold text-slate-400 flex flex-col gap-1">
                     <span className="flex items-center gap-1"><Calendar size={12} /> Joined {new Date(u.createdAt).toLocaleDateString()}</span>
                     {u.validUntil && (
-                      <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                      <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-sm border border-emerald-100">
                         <CheckCircle2 size={10} /> Valid until {new Date(u.validUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                       </span>
                     )}
@@ -1191,6 +1201,7 @@ export default function UserManagementPage() {
                       <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
                         <input type="text" value={createForm.pincode} onChange={(e) => { setCreateForm({ ...createForm, pincode: e.target.value.replace(/\D/g, '') }); if (formErrors.pincode) setFormErrors(prev => ({ ...prev, pincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
                       </div>
                       <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">President Name</label>
@@ -1361,6 +1372,7 @@ export default function UserManagementPage() {
                       <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
                         <input type="text" value={createForm.addressPincode} onChange={(e) => { setCreateForm({ ...createForm, addressPincode: e.target.value.replace(/\D/g, '') }); if (formErrors.addressPincode) setFormErrors(prev => ({ ...prev, addressPincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
                       </div>
                       <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Nationality</label>
@@ -1433,6 +1445,7 @@ export default function UserManagementPage() {
                       <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
                         <input type="text" value={createForm.addressPincode} onChange={(e) => { setCreateForm({ ...createForm, addressPincode: e.target.value.replace(/\D/g, '') }); if (formErrors.addressPincode) setFormErrors(prev => ({ ...prev, addressPincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
                       </div>
                     </>
                   )}
@@ -1611,7 +1624,7 @@ export default function UserManagementPage() {
                   {importResults.defaultPassword && (
                     <div className="p-4 bg-amber-50 text-amber-800 rounded-2xl border border-amber-100 text-xs">
                       <span className="font-bold">Default login password for imported accounts: </span>
-                      <span className="font-mono font-extrabold bg-white px-2 py-0.5 rounded border border-amber-200">{importResults.defaultPassword}</span>
+                      <span className="font-mono font-extrabold bg-white px-2 py-0.5 rounded-sm border border-amber-200">{importResults.defaultPassword}</span>
                       <span> — they log in with their Temp/Permanent ID and this password, and will be prompted to set their own on first login. Share it with them; it isn't emailed automatically.</span>
                     </div>
                   )}
@@ -1779,11 +1792,11 @@ function ViewDetailsModal({
 
                     if (isBoolean) {
                       displayValue = val ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded">
+                        <span className="inline-flex items-center gap-1 text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-sm">
                           <CheckCircle2 size={14} /> Yes
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-slate-500 font-bold bg-slate-100 px-2 py-1 rounded">
+                        <span className="inline-flex items-center gap-1 text-slate-500 font-bold bg-slate-100 px-2 py-1 rounded-sm">
                           <XCircle size={14} /> No
                         </span>
                       );

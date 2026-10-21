@@ -21,6 +21,20 @@
   --animate-spin-slow: spin 20s linear infinite;
 }
 
+/* Dashboard uses square-ish 2px corners on cards, sidebar and controls. Tailwind's
+   rounded-* utilities read these variables, so overriding them here covers every
+   one inside .tnja-dashboard; rounded-full (avatars, dots, pills) is unaffected. */
+.tnja-dashboard {
+  --radius: 2px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --radius-3xl: 2px;
+  --radius-4xl: 2px;
+}
 /* Dark mode is disabled so the app stays in light mode regardless of system settings */
 
 body {

@@ -312,7 +312,7 @@ function ApprovalsContent() {
       {/* Categories Sidebar & Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
         {/* Sidebar */}
-        <div className="lg:col-span-1 bg-white rounded-[24px] border border-slate-100 p-4 space-y-2 shadow-sm">
+        <div className="lg:col-span-1 bg-white rounded-[2px] border border-slate-100 p-4 space-y-2 shadow-sm">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
             Categories
           </p>
@@ -372,12 +372,12 @@ function ApprovalsContent() {
           </div>
 
           {loading ? (
-            <div className="p-20 text-center flex flex-col items-center gap-4 bg-white rounded-[20px] border border-slate-100 shadow-sm">
+            <div className="p-20 text-center flex flex-col items-center gap-4 bg-white rounded-[2px] border border-slate-100 shadow-sm">
               <Loader2 size={40} className="animate-spin text-[#FF7400]" />
               <p className="text-slate-400 font-medium">Fetching pending approvals...</p>
             </div>
           ) : applications.length === 0 ? (
-            <div className="p-20 text-center flex flex-col items-center gap-4 bg-white rounded-[20px] border border-slate-100 shadow-sm">
+            <div className="p-20 text-center flex flex-col items-center gap-4 bg-white rounded-[2px] border border-slate-100 shadow-sm">
               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2 text-slate-300">
                 <MessageSquare size={28} />
               </div>
@@ -395,7 +395,7 @@ function ApprovalsContent() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="bg-white rounded-[20px] shadow-sm border border-slate-100 py-5 px-8 flex items-center hover:shadow-md transition-all"
+                      className="bg-white rounded-[2px] shadow-sm border border-slate-100 py-5 px-8 flex items-center hover:shadow-md transition-all"
                     >
                       <div className="grid grid-cols-[1.5fr_2fr_1fr_1fr_2fr] gap-4 w-full items-center">
                         {/* Applicant */}
@@ -415,14 +415,14 @@ function ApprovalsContent() {
                             <p className="font-bold text-slate-800 text-[15px] truncate flex items-center gap-1.5">
                               {item.name}
                               {activeTab === "STUDENT" && item.rawData?.isBPL && (
-                                <span className="shrink-0 text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">BPL</span>
+                                <span className="shrink-0 text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-sm">BPL</span>
                               )}
                             </p>
                             {item.subtitle && item.subtitle !== "No Club" && item.subtitle !== "Member" && item.subtitle !== "Coach" && (
                               <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subtitle}</p>
                             )}
                             {item.rawData?.rejectionRemark && (
-                              <p className="text-[11px] text-red-500 font-bold mt-1 bg-red-50 px-2 py-0.5 rounded border border-red-100 max-w-[200px] truncate" title={item.rawData.rejectionRemark}>
+                              <p className="text-[11px] text-red-500 font-bold mt-1 bg-red-50 px-2 py-0.5 rounded-sm border border-red-100 max-w-[200px] truncate" title={item.rawData.rejectionRemark}>
                                 Remark: {item.rawData.rejectionRemark}
                               </p>
                             )}
@@ -504,7 +504,7 @@ function ApprovalsContent() {
                                 <button 
                                   onClick={() => openRejectModal(item)}
                                   disabled={actionLoading === item.id}
-                                  className="text-slate-800 hover:bg-orange-50 transition-colors px-6 py-2 rounded-[7px] font-bold text-sm bg-white flex items-center justify-center"
+                                  className="text-slate-800 hover:bg-orange-50 transition-colors px-6 py-2 rounded-[2px] font-bold text-sm bg-white flex items-center justify-center"
                                 >
                                   Deny
                                 </button>

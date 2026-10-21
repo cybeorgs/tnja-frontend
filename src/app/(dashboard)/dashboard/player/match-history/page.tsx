@@ -366,7 +366,7 @@ export default function MatchHistoryPage() {
                     <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500">
                       <span className="flex items-center gap-1.5"><Calendar size={14} className="text-[#FF7400]"/> {new Date(match.tournamentDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
                       <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#FF7400]" /> {match.tournamentLocation}</span>
-                      <span className="flex items-center gap-1.5 text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 font-bold"><Hash size={14} /> Round {match.roundNum}</span>
+                      <span className="flex items-center gap-1.5 text-blue-600 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 font-bold"><Hash size={14} /> Round {match.roundNum}</span>
                     </div>
                   </div>
 
