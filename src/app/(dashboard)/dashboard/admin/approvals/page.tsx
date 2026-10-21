@@ -103,7 +103,8 @@ function resolveApplication(raw: any, type: ApprovalType): Application {
 }
 
 function ApprovalsContent() {
-  type StatusType = "PENDING" | "APPROVED" | "REJECTED" | "REPLAY";
+  type StatusType = "PENDING" | "APPROVED" | "REJECTED" | "REPLAY" | "BPL_REJECTED";
+  type RejectMode = "REJECTED" | "BPL_REJECTED";
 
   const searchParams = useSearchParams();
   const initialTab = (searchParams?.get("type") as ApprovalType) || "CLUB";
@@ -111,6 +112,7 @@ function ApprovalsContent() {
   const [activeTab, setActiveTab] = useState<ApprovalType>(initialTab);
   const [activeStatus, setActiveStatus] = useState<StatusType>("PENDING");
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectMode, setRejectMode] = useState<RejectMode>("REJECTED");
   const [isRequestChangesModalOpen, setIsRequestChangesModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Application | null>(null);
@@ -133,6 +135,7 @@ function ApprovalsContent() {
     { id: "APPROVED", label: "Approved" },
     { id: "REJECTED", label: "Denied" },
     { id: "REPLAY", label: "Replay" },
+    ...(activeTab === "STUDENT" ? [{ id: "BPL_REJECTED" as StatusType, label: "BPL Rejected" }] : []),
   ];
 
   const showToast = (msg: string, type: "success" | "error") => {
@@ -160,7 +163,6 @@ function ApprovalsContent() {
   useEffect(() => {
     fetchApplications();
   }, [fetchApplications]);
-
   const autoOpened = React.useRef(false);
   useEffect(() => {
     const id = searchParams?.get("id");
@@ -185,7 +187,7 @@ function ApprovalsContent() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Approval failed");
-      showToast(`${item.name} approved successfully!`, "success");
+      showToast(json.message || `${item.name} approved successfully!`, "success");
       fetchApplications();
     } catch (err: any) {
       showToast(err.message || "Something went wrong", "error");
@@ -194,14 +196,15 @@ function ApprovalsContent() {
     }
   };
 
-  const openRejectModal = (item: Application) => {
+  const openRejectModal = (item: Application, mode: RejectMode = "REJECTED") => {
     setSelectedItem(item);
+    setRejectMode(mode);
     setRemark("");
     setIsRejectModalOpen(true);
   };
 
   const handleReject = async () => {
-    if (!remark.trim()) return showToast("Please enter a rejection reason", "error");
+    if (!remark.trim()) return showToast(rejectMode === "BPL_REJECTED" ? "Please explain why the BPL proof was not accepted" : "Please enter a rejection reason", "error");
     if (!selectedItem) return;
     setActionLoading(selectedItem.id);
     try {
@@ -212,13 +215,13 @@ function ApprovalsContent() {
         body: JSON.stringify({
           id: selectedItem.id,
           type: TYPE_MAP[activeTab],
-          status: "REJECTED",
+          status: rejectMode,
           remark,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Rejection failed");
-      showToast(`${selectedItem.name} rejected.`, "success");
+      showToast(json.message || `${selectedItem.name} rejected.`, "success");
       setIsRejectModalOpen(false);
       fetchApplications();
     } catch (err: any) {
@@ -267,6 +270,7 @@ function ApprovalsContent() {
     APPROVED: { label: "APPROVED", dot: "bg-emerald-500",  text: "text-emerald-600" },
     REJECTED: { label: "REJECTED", dot: "bg-red-500",      text: "text-red-600" },
     REPLAY:   { label: "REPLAY",   dot: "bg-amber-500",  text: "text-amber-600" },
+    BPL_REJECTED: { label: "BPL REJECTED", dot: "bg-orange-500", text: "text-orange-600" },
   };
 
   return (
@@ -318,7 +322,11 @@ function ApprovalsContent() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  // The BPL Rejected tab only exists for players.
+                  if (tab.id !== "STUDENT" && activeStatus === "BPL_REJECTED") setActiveStatus("PENDING");
+                }}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-sm transition-all text-left ${
                   isActive
                     ? "bg-[#FF7400]/10 text-[#FF7400] shadow-[0_2px_8px_-2px_rgba(255,116,0,0.15)]"
@@ -404,7 +412,12 @@ function ApprovalsContent() {
                             </div>
                           )}
                           <div className="flex flex-col justify-center">
-                            <p className="font-bold text-slate-800 text-[15px] truncate">{item.name}</p>
+                            <p className="font-bold text-slate-800 text-[15px] truncate flex items-center gap-1.5">
+                              {item.name}
+                              {activeTab === "STUDENT" && item.rawData?.isBPL && (
+                                <span className="shrink-0 text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">BPL</span>
+                              )}
+                            </p>
                             {item.subtitle && item.subtitle !== "No Club" && item.subtitle !== "Member" && item.subtitle !== "Coach" && (
                               <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subtitle}</p>
                             )}
@@ -445,7 +458,7 @@ function ApprovalsContent() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center justify-start gap-4">
+                        <div className="flex flex-wrap items-center justify-start gap-2">
                           {item.status === "PENDING" ? (
                             <>
                               <button 
@@ -474,6 +487,16 @@ function ApprovalsContent() {
                               >
                                 Replay
                               </button>
+                              {activeTab === "STUDENT" && item.rawData?.isBPL && (
+                                <button
+                                  onClick={() => openRejectModal(item, "BPL_REJECTED")}
+                                  disabled={actionLoading === item.id}
+                                  title="Approve the application but refuse the BPL claim"
+                                  className="bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors px-4 py-2 rounded-lg font-bold text-sm shadow-sm disabled:opacity-50 shrink-0"
+                                >
+                                  Reject BPL
+                                </button>
+                              )}
                               <div 
                                 className={`p-[1px] rounded-lg shrink-0 inline-flex ${actionLoading === item.id ? 'opacity-50' : ''}`}
                                 style={{ background: 'linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)' }}
@@ -594,24 +617,44 @@ function ApprovalsContent() {
                   <MessageSquare size={22} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-slate-800">Rejection Reason</h3>
+                  <h3 className="text-xl font-bold text-slate-800">
+                    {rejectMode === "BPL_REJECTED" ? "Reject BPL Claim" : activeTab === "STUDENT" ? "Permanently Reject" : "Rejection Reason"}
+                  </h3>
                   <p className="text-slate-500 text-sm">
-                    Rejecting <strong>{selectedItem.name}</strong>
+                    {rejectMode === "BPL_REJECTED" ? "Approving" : "Rejecting"} <strong>{selectedItem.name}</strong>
+                    {rejectMode === "BPL_REJECTED" && " without BPL"}
                   </p>
                 </div>
               </div>
 
-              {activeTab !== "EVENT" && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 mb-5 text-xs text-amber-700">
+              {rejectMode === "BPL_REJECTED" ? (
+                <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl flex items-start gap-2 mb-5 text-xs text-sky-700">
                   <Mail size={14} className="mt-0.5 shrink-0" />
-                  A rejection notification will be sent to <strong>{selectedItem.email}</strong>
+                  <span>
+                    The application is approved, but the BPL proof is refused. <strong>{selectedItem.email}</strong> will be asked to upload new proof or continue without BPL and pay the fee.
+                  </span>
                 </div>
+              ) : (
+                <>
+                  {activeTab === "STUDENT" && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 mb-3 text-xs text-red-700">
+                      <XCircle size={14} className="mt-0.5 shrink-0" />
+                      <span>This is permanent. The player&apos;s Aadhaar number will be <strong>blocked</strong> from registering again.</span>
+                    </div>
+                  )}
+                  {activeTab !== "EVENT" && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 mb-5 text-xs text-amber-700">
+                      <Mail size={14} className="mt-0.5 shrink-0" />
+                      A rejection notification will be sent to <strong>{selectedItem.email}</strong>
+                    </div>
+                  )}
+                </>
               )}
 
               <textarea
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
-                placeholder="Enter rejection reason…"
+                placeholder={rejectMode === "BPL_REJECTED" ? "Why was the BPL proof not accepted?" : "Enter rejection reason…"}
                 className="w-full h-28 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400 transition-all resize-none mb-6 text-sm"
               />
 
@@ -628,7 +671,7 @@ function ApprovalsContent() {
                   className="flex-1 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />}
-                  Deny & Notify
+                  {rejectMode === "BPL_REJECTED" ? "Reject BPL & Notify" : activeTab === "STUDENT" ? "Reject & Block Aadhaar" : "Deny & Notify"}
                 </button>
               </div>
             </motion.div>

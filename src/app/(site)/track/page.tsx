@@ -18,21 +18,35 @@ import {
   Lock,
   Eye,
   EyeOff,
+  AlertTriangle,
+  CreditCard,
+  Upload,
+  ArrowRight,
+  BadgeCheck,
 } from "lucide-react";
 import FileUpload from "@/components/common/FileUpload";
 
-type Status = "PENDING" | "APPROVED" | "REJECTED" | "REPLAY";
+type Status = "PENDING" | "APPROVED" | "REJECTED" | "REPLAY" | "BPL_REJECTED";
 
 interface TrackResult {
   fullName: string;
   tempId: string;
-  permanentId?: string;
+  permanentId?: string | null;
   role?: string;
   status: Status;
   createdAt: string;
   district?: { name: string };
   city?: string;
+  email?: string;
+  mobileNumber?: string;
+  isBPL?: boolean;
+  bplProof?: string | null;
+  isPaid?: boolean;
+  rejectionRemark?: string | null;
+  mustChangePassword?: boolean;
 }
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
 const statusConfig: Record<
   Status,
@@ -52,7 +66,7 @@ const statusConfig: Record<
     bg: "bg-emerald-50",
     border: "border-emerald-200",
     icon: <CheckCircle2 size={22} className="text-emerald-500" />,
-    desc: "Congratulations! Your application has been approved. You can now log in to your dashboard.",
+    desc: "Your application has been approved.",
   },
   REJECTED: {
     label: "Rejected",
@@ -60,7 +74,7 @@ const statusConfig: Record<
     bg: "bg-red-50",
     border: "border-red-200",
     icon: <XCircle size={22} className="text-red-500" />,
-    desc: "Your application was not approved. Please contact the association for more details.",
+    desc: "Your application has been permanently rejected. Please contact the TNJA office if you have questions.",
   },
   REPLAY: {
     label: "Changes Requested",
@@ -68,26 +82,53 @@ const statusConfig: Record<
     bg: "bg-purple-50",
     border: "border-purple-200",
     icon: <Clock size={22} className="text-purple-500" />,
-    desc: "The admin has requested changes to your application. Please login to review the remarks and resubmit.",
+    desc: "The admin has requested changes to your application. Please review the remarks below and update your details.",
+  },
+  BPL_REJECTED: {
+    label: "Approved – BPL Not Accepted",
+    color: "text-orange-600",
+    bg: "bg-orange-50",
+    border: "border-orange-200",
+    icon: <AlertTriangle size={22} className="text-orange-500" />,
+    desc: "Your application is approved, but your BPL proof was not accepted. Upload new proof, or continue without BPL and pay the registration fee.",
   },
 };
 
+const ID_LABEL: Record<string, string> = { PLAYER: "Player ID", COACH: "Coach ID", CLUB: "Club ID" };
+const FEE_KEY: Record<string, string> = { PLAYER: "playerFee", COACH: "coachFee", CLUB: "clubFee" };
+
 const steps = [
-  { key: "submitted", label: "Application Submitted" },
+  { key: "submitted", label: "Submitted" },
   { key: "review", label: "Under Review" },
-  { key: "decision", label: "Decision" },
+  { key: "approved", label: "Approved" },
+  { key: "issued", label: "ID Issued" },
 ];
 
-function getStepState(status: Status, stepKey: string) {
+type StepState = "done" | "active" | "rejected" | "pending";
+
+function getStepState(result: TrackResult, stepKey: string): StepState {
+  const { status, permanentId } = result;
   if (stepKey === "submitted") return "done";
-  if (stepKey === "review") return (status === "PENDING" || status === "REPLAY") ? "active" : "done";
-  if (stepKey === "decision") {
-    if (status === "APPROVED") return "approved";
+  if (stepKey === "review") return status === "PENDING" || status === "REPLAY" ? "active" : "done";
+  if (stepKey === "approved") {
     if (status === "REJECTED") return "rejected";
+    if (status === "APPROVED") return "done";
+    if (status === "BPL_REJECTED") return "active";
     return "pending";
   }
-  return "pending";
+  if (permanentId) return "done";
+  return status === "APPROVED" ? "active" : "pending";
 }
+
+const loadRazorpayScript = () =>
+  new Promise<boolean>((resolve) => {
+    if ((window as any).Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
 
 function TrackPageContent() {
   const searchParams = useSearchParams();
@@ -95,114 +136,183 @@ function TrackPageContent() {
   const [tempId, setTempId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<TrackResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [fee, setFee] = useState<number | null>(null);
+  const [actionLoading, setActionLoading] = useState<"pay" | "decline" | "resubmit" | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [newBplProof, setNewBplProof] = useState("");
+
   useEffect(() => {
     const paramId = searchParams.get("tempId");
-    if (paramId) {
-      setTempId(paramId);
-    }
+    if (paramId) setTempId(paramId);
   }, [searchParams]);
 
-  const [formData, setFormData] = useState<any>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [resubmitSuccess, setResubmitSuccess] = useState(false);
-  const [resubmitError, setResubmitError] = useState<string | null>(null);
+  const role = result?.role || "";
+  const idLabel = ID_LABEL[role] || "Member ID";
+  const bplExempt = role === "PLAYER" && !!result?.isBPL && !!result?.bplProof;
+  const needsPayment = !!result && result.status === "APPROVED" && !result.permanentId && !bplExempt;
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
-
+  // Load the registration fee only when the applicant has something to pay.
   useEffect(() => {
-    if (result) {
-      const initialForm: any = {};
-      Object.keys(result).forEach((key) => {
-        const val = result[key];
-        // Exclude specific system/relation keys
-        if (
-          [
-            "id",
-            "password",
-            "createdAt",
-            "updatedAt",
-            "status",
-            "rejectionRemark",
-            "role",
-            "tempId",
-            "permanentId",
-            "districtId",
-            "talukId",
-            "zoneId",
-            "clubId",
-            "coachId",
-            "district",
-            "taluk",
-            "zone",
-            "club",
-            "coach",
-            "students",
-            "tournaments",
-            "members",
-            "payments",
-            "grievances",
-            "matches",
-            "logs",
-            "approvedBy",
-            "approvedAt",
-            "mustChangePassword",
-            "resetPasswordToken",
-            "resetPasswordExpires",
-            "isPaid",
-            "validUntil",
-            "wins",
-            "losses",
-            "draws"
-          ].includes(key)
-        ) {
-          return;
-        }
+    if (!needsPayment) return;
+    fetch(`${API_BASE}/settings/global`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((settings) => setFee(settings ? Number(settings[FEE_KEY[role] || "memberFee"]) || null : null))
+      .catch(() => setFee(null));
+  }, [needsPayment, role]);
 
-        // Include if it's not an object (primitive) OR if it is null (empty primitive)
-        if (val === null || typeof val !== "object") {
-          initialForm[key] = val || "";
-        }
-      });
-      setFormData(initialForm);
-      setResubmitSuccess(false);
-      setResubmitError(null);
-    } else {
-      setFormData({});
+  const fetchStatus = async (id: string, pwd: string) => {
+    const res = await fetch(`${API_BASE}/auth/track-status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tempId: id, password: pwd }),
+    });
+
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error(res.ok ? "Invalid response from server." : "Tracking is currently unavailable. Please try again shortly.");
     }
-  }, [result]);
 
-  const handleInputChange = (key: string, value: any) => {
-    setFormData((prev: any) => ({ ...prev, [key]: value }));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.message || "Record not found.");
+    if (data.token) localStorage.setItem("token", data.token);
+    setResult(data.user || data);
   };
 
-  const handleDirectLogin = () => {
-    if (!result) return;
+  const handleTrack = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tempId.trim() || !password.trim()) return;
+    setLoading(true);
+    setError("");
+    setNotice("");
+    setActionError("");
+    setResult(null);
 
-    localStorage.setItem("userRole", result.role);
+    try {
+      await fetchStatus(tempId.trim(), password.trim());
+    } catch (err: any) {
+      setError(
+        err.name === "TypeError"
+          ? "Network error. Please check your connection and try again."
+          : err.message || "Could not find registration. Please check your Temporary ID and Password."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshStatus = async () => {
+    try {
+      await fetchStatus(tempId.trim(), password.trim());
+    } catch (err: any) {
+      setActionError(err.message || "Could not refresh your status. Please track again.");
+    }
+  };
+
+  const postAction = async (path: string, body?: object) => {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+    return data;
+  };
+
+  const handleResubmitBpl = async () => {
+    if (!newBplProof) return setActionError("Please upload your new BPL proof first.");
+    setActionLoading("resubmit");
+    setActionError("");
+    try {
+      const data = await postAction("/application/bpl/resubmit", { bplProof: newBplProof });
+      setNotice(data.message);
+      setNewBplProof("");
+      await refreshStatus();
+    } catch (err: any) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleContinueWithoutBpl = async () => {
+    if (!confirm("Continue without BPL? You will need to pay the registration fee to get your Player ID.")) return;
+    setActionLoading("decline");
+    setActionError("");
+    try {
+      const data = await postAction("/application/bpl/decline");
+      setNotice(data.message);
+      await refreshStatus();
+    } catch (err: any) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!result) return;
+    setActionLoading("pay");
+    setActionError("");
+    try {
+      if (!(await loadRazorpayScript())) throw new Error("Payment gateway failed to load. Please check your connection.");
+      // The backend derives the applicant from the token and the fee from settings.
+      const order = await postAction("/application/create-order");
+
+      const checkout = new (window as any).Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "Tamil Nadu Judo Association",
+        description: "Registration Fee",
+        order_id: order.orderId,
+        prefill: { name: result.fullName, email: result.email, contact: result.mobileNumber },
+        theme: { color: "#FF7400" },
+        handler: async (response: any) => {
+          setActionLoading("pay");
+          try {
+            const verified = await postAction("/application/verify-payment", {
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            setNotice(
+              verified.status === "PENDING"
+                ? `Payment received and awaiting bank confirmation. Your ${idLabel} will be issued and emailed shortly.`
+                : `Payment successful! Your ${idLabel} has been issued.`
+            );
+            await refreshStatus();
+          } catch (err: any) {
+            setActionError(`Payment verification failed: ${err.message}. If money was deducted, your ID will be issued automatically once the bank confirms.`);
+          } finally {
+            setActionLoading(null);
+          }
+        },
+        modal: { ondismiss: () => setActionLoading(null) },
+      });
+      checkout.open();
+    } catch (err: any) {
+      setActionError(err.message || "Could not start the payment.");
+      setActionLoading(null);
+    }
+  };
+
+  const goToDashboard = () => {
+    if (!result) return;
+    localStorage.setItem("userRole", result.role || "");
     localStorage.setItem("userName", result.fullName || "");
     localStorage.setItem("userStatus", result.status || "APPROVED");
     localStorage.setItem("userEmail", result.email || "");
 
-    if (result.mustChangePassword) {
-      router.push("/dashboard/change-password");
-      return;
-    }
+    if (result.status === "REPLAY") return router.push("/dashboard/resubmit");
+    if (result.mustChangePassword) return router.push("/dashboard/change-password");
 
-    if (result.status === "PENDING") {
-      alert("Your application is pending approval.");
-      return;
-    }
-    
-    if (result.status === "REJECTED" || result.status === "REPLAY") {
-      router.push("/dashboard/resubmit");
-      return;
-    }
-
-    if (["SUPER_ADMIN", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"].includes(result.role)) {
+    if (["SUPER_ADMIN", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"].includes(result.role || "")) {
       router.push("/dashboard/admin");
     } else if (result.role === "PLAYER") {
       router.push("/dashboard/player");
@@ -211,87 +321,8 @@ function TrackPageContent() {
     }
   };
 
-  const handleResubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setResubmitError(null);
-
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/resubmit-application`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to resubmit application");
-
-      setResubmitSuccess(true);
-      // Update result state to PENDING so the UI updates to show pending status
-      setResult((prev: any) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          status: "PENDING",
-          rejectionRemark: null,
-        };
-      });
-    } catch (err: any) {
-      setResubmitError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleTrack = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tempId.trim() || !password.trim()) return;
-    setLoading(true);
-    setError("");
-    setResult(null);
-
-    try {
-      const res = await fetch(`${API_BASE}/auth/track-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tempId: tempId.trim(),
-          password: password.trim(),
-        }),
-      });
-
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        if (!res.ok) {
-          throw new Error("Tracking endpoint is currently unavailable.");
-        }
-        throw new Error("Invalid response from server.");
-      }
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || "Record not found.");
-      if (data.token) {
-        localStorage.setItem("token", data.token);
-      }
-      setResult(data.user || data);
-    } catch (err: any) {
-      if (err.name === 'TypeError') {
-        setError("Network error. Please check if the server is running.");
-      } else {
-        setError(err.message || "Could not find registration. Please check your Temporary ID and Password.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const cfg = result ? statusConfig[result.status as Status] ?? statusConfig.PENDING : null;
+  const cfg = result ? statusConfig[result.status] ?? statusConfig.PENDING : null;
+  const showRemark = !!result?.rejectionRemark && ["REPLAY", "REJECTED", "BPL_REJECTED"].includes(result.status);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex flex-col items-center justify-center px-4 py-12">
@@ -321,13 +352,10 @@ function TrackPageContent() {
       </div>
 
       {/* Search card */}
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl shadow-orange-100/60 border border-orange-100 p-6">
+      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl shadow-orange-100/60 border border-orange-100 p-5 sm:p-6">
         <form onSubmit={handleTrack} className="space-y-4">
           <div className="relative">
-            <Hash
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+            <Hash size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={tempId}
@@ -338,10 +366,7 @@ function TrackPageContent() {
             />
           </div>
           <div className="relative">
-            <Lock
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type={showPassword ? "text" : "password"}
               value={password}
@@ -353,6 +378,7 @@ function TrackPageContent() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
             >
               {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
@@ -364,11 +390,7 @@ function TrackPageContent() {
             style={{ backgroundColor: "#FF7400" }}
             className="w-full py-3 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 hover:opacity-90 transition-all shadow-md shadow-orange-200"
           >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Search size={16} />
-            )}
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
             {loading ? "Checking…" : "Track Application"}
           </button>
         </form>
@@ -397,30 +419,26 @@ function TrackPageContent() {
               className="mt-6 space-y-4"
             >
               {/* Status banner */}
-              <div
-                className={`flex flex-col gap-2.5 px-4 py-3.5 rounded-2xl border ${cfg.bg} ${cfg.border}`}
-              >
+              <div className={`flex flex-col gap-2.5 px-4 py-3.5 rounded-2xl border ${cfg.bg} ${cfg.border}`}>
                 <div className="flex items-center gap-3">
                   {cfg.icon}
                   <div>
-                    <p className={`text-sm font-black ${cfg.color}`}>
-                      {cfg.label}
-                    </p>
+                    <p className={`text-sm font-black ${cfg.color}`}>{cfg.label}</p>
                     <p className="text-xs text-slate-500 font-medium leading-snug mt-0.5">
-                      {result.status === "REPLAY"
-                        ? "The admin has requested changes to your application. Please review the remarks below and update your details."
+                      {result.status === "APPROVED"
+                        ? result.permanentId
+                          ? `Your ${idLabel} has been issued. You can now log in to your dashboard.`
+                          : needsPayment
+                            ? `Pay the registration fee below to receive your ${idLabel}.`
+                            : `Your ${idLabel} is being issued.`
                         : cfg.desc}
                     </p>
                   </div>
                 </div>
-                {result.status === "REPLAY" && result.rejectionRemark && (
-                  <div className="ml-9 p-3 bg-white border border-purple-100 rounded-xl shadow-sm">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Admin Remarks
-                    </p>
-                    <p className="text-xs font-bold text-purple-700 mt-0.5 whitespace-pre-line">
-                      {result.rejectionRemark}
-                    </p>
+                {showRemark && (
+                  <div className="ml-9 p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Admin Remarks</p>
+                    <p className={`text-xs font-bold mt-0.5 whitespace-pre-line ${cfg.color}`}>{result.rejectionRemark}</p>
                   </div>
                 )}
               </div>
@@ -434,39 +452,30 @@ function TrackPageContent() {
                   >
                     {(result.fullName || "?").charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <p className="text-sm font-extrabold text-slate-800">
-                      {result.fullName || "—"}
-                    </p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-slate-800 truncate">{result.fullName || "—"}</p>
                     <p className="text-xs text-slate-400 font-medium capitalize">
                       {result.role?.replace(/_/g, " ").toLowerCase() || "Member"}
+                      {role === "PLAYER" && result.isBPL ? " · BPL" : ""}
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
                     <Hash size={13} className="text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Temp ID
-                      </p>
-                      <p className="text-xs font-bold text-slate-700 font-mono">
-                        {result.tempId}
-                      </p>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Temp ID</p>
+                      <p className="text-xs font-bold text-slate-700 font-mono break-all">{result.tempId}</p>
                     </div>
                   </div>
 
                   {result.permanentId && (
-                    <div className="flex items-start gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
                       <Hash size={13} className="text-emerald-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          Permanent ID
-                        </p>
-                        <p className="text-xs font-bold text-emerald-600 font-mono">
-                          {result.permanentId}
-                        </p>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{idLabel}</p>
+                        <p className="text-xs font-bold text-emerald-600 font-mono break-all">{result.permanentId}</p>
                       </div>
                     </div>
                   )}
@@ -474,15 +483,9 @@ function TrackPageContent() {
                   <div className="flex items-start gap-2">
                     <Calendar size={13} className="text-slate-400 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Applied On
-                      </p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Applied On</p>
                       <p className="text-xs font-bold text-slate-700">
-                        {new Date(result.createdAt).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
+                        {new Date(result.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                       </p>
                     </div>
                   </div>
@@ -490,84 +493,146 @@ function TrackPageContent() {
                   <div className="flex items-start gap-2">
                     <User size={13} className="text-slate-400 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Location
-                      </p>
-                      <p className="text-xs font-bold text-slate-700">
-                        {result.district?.name || result.city || "—"}
-                      </p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location</p>
+                      <p className="text-xs font-bold text-slate-700">{result.district?.name || result.city || "—"}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Progress steps */}
-              <div className="flex items-center justify-between px-2 pt-1">
+              <div className="flex items-center justify-between px-1 sm:px-2 pt-1">
                 {steps.map((step, idx) => {
-                  const state = getStepState(result.status as Status, step.key);
-                  const isDone = state === "done" || state === "approved";
-                  const isActive = state === "active";
-                  const isApproved = state === "approved";
-                  const isRejected = state === "rejected";
-
+                  const state = getStepState(result, step.key);
+                  const next = idx < steps.length - 1 ? getStepState(result, steps[idx + 1].key) : null;
                   return (
                     <React.Fragment key={step.key}>
                       <div className="flex flex-col items-center gap-1.5">
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${isRejected
+                          className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                            state === "rejected"
                               ? "bg-red-500 border-red-500"
-                              : isApproved
+                              : state === "done"
                                 ? "bg-emerald-500 border-emerald-500"
-                                : isDone
-                                  ? "border-[#FF7400]"
-                                  : isActive
-                                    ? "border-amber-400 bg-amber-50"
-                                    : "border-slate-200 bg-white"
-                            }`}
-                          style={
-                            isDone && !isApproved && !isRejected
-                              ? { backgroundColor: "#FF7400" }
-                              : {}
-                          }
+                                : state === "active"
+                                  ? "border-amber-400 bg-amber-50"
+                                  : "border-slate-200 bg-white"
+                          }`}
                         >
-                          {isRejected ? (
+                          {state === "rejected" ? (
                             <XCircle size={16} color="#fff" />
-                          ) : isDone ? (
+                          ) : state === "done" ? (
                             <CheckCircle2 size={16} color="#fff" />
-                          ) : isActive ? (
+                          ) : state === "active" ? (
                             <Clock size={14} className="text-amber-500" />
                           ) : (
                             <div className="w-2 h-2 rounded-full bg-slate-200" />
                           )}
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500 text-center leading-tight max-w-[70px]">
+                        <span className="text-[10px] font-bold text-slate-500 text-center leading-tight max-w-[64px]">
                           {step.label}
                         </span>
                       </div>
-                      {idx < steps.length - 1 && (
-                        <div
-                          className={`flex-grow h-0.5 mx-2 mb-4 rounded-full ${getStepState(result.status as Status, steps[idx + 1].key) !== "pending"
-                              ? "bg-[#FF7400]"
-                              : "bg-slate-200"
-                            }`}
-                        />
+                      {next && (
+                        <div className={`grow h-0.5 mx-1 sm:mx-2 mb-4 rounded-full ${next !== "pending" ? "bg-[#FF7400]" : "bg-slate-200"}`} />
                       )}
                     </React.Fragment>
                   );
                 })}
               </div>
 
-              <div className="pt-6 border-t border-slate-100 mt-4">
-                <button
-                  onClick={handleDirectLogin}
-                  style={{ backgroundColor: "#FF7400" }}
-                  className="flex justify-center items-center w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 hover:opacity-90 transition-all"
-                >
-                  Login to Dashboard →
-                </button>
-              </div>
+              {/* Messages from actions */}
+              {notice && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">{notice}</div>
+              )}
+              {actionError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">{actionError}</div>
+              )}
 
-              
+              {/* BPL not accepted: resubmit proof or continue without BPL */}
+              {result.status === "BPL_REJECTED" && (
+                <div className="space-y-3 pt-2">
+                  <div className="p-4 border border-slate-200 rounded-2xl space-y-3">
+                    <p className="text-sm font-black text-slate-800 flex items-center gap-2">
+                      <Upload size={16} className="text-[#FF7400]" /> Option 1: Resubmit BPL proof
+                    </p>
+                    <FileUpload
+                      label="New BPL proof"
+                      value={newBplProof}
+                      onChange={setNewBplProof}
+                      helperText="Upload a clear photo or PDF of your BPL card (max 5MB)"
+                      required
+                    />
+                    <button
+                      onClick={handleResubmitBpl}
+                      disabled={!!actionLoading || !newBplProof}
+                      className="w-full py-3 bg-slate-800 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-slate-900 transition-all"
+                    >
+                      {actionLoading === "resubmit" && <Loader2 size={16} className="animate-spin" />}
+                      Resubmit for Review
+                    </button>
+                  </div>
+                  <div className="p-4 border border-slate-200 rounded-2xl space-y-3">
+                    <p className="text-sm font-black text-slate-800 flex items-center gap-2">
+                      <CreditCard size={16} className="text-[#FF7400]" /> Option 2: Continue without BPL
+                    </p>
+                    <p className="text-xs text-slate-500">You will pay the registration fee and receive your Player ID straight away.</p>
+                    <button
+                      onClick={handleContinueWithoutBpl}
+                      disabled={!!actionLoading}
+                      style={{ backgroundColor: "#FF7400" }}
+                      className="w-full py-3 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:opacity-90 transition-all"
+                    >
+                      {actionLoading === "decline" && <Loader2 size={16} className="animate-spin" />}
+                      Continue without BPL
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Approved, fee due */}
+              {needsPayment && (
+                <div className="p-4 border border-orange-200 bg-orange-50/50 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-600">Registration fee</span>
+                    <span className="text-2xl font-black text-[#FF7400]">{fee !== null ? `₹${fee.toLocaleString("en-IN")}` : "…"}</span>
+                  </div>
+                  <button
+                    onClick={handlePayment}
+                    disabled={!!actionLoading}
+                    style={{ backgroundColor: "#FF7400" }}
+                    className="w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 flex items-center justify-center gap-2 disabled:opacity-60 hover:opacity-90 transition-all"
+                  >
+                    {actionLoading === "pay" ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                    {actionLoading === "pay" ? "Processing…" : `Pay & Get ${idLabel}`}
+                  </button>
+                </div>
+              )}
+
+              {/* ID issued */}
+              {result.permanentId && (
+                <div className="p-4 border border-emerald-200 bg-emerald-50 rounded-2xl text-center space-y-1">
+                  <BadgeCheck size={28} className="text-emerald-500 mx-auto" />
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Your {idLabel}</p>
+                  <p className="text-2xl font-black text-emerald-600 font-mono">{result.permanentId}</p>
+                  <p className="text-xs text-slate-500">Also sent to your registered email.</p>
+                </div>
+              )}
+
+              {(result.permanentId || result.status === "REPLAY" || (result.status === "APPROVED" && !needsPayment)) && (
+                <div className="pt-4 border-t border-slate-100">
+                  <button
+                    onClick={goToDashboard}
+                    style={{ backgroundColor: "#FF7400" }}
+                    className="flex justify-center items-center gap-2 w-full py-3 text-white font-bold text-sm rounded-xl shadow-md shadow-orange-200 hover:opacity-90 transition-all"
+                  >
+                    {result.status === "REPLAY" ? "Update My Application" : "Go to Dashboard"} <ArrowRight size={16} />
+                  </button>
+                  {result.permanentId && result.mustChangePassword && (
+                    <p className="text-[11px] text-slate-400 text-center mt-2">You will be asked to set a new password first.</p>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -578,11 +643,13 @@ function TrackPageContent() {
 
 export default function TrackPage() {
   return (
-    <Suspense fallback={
-      <main className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex flex-col items-center justify-center px-4 py-12">
-        <Loader2 className="animate-spin text-[#FF7400]" size={40} />
-      </main>
-    }>
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex flex-col items-center justify-center px-4 py-12">
+          <Loader2 className="animate-spin text-[#FF7400]" size={40} />
+        </main>
+      }
+    >
       <TrackPageContent />
     </Suspense>
   );

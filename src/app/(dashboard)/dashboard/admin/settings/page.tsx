@@ -11,7 +11,8 @@ import {
   User,
   Users,
   Building2,
-  BadgeCheck
+  BadgeCheck,
+  MapPin
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -183,6 +184,138 @@ export default function GlobalSettingsPage() {
           </div>
         </div>
       </div>
+
+      <DistrictCodes />
+    </div>
+  );
+}
+
+interface District {
+  id: string;
+  name: string;
+  code: string | null;
+  playerIdSeq: number;
+}
+
+/** Next player ID a district will issue: CBE-A-001 … CBE-A-999, then CBE-B-001. */
+function nextPlayerId(code: string, issued: number) {
+  const seq = issued + 1;
+  const series = String.fromCharCode(65 + Math.floor((seq - 1) / 999));
+  return `${code || "???"}-${series}-${String(((seq - 1) % 999) + 1).padStart(3, "0")}`;
+}
+
+function DistrictCodes() {
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    fetch(`${API_BASE}/districts`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load districts");
+        setDistricts(data);
+        setDrafts(Object.fromEntries(data.map((d: District) => [d.id, d.code || ""])));
+      })
+      .catch((err) => setMessage({ text: err.message, type: "error" }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const saveCode = async (district: District) => {
+    setSavingId(district.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/districts/${district.id}/code`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ code: drafts[district.id] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save code");
+      setDistricts((prev) => prev.map((d) => (d.id === district.id ? data.data : d)));
+      setMessage({ text: data.message, type: "success" });
+    } catch (err: any) {
+      setMessage({ text: err.message, type: "error" });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const visible = districts.filter((d) => d.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  return (
+    <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-sm border border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-[#FF7400]/10 text-[#FF7400] rounded-lg">
+            <MapPin size={20} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">District Codes</h2>
+            <p className="text-slate-500 text-sm">Prefix for Player IDs, e.g. CBE-A-001. Only Super Admin and CEO can change codes.</p>
+          </div>
+        </div>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search district…"
+          className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#FF7400] w-full sm:w-56"
+        />
+      </div>
+
+      {message && (
+        <div className={`mb-4 p-3 rounded-xl text-sm font-medium border ${message.type === "success" ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-600 border-red-100"}`}>
+          {message.text}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-10 flex justify-center">
+          <Loader2 className="w-8 h-8 text-[#FF7400] animate-spin" />
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="py-10 text-center text-slate-400 font-medium">
+          {districts.length === 0 ? "No districts found." : "No district matches your search."}
+        </p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {visible.map((d) => {
+            const draft = drafts[d.id] ?? "";
+            const changed = draft !== (d.code || "");
+            return (
+              <div key={d.id} className="py-3 flex flex-wrap items-center gap-3">
+                <div className="flex-1 min-w-[140px]">
+                  <p className="font-bold text-slate-800">{d.name}</p>
+                  <p className="text-xs text-slate-400">
+                    {d.playerIdSeq} issued · next <span className="font-mono">{nextPlayerId(d.code || "", d.playerIdSeq)}</span>
+                  </p>
+                </div>
+                <input
+                  value={draft}
+                  onChange={(e) => setDrafts({ ...drafts, [d.id]: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5) })}
+                  aria-label={`${d.name} code`}
+                  className="w-24 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-800 uppercase focus:outline-none focus:border-[#FF7400]"
+                  placeholder="CODE"
+                />
+                <button
+                  onClick={() => {
+                    if (d.playerIdSeq > 0 && !confirm(`${d.name} has already issued ${d.playerIdSeq} Player IDs with code ${d.code}. New IDs will use ${draft}. Continue?`)) return;
+                    saveCode(d);
+                  }}
+                  disabled={!changed || draft.length < 2 || savingId === d.id}
+                  className="px-4 py-2 bg-[#FF7400] text-white rounded-lg text-sm font-bold disabled:opacity-40 flex items-center gap-1.5"
+                >
+                  {savingId === d.id ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Save
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
