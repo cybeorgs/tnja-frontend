@@ -56,19 +56,6 @@ export default function MyMatsPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 pb-12">
-      {/* Header */}
-      <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col md:flex-row items-center gap-6">
-        <div className="w-16 h-16 bg-orange-100 text-[#FF7400] rounded-2xl flex items-center justify-center shrink-0">
-          <Monitor size={32} />
-        </div>
-        <div className="flex-1 text-center md:text-left">
-          <h1 className="text-3xl font-black text-slate-800">My Referee Assignments</h1>
-          <p className="text-slate-500 font-semibold mt-1">
-            Tournaments where you have been assigned as a Mat Referee
-          </p>
-        </div>
-      </div>
-
       {/* Search / Filter */}
       {assignments.length > 0 && (
         <div className="relative max-w-md">

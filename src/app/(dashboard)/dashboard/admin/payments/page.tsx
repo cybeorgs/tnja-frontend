@@ -209,11 +209,7 @@ export default function PaymentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-[#FF7400]">Payments</h1>
-          <p className="text-slate-500 text-sm mt-1">All money received through Razorpay: registration fees, tournament and event entries.</p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
         <div className="flex gap-2">
           <button
             onClick={() => setReloadTick((t) => t + 1)}

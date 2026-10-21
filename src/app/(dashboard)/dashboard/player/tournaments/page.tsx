@@ -396,11 +396,6 @@ export default function PlayerTournamentsPage() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">Matches & Tournaments</h1>
-        <p className="text-slate-500 mt-1">View and register for tournaments at every level</p>
-      </div>
 
       {/* Membership gate */}
       {!isMemberPaid && (

@@ -1,59 +1,110 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { ShieldCheck, MapPin, Calendar, Loader2, ArrowUpRight } from "lucide-react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import {
+  ShieldCheck,
+  MapPin,
+  Loader2,
+  ArrowUpRight,
+  Users,
+  UserCheck,
+  Award,
+  Building2,
+  MessageSquare,
+  CalendarDays,
+  Trophy,
+} from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
+
+const STATE_ROLES = ["SUPER_ADMIN", "CEO", "STATE_PRESIDENT", "STATE_SECRETARY"];
+
+interface Stats {
+  counts: Record<"STUDENT" | "COACH" | "MEMBER" | "CLUB", number>;
+  pending: Record<"STUDENT" | "COACH" | "MEMBER" | "CLUB" | "total", number>;
+  recentApprovals: { id: string; name: string; type: "Player" | "Coach" | "Member" | "Club"; isBPL?: boolean; createdAt: string }[];
+}
+
+interface Grievance {
+  id: string;
+  userName: string;
+  role?: string;
+  subject?: string;
+  status: string;
+  createdAt: string;
+}
+
+interface DashboardEvent {
+  id: string;
+  title: string;
+  date: string;
+  location?: string;
+  level?: string;
+}
 
 function roleLabel(role: string): string {
   return role.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function fmtDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-}
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+const APPROVAL_TYPE: Record<string, string> = { Player: "STUDENT", Coach: "COACH", Member: "MEMBER", Club: "CLUB" };
+
+const GRIEVANCE_STATUS: Record<string, { label: string; dot: string; text: string }> = {
+  CLOSED: { label: "Closed", dot: "bg-emerald-500", text: "text-emerald-700" },
+  REPLAY: { label: "Replied", dot: "bg-sky-500", text: "text-sky-700" },
+  PENDING: { label: "Open", dot: "bg-amber-500", text: "text-amber-700" },
+};
 
 export default function AdminDashboard() {
-  const [statsData,  setStatsData]  = useState<any>(null);
-  const [userData,   setUserData]   = useState<any>(null);
-  const [grievances, setGrievances] = useState<any[]>([]);
-  const [events,     setEvents]     = useState<any[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [role, setRole] = useState("");
+  const [jurisdiction, setJurisdiction] = useState("");
+  const [grievances, setGrievances] = useState<Grievance[]>([]);
+  const [events, setEvents] = useState<DashboardEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem("token");
-        const H = { Authorization: `Bearer ${token}` };
-
+        const H = { Authorization: `Bearer ${localStorage.getItem("token")}` };
         const [statsRes, profileRes, grievRes, evRes] = await Promise.all([
-          fetch(`${API_BASE}/admin/stats`,  { headers: H }),
+          fetch(`${API_BASE}/admin/stats`, { headers: H }),
           fetch(`${API_BASE}/auth/profile`, { headers: H }),
-          fetch(`${API_BASE}/grievances`,   { headers: H }).catch(() => null),
-          fetch(`${API_BASE}/events`,       { headers: H }).catch(() => null),
+          fetch(`${API_BASE}/grievances`, { headers: H }).catch(() => null),
+          fetch(`${API_BASE}/events/admin`, { headers: H }).catch(() => null),
         ]);
+        if (!statsRes.ok || !profileRes.ok) throw new Error("Could not load the dashboard. Please try again.");
 
-        if (!statsRes.ok || !profileRes.ok) throw new Error("Server error");
-
-        const stats   = await statsRes.json();
         const profile = await profileRes.json();
-        setStatsData(stats);
-        setUserData(profile.user);
+        // The profile sends the role at the top level (the Super Admin has no user.role).
+        const userRole: string = profile.role || profile.user?.role || localStorage.getItem("userRole") || "";
+        setRole(userRole);
+        setJurisdiction(
+          STATE_ROLES.includes(userRole)
+            ? "Tamil Nadu"
+            : profile.user?.assignedDistrict?.name || profile.user?.district?.name || "District not assigned"
+        );
+        setStats(await statsRes.json());
 
         if (grievRes?.ok) {
           const gd = await grievRes.json();
-          setGrievances((Array.isArray(gd) ? gd : gd.grievances || []).slice(0, 6));
+          setGrievances((Array.isArray(gd) ? gd : gd.grievances || []).slice(0, 5));
         }
         if (evRes?.ok) {
           const ed = await evRes.json();
-          setEvents((Array.isArray(ed) ? ed : ed.events || []).slice(0, 4));
+          // Soonest upcoming events first; past and rejected events are not shown here.
+          const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+          const upcoming = (Array.isArray(ed) ? ed : ed.data || ed.events || [])
+            .filter((ev: DashboardEvent & { status?: string }) => ev.date && new Date(ev.date).getTime() >= startOfToday && ev.status !== "REJECTED")
+            .sort((a: DashboardEvent, b: DashboardEvent) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          setEvents(upcoming.slice(0, 4));
         }
-      } catch (e: any) {
-        setError(e.message || "Failed to connect");
+      } catch (e) {
+        setError((e as Error).message || "Failed to connect");
       } finally {
         setLoading(false);
       }
@@ -61,278 +112,214 @@ export default function AdminDashboard() {
   }, []);
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full gap-3 text-slate-400">
-      <Loader2 size={36} className="animate-spin text-[#FF7400]" />
-      <span className="font-semibold text-sm">Loading dashboard...</span>
+    <div className="flex items-center justify-center h-[60vh] gap-3 text-slate-400">
+      <Loader2 size={28} className="animate-spin text-[#FF7400]" />
+      <span className="font-semibold text-sm">Loading dashboard…</span>
     </div>
   );
 
-  if (error) return (
-    <div className="flex flex-col items-center justify-center h-full gap-5">
-      <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center">
-        <ShieldCheck size={28} className="text-red-500" />
-      </div>
+  if (error || !stats) return (
+    <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+      <ShieldCheck size={32} className="text-red-400" />
       <p className="text-slate-500 text-sm font-semibold">{error}</p>
-      <button onClick={() => window.location.reload()}
-        className="px-6 py-2.5 bg-[#FF7400] text-white font-bold rounded-xl text-sm">
+      <button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-[#FF7400] text-white font-bold rounded-lg text-sm">
         Retry
       </button>
     </div>
   );
 
-  const role    = userData?.role || "";
-  const districtName = userData?.assignedDistrict?.name || userData?.district?.name || userData?.state?.name || "Tamil Nadu";
-  const isSuper = role === "SUPER_ADMIN" || role === "CEO";
-  const canSeeGrievances =
-    role === "STATE_PRESIDENT" || role === "STATE_SECRETARY" ||
-    role === "SUPER_ADMIN"     || role === "CEO";
-
-  const statCards = [
-    { label: "MEMBERS", value: statsData?.counts?.MEMBER  ?? 0, dot: "bg-[#FF7400]", border: "border-[#FF7400]" },
-    { label: "PLAYERS", value: statsData?.counts?.STUDENT ?? 0, dot: "bg-yellow-400",  border: "border-yellow-400" },
-    { label: "COACHES", value: statsData?.counts?.COACH   ?? 0, dot: "bg-slate-800",   border: "border-slate-800" },
-  ];
-
-  // Placeholder events when API returns nothing
-  const displayEvents = events.length > 0 ? events : [
-    { id: "e1", title: "National Tournament", date: "2026-06-09", location: "Chennai",    imageUrl: "" },
-    { id: "e2", title: "State Championship",  date: "2026-07-15", location: "Coimbatore", imageUrl: "" },
-    { id: "e3", title: "District Open",       date: "2026-08-01", location: "Madurai",    imageUrl: "" },
+  const canSeeGrievances = STATE_ROLES.includes(role);
+  const tiles = [
+    { label: "Players", key: "STUDENT" as const, icon: Users },
+    { label: "Coaches & Referees", key: "COACH" as const, icon: UserCheck },
+    { label: "Members", key: "MEMBER" as const, icon: Award },
+    { label: "Clubs", key: "CLUB" as const, icon: Building2 },
   ];
 
   return (
     <div className="space-y-6">
-
-      {/* Breadcrumb */}
-      <p className="text-xs text-slate-400 font-semibold">
-        <span className="text-slate-700 font-bold">{roleLabel(role)} Dashboard</span>
-        {" / "}Overview
-      </p>
-
-      {/* Page title */}
-      <h1 className="text-3xl font-black text-[#FF7400]">Dashboard</h1>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-[1000px]">
-        {statCards.map((s, i) => (
-          <motion.div key={s.label}
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-            className={`bg-white rounded-2xl border-2 ${s.border} p-6 relative overflow-hidden shadow-sm`}>
-            <span className={`absolute top-4 right-4 w-3 h-3 rounded-full ${s.dot}`} />
-            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">{s.label}</p>
-            <p className="text-5xl font-black text-slate-900">{s.value}</p>
-          </motion.div>
-        ))}
+      {/* Context: whose data this is, and the most-used shortcuts */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-sm text-slate-500">
+          <MapPin size={15} className="text-[#FF7400]" />
+          <span className="font-bold text-slate-800">{jurisdiction}</span>
+          <span className="text-slate-300">·</span>
+          {roleLabel(role)}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/admin/approvals?type=STUDENT"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF7400] hover:bg-[#E56900] text-white text-sm font-bold rounded-lg transition-colors">
+            <ShieldCheck size={16} /> Review approvals
+            {stats.pending.total > 0 && (
+              <span className="min-w-5 px-1.5 py-0.5 rounded-full bg-white text-[#FF7400] text-[11px] font-black text-center">{stats.pending.total}</span>
+            )}
+          </Link>
+          <Link href="/dashboard/admin/tournaments"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-700 text-sm font-bold rounded-lg transition-colors">
+            <Trophy size={16} /> Tournaments
+          </Link>
+          {/* Super Admin / CEO use User Management; other officials have the read-only members list. */}
+          <Link href={role === "SUPER_ADMIN" || role === "CEO" ? "/dashboard/admin/users" : "/dashboard/admin/members"}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-700 text-sm font-bold rounded-lg transition-colors">
+            <Users size={16} /> {role === "SUPER_ADMIN" || role === "CEO" ? "Users" : "Members"}
+          </Link>
+        </div>
       </div>
 
-      {/* Main two-column layout */}
-      <div className="flex flex-col xl:flex-row gap-8 justify-between items-start">
-
-        {/* ── LEFT: Grievances / Approvals ─────────────────────────────── */}
-        <div className="flex-1 w-full max-w-[1000px] bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-black text-[#FF7400] uppercase tracking-widest">
-              {canSeeGrievances ? "Grievances" : "Pending Approvals"}
-            </h2>
-            <Link
-              href={canSeeGrievances ? "/dashboard/admin/grievances" : "/dashboard/admin/approvals"}
-              className="text-xs font-bold text-slate-400 hover:text-[#FF7400] flex items-center gap-1 transition-colors">
-              View All <ArrowUpRight size={13} />
+      {/* Headline counts — each opens its approvals list */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {tiles.map(({ label, key, icon: Icon }) => {
+          const pending = stats.pending[key] ?? 0;
+          return (
+            <Link key={key} href={`/dashboard/admin/approvals?type=${key}`}
+              className="group bg-white border border-slate-200 rounded-xl p-5 hover:border-[#FF7400] hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">{label}</span>
+                <span className="w-8 h-8 rounded-lg bg-orange-50 text-[#FF7400] flex items-center justify-center">
+                  <Icon size={16} />
+                </span>
+              </div>
+              <p className="text-3xl font-black text-slate-900 mt-3 tracking-tight">{(stats.counts[key] ?? 0).toLocaleString("en-IN")}</p>
+              <p className={`text-xs font-semibold mt-1 ${pending > 0 ? "text-[#FF7400]" : "text-slate-400"}`}>
+                {pending > 0 ? `${pending} awaiting approval` : "Nothing pending"}
+              </p>
             </Link>
-          </div>
+          );
+        })}
+      </div>
 
-          {canSeeGrievances ? (
-            /* ── Grievance cards (State/Super only) ── */
-            <div className="space-y-2">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+        <div className="xl:col-span-2 space-y-6">
+          {/* Pending approvals */}
+          <Panel title="Awaiting approval" count={stats.pending.total} href="/dashboard/admin/approvals" icon={<ShieldCheck size={16} />}>
+            {stats.recentApprovals.length === 0 ? (
+              <Empty icon={<ShieldCheck size={26} />} text="No applications waiting — you're all caught up." />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {stats.recentApprovals.map((item) => (
+                  <li key={`${item.type}-${item.id}`} className="flex items-center gap-3 py-3">
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-black shrink-0">
+                      {(item.name || "?").charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 truncate">{item.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {item.type}{item.isBPL ? " · BPL" : ""} · applied {shortDate(item.createdAt)}
+                      </p>
+                    </div>
+                    <Link href={`/dashboard/admin/approvals?type=${APPROVAL_TYPE[item.type]}&id=${item.id}`}
+                      className="shrink-0 px-3 py-1.5 text-xs font-bold text-[#FF7400] border border-orange-200 hover:bg-orange-50 rounded-lg transition-colors">
+                      Review
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/* Grievances (state-level roles) */}
+          {canSeeGrievances && (
+            <Panel title="Recent grievances" href="/dashboard/admin/grievances" icon={<MessageSquare size={16} />}>
               {grievances.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm py-16 text-center">
-                  <p className="text-slate-400 font-bold text-sm">No grievances yet</p>
-                </div>
-              ) : grievances.map((g: any, i: number) => (
-                <motion.div key={g.id || i}
-                  initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.06 }}
-                  className="bg-white rounded-xl shadow-sm border border-slate-100 px-4 py-3 hover:shadow-md transition-shadow">
-
-                  {/* Row 1: Avatar + Name + Badge + Status */}
-                  <div className="flex items-center gap-3">
-                    {/* Avatar */}
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-white font-black text-lg shrink-0 overflow-hidden shadow-sm">
-                      {g.userPhoto
-                        ? <img src={g.userPhoto} alt="" className="w-full h-full object-cover" />
-                        : (g.userName || "U").charAt(0).toUpperCase()}
-                    </div>
-
-                    {/* Name + Badge */}
-                    <div className="flex-grow min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-black text-slate-900">{g.userName || "Unknown"}</p>
-                        {g.role && (
-                          <span className="text-[9px] font-black px-3 py-1 rounded-full bg-slate-900 uppercase tracking-widest text-[#FFDA00]">
-                            {g.role}
-                          </span>
-                        )}
-                      </div>
-                      {g.userId && (
-                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{g.userId}</p>
-                      )}
-                    </div>
-
-                    {/* Status — top right */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className={`w-2.5 h-2.5 rounded-full ${
-                        g.status === "CLOSED" ? "bg-emerald-500" :
-                        g.status === "REPLAY" ? "bg-blue-400" : "bg-red-500"
-                      }`} />
-                      <span className={`text-xs font-bold ${
-                        g.status === "CLOSED" ? "text-emerald-600" :
-                        g.status === "REPLAY" ? "text-blue-500" : "text-[#FF7400]"
-                      }`}>
-                        {g.status === "CLOSED" ? "Closed" : g.status === "REPLAY" ? "Replied" : "Pending"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Italic message */}
-                  <p className="text-xs text-slate-500 italic leading-relaxed mt-3 line-clamp-2">
-                    {g.subject || "No subject"}
-                  </p>
-
-                  {/* Row 3: Date — bottom right */}
-                  <div className="flex justify-end mt-2">
-                    <p className="text-[10px] font-bold text-[#FF7400] flex items-center gap-1">
-                      <Calendar size={9} />
-                      {fmtDate(g.createdAt || new Date().toISOString())}
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            /* ── Pending Approvals (District) ── */
-            <div className="space-y-3">
-              {(statsData?.recentApprovals || []).length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm py-16 text-center">
-                  <ShieldCheck size={36} className="mx-auto text-slate-200 mb-3" />
-                  <p className="text-slate-400 font-bold text-sm">No pending approvals</p>
-                </div>
-              ) : (statsData?.recentApprovals || []).map((item: any, i: number) => (
-                <motion.div key={i}
-                  initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.06 }}
-                  className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow flex items-center gap-4">
-                  <div className={`w-11 h-11 rounded-full flex items-center justify-center font-black text-base shrink-0 ${
-                    item.type === "Club"   ? "bg-purple-100 text-purple-600" :
-                    item.type === "Player" ? "bg-orange-100 text-[#FF7400]"  : "bg-amber-100 text-amber-600"
-                  }`}>
-                    {(item.name || "?").charAt(0)}
-                  </div>
-                  <div className="flex-grow min-w-0">
-                    <p className="text-sm font-black text-slate-800 truncate">{item.name}</p>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{item.type} · {fmtDate(item.createdAt)}</p>
-                  </div>
-                  <Link href={`/dashboard/admin/approvals?type=${item.type === "Player" ? "STUDENT" : item.type.toUpperCase()}&id=${item.id}`}
-                    className="shrink-0 px-4 py-2 bg-[#FF7400] text-white text-[10px] font-black rounded-xl shadow-lg shadow-orange-500/20 hover:scale-105 transition-all">
-                    Review
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
+                <Empty icon={<MessageSquare size={26} />} text="No grievances have been raised." />
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {grievances.map((g) => {
+                    const st = GRIEVANCE_STATUS[g.status] ?? GRIEVANCE_STATUS.PENDING;
+                    return (
+                      <li key={g.id} className="py-3 flex items-start gap-3">
+                        <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-black shrink-0">
+                          {(g.userName || "U").charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-bold text-slate-800">{g.userName || "Unknown"}</p>
+                            {g.role && <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{roleLabel(g.role)}</span>}
+                          </div>
+                          <p className="text-xs text-slate-500 truncate mt-0.5">{g.subject || "No subject"}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`inline-flex items-center gap-1.5 text-xs font-bold ${st.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{st.label}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{shortDate(g.createdAt)}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Panel>
           )}
         </div>
 
-        {/* ── RIGHT: Events ────────────────────────────────────────────── */}
-        <div className="w-full xl:w-[400px] shrink-0 bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-8 space-y-6 xl:mr-12">
-          
-          {/* Jurisdiction card */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-5 text-white space-y-3">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Your Jurisdiction</p>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-                <MapPin size={18} className="text-orange-400" />
-              </div>
-              <div>
-                <p className="font-black text-base">{districtName}</p>
-                <p className="text-slate-400 text-xs font-semibold">{roleLabel(role)}</p>
-              </div>
-            </div>
-            {!isSuper && (
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <Link href="/dashboard/admin/members"
-                  className="text-center py-2 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black transition-colors">
-                  Members
-                </Link>
-                <Link href="/dashboard/admin/approvals"
-                  className="text-center py-2 bg-[#FF7400]/80 hover:bg-[#FF7400] rounded-xl text-[10px] font-black transition-colors">
-                  Approvals
-                </Link>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-black text-[#FF7400] uppercase tracking-widest">Events</h2>
-            <Link href="/dashboard/admin/events"
-              className="text-xs font-bold text-slate-400 hover:text-[#FF7400] flex items-center gap-1 transition-colors">
-              View All <ArrowUpRight size={13} />
-            </Link>
-          </div>
-
-          <div className="space-y-4">
-            {displayEvents.map((ev: any, i: number) => (
-              <motion.div key={ev.id || i}
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + i * 0.1 }}
-                className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition-shadow">
-
-                {/* Event image with yellow bottom accent */}
-                <div className="relative h-40 overflow-hidden">
-                  {ev.imageUrl ? (
-                    <img src={ev.imageUrl} alt={ev.title || ev.name}
-                      className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-indigo-900 via-purple-700 to-slate-900 flex items-center justify-center">
-                      {/* Judo silhouette placeholder */}
-                      <svg viewBox="0 0 120 100" className="w-20 h-20 opacity-20 fill-white">
-                        <ellipse cx="60" cy="30" rx="12" ry="14" />
-                        <rect x="48" y="42" width="24" height="30" rx="4" />
-                        <rect x="30" y="48" width="20" height="6" rx="3" />
-                        <rect x="70" y="48" width="20" height="6" rx="3" />
-                        <rect x="50" y="70" width="8" height="22" rx="3" />
-                        <rect x="62" y="70" width="8" height="22" rx="3" />
-                      </svg>
+        {/* Upcoming events */}
+        <Panel title="Upcoming events" href="/dashboard/admin/events" icon={<CalendarDays size={16} />}>
+          {events.length === 0 ? (
+            <Empty icon={<CalendarDays size={26} />} text="No upcoming events.">
+              <Link href="/dashboard/admin/events" className="text-xs font-bold text-[#FF7400] hover:underline">Create an event</Link>
+            </Empty>
+          ) : (
+            <ul className="space-y-2">
+              {events.map((ev) => {
+                const d = new Date(ev.date);
+                return (
+                  <li key={ev.id} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-slate-50">
+                    <div className="w-12 shrink-0 text-center border border-orange-200 rounded-lg overflow-hidden">
+                      <p className="bg-[#FF7400] text-white text-[10px] font-black uppercase py-0.5">
+                        {d.toLocaleDateString("en-IN", { month: "short" })}
+                      </p>
+                      <p className="text-lg font-black text-slate-800 py-0.5">{d.getDate()}</p>
                     </div>
-                  )}
-                  {/* Yellow bottom accent bar */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-yellow-400" />
-                </div>
-
-                {/* Event details */}
-                <div className="p-4 space-y-2">
-                  <h3 className="text-base font-black text-slate-900 leading-tight">
-                    {ev.title || ev.name || "Event"}
-                  </h3>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
-                      <Calendar size={12} className="text-[#FF7400] shrink-0" />
-                      {ev.date ? fmtDate(ev.date) : "TBD"}
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{ev.title}</p>
+                      <p className="text-xs text-slate-400 truncate">
+                        {[ev.location, ev.level && roleLabel(ev.level)].filter(Boolean).join(" · ") || shortDate(ev.date)}
+                      </p>
                     </div>
-                    {(ev.location || ev.venue) && (
-                      <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold">
-                        <MapPin size={12} className="text-[#FF7400] shrink-0" />
-                        {ev.location || ev.venue}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-
-        </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
       </div>
+    </div>
+  );
+}
+
+interface PanelProps {
+  title: string;
+  href: string;
+  icon: React.ReactNode;
+  count?: number;
+  children: React.ReactNode;
+}
+
+function Panel({ title, href, icon, count, children }: PanelProps) {
+  return (
+    <section className="bg-white border border-slate-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="flex items-center gap-2 text-sm font-black text-slate-800">
+          <span className="text-[#FF7400]">{icon}</span>
+          {title}
+          {!!count && <span className="px-2 py-0.5 rounded-full bg-orange-50 text-[#FF7400] text-[11px] font-black">{count}</span>}
+        </h2>
+        <Link href={href} className="text-xs font-bold text-slate-400 hover:text-[#FF7400] inline-flex items-center gap-1 transition-colors">
+          View all <ArrowUpRight size={13} />
+        </Link>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Empty({ icon, text, children }: { icon: React.ReactNode; text: string; children?: React.ReactNode }) {
+  return (
+    <div className="py-10 text-center text-slate-300 flex flex-col items-center gap-2">
+      {icon}
+      <p className="text-sm font-semibold text-slate-400">{text}</p>
+      {children}
     </div>
   );
 }

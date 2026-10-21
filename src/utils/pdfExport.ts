@@ -1,3 +1,5 @@
+import { TNJA_LOGO } from "@/constants/brand";
+
 export function roundName(ri: number, total: number): string {
   const fromEnd = total - ri;
   if (fromEnd === 1) return "🏆 Final";
@@ -183,7 +185,7 @@ export function exportMatchToPDF(
     </head>
     <body>
       <div class="header">
-        <img src="/navbar/Logo.png" alt="TNJA Logo" />
+        <img src="${TNJA_LOGO}" alt="Tamil Nadu Judo Association logo" />
         <h1>Tamil Nadu Judo Association</h1>
         <h2>Official Match Report</h2>
       </div>

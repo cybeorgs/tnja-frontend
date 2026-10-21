@@ -56,7 +56,7 @@ export default function GrievancePage() {
 
   const fetchGrievances = async (userId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/grievances/user/${userId}`);
+      const res = await fetch(`${API_BASE}/grievances/user/${userId}`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
       const data = await res.json();
       if (res.ok) setGrievances(data);
     } catch (err) {
@@ -133,12 +133,6 @@ export default function GrievancePage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Grievance Mail Module</h1>
-          <p className="text-slate-500">Submit your complaints or suggestions to the TNJA administration.</p>
-        </div>
-      </div>
 
       <div className="flex bg-white p-1 rounded-2xl border border-slate-200 w-fit">
         <button

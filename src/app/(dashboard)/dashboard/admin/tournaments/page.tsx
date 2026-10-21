@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -13,8 +13,6 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
-  Filter,
-  IndianRupee,
   Users,
   Plus,
   Calendar,
@@ -205,7 +203,190 @@ function inApprovalQueue(t: Tournament, role: string): boolean {
   }
 }
 
-const ApprovalChain = () => null;
+// ─── List UI pieces ───────────────────────────────────────────────────────────
+
+const MINE_STATUS_TABS = [
+  { id: "ALL", label: "All" },
+  { id: "APPROVED", label: "Approved" },
+  { id: "PENDING", label: "Pending" },
+  { id: "REJECTED", label: "Rejected" },
+];
+
+const MINE_STATUS_STYLE: Record<string, { label: string; text: string; strip: string; icon: React.ReactNode }> = {
+  APPROVED: { label: "Approved", text: "text-emerald-700", strip: "bg-emerald-500", icon: <CheckCircle2 size={14} /> },
+  CLOSED: { label: "Concluded", text: "text-indigo-700", strip: "bg-indigo-500", icon: <CheckCircle2 size={14} /> },
+  REJECTED: { label: "Rejected", text: "text-red-600", strip: "bg-red-500", icon: <XCircle size={14} /> },
+  PENDING: { label: "Awaiting approval", text: "text-amber-700", strip: "bg-amber-400", icon: <Hourglass size={14} /> },
+  EXPIRED: { label: "Ended", text: "text-slate-500", strip: "bg-slate-300", icon: <Clock size={14} /> },
+};
+
+interface TournamentMessage { id: string; senderRole: string; senderName: string; message: string; createdAt: string }
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+
+function DateBadge({ date }: { date: string }) {
+  const d = new Date(date);
+  return (
+    <div className="w-14 shrink-0 text-center border border-slate-200 rounded-lg overflow-hidden h-fit">
+      <p className="text-[10px] font-black uppercase py-0.5 text-white bg-[#FF7400]">{d.toLocaleDateString("en-IN", { month: "short" })}</p>
+      <p className="text-xl font-black text-slate-800 leading-tight pt-1">{d.getDate()}</p>
+      <p className="text-[10px] font-bold text-slate-400 pb-1">{d.getFullYear()}</p>
+    </div>
+  );
+}
+
+function Tag({ children, tone = "bg-slate-100 text-slate-600" }: { children: React.ReactNode; tone?: string }) {
+  return <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${tone}`}>{children}</span>;
+}
+
+/** Location, organiser and the tags shared by every tournament card. */
+function TournamentMeta({ t }: { t: Tournament }) {
+  return (
+    <>
+      <div className="mt-1.5 space-y-1 text-xs text-slate-500">
+        <p className="flex items-center gap-1.5 truncate">
+          <MapPin size={13} className="text-slate-400 shrink-0" />
+          <span className="truncate">{t.location || "Venue to be announced"}</span>
+        </p>
+        {t.club && (
+          <p className="flex items-center gap-1.5 truncate">
+            <Users size={13} className="text-slate-400 shrink-0" />
+            <span className="truncate">{t.club.name}{t.club.district ? ` · ${t.club.district.name}` : ""}</span>
+          </p>
+        )}
+        {t.dateTo && t.dateTo !== t.date && (
+          <p className="flex items-center gap-1.5">
+            <Calendar size={13} className="text-slate-400 shrink-0" />
+            {shortDate(t.date)} – {shortDate(t.dateTo)}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-3">
+        <Tag>{t.level.charAt(0) + t.level.slice(1).toLowerCase()}</Tag>
+        {t.category && <Tag>{t.category}</Tag>}
+        {t.gender && <Tag>{t.gender === "BOTH" ? "Men & Women" : t.gender.charAt(0) + t.gender.slice(1).toLowerCase()}</Tag>}
+        <Tag tone={t.entryFee === 0 ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-[#C45A00]"}>
+          {t.entryFee === 0 ? "Free" : `₹${Number(t.entryFee).toLocaleString("en-IN")}`}
+        </Tag>
+      </div>
+    </>
+  );
+}
+
+function StatusLine({ tone, icon, label }: { tone: string; icon: React.ReactNode; label: string }) {
+  return <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${tone}`}>{icon}{label}</span>;
+}
+
+function MessageThread({ messages }: { messages?: TournamentMessage[] }) {
+  if (!messages?.length) return <p className="text-xs text-slate-400">No messages yet.</p>;
+  return (
+    <div className="space-y-2.5 max-h-40 overflow-y-auto pr-1">
+      {messages.map((msg) => (
+        <div key={msg.id} className="flex items-start gap-2">
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px] font-black ${
+            msg.senderRole === "CLUB" ? "bg-sky-100 text-sky-700" : "bg-orange-100 text-[#FF7400]"
+          }`}>
+            {msg.senderName.charAt(0)}
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-700 leading-relaxed">
+              <span className="font-bold text-slate-900 mr-1">{msg.senderName}</span>{msg.message}
+            </p>
+            <p className="text-[10px] text-slate-400">
+              {shortDate(msg.createdAt)}, {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ManageLink({ t }: { t: Tournament }) {
+  if (t.hasPendingPlayers) {
+    return (
+      <span className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed" title="Approve or reject the pending players first">
+        <AlertCircle size={13} /> Resolve pending players
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/dashboard/admin/tournaments/${t.id}`}
+      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#FF7400] hover:bg-[#E56900] text-white text-xs font-bold rounded-lg transition-colors"
+    >
+      <Trophy size={13} /> Manage <ChevronRight size={13} />
+    </Link>
+  );
+}
+
+interface TournamentCardProps {
+  t: Tournament;
+  strip: string;
+  status: React.ReactNode;
+  actions: React.ReactNode;
+  faded?: boolean;
+  remark?: string;
+  messages?: TournamentMessage[];
+  chatOpen: boolean;
+  onToggleChat: () => void;
+}
+
+/** Compact card for the Approved and My Tournaments views; the message thread folds away. */
+function TournamentCard({ t, strip, status, actions, faded, remark, messages, chatOpen, onToggleChat }: TournamentCardProps) {
+  return (
+    <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      className={`bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col hover:shadow-md transition-shadow ${faded ? "opacity-80" : ""}`}>
+      <div className={`h-1 ${strip}`} />
+      <div className="p-4 flex gap-4 flex-1">
+        <DateBadge date={t.date} />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[15px] font-black text-slate-900 leading-snug line-clamp-2">{t.title}</h3>
+          <TournamentMeta t={t} />
+          {remark && (
+            <p className="mt-3 p-2.5 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700">
+              <span className="font-bold">Reason: </span>{remark}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+        {status}
+        <button onClick={onToggleChat} className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-[#FF7400]" aria-expanded={chatOpen}>
+          <MessageSquare size={13} /> Messages{messages?.length ? ` (${messages.length})` : ""}
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {chatOpen && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-t border-slate-100 bg-slate-50/60">
+            <div className="p-4"><MessageThread messages={messages} /></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="px-4 pb-4 pt-1 flex gap-2">{actions}</div>
+    </motion.div>
+  );
+}
+
+function EmptyState({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: React.ReactNode }) {
+  return (
+    <div className="text-center py-16 bg-white border border-dashed border-slate-200 rounded-lg text-slate-300">
+      <div className="flex justify-center mb-3">{icon}</div>
+      <p className="text-sm font-bold text-slate-500">{title}</p>
+      <p className="text-xs text-slate-400 mt-1">{text}</p>
+      {action}
+    </div>
+  );
+}
+
+/** Search matches the tournament title or its location. */
+function matchesSearch(t: { title: string; location?: string }, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || `${t.title} ${t.location ?? ""}`.toLowerCase().includes(q);
+}
 
 // ─── Empty form ───────────────────────────────────────────────────────────────
 const emptyForm = {
@@ -254,8 +435,7 @@ export default function AdminTournamentsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("ALL");
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
+  const [openChats, setOpenChats] = useState<Record<string, boolean>>({});
 
   // Create modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -359,28 +539,6 @@ export default function AdminTournamentsPage() {
     fetchTabData(activeTab, userRole);
   }, [activeTab, userRole, fetchTabData]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setIsFilterOpen(false);
-      }
-    };
-
-    const handleScroll = () => {
-      if (isFilterOpen) {
-        setIsFilterOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("scroll", handleScroll, true);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      window.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [isFilterOpen]);
-
   // ── Derived values ───────────────────────────────────────────────────────────
   const approvalLevel = APPROVAL_LEVEL_MAP[userRole] ?? null;
   const canCreate = CAN_CREATE_ROLES.includes(userRole);
@@ -389,15 +547,15 @@ export default function AdminTournamentsPage() {
   const approvalQueue = allTournaments.filter(t => inApprovalQueue(t, userRole));
 
   const displayedApproval = approvalQueue.filter(
-    t => !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase())
+    t => matchesSearch(t, searchQuery)
   );
 
   const displayedMine = myTournaments
     .filter(t => filter === "ALL" || t.status === filter)
-    .filter(t => !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter(t => matchesSearch(t, searchQuery));
 
   const displayedApproved = approvedByMeList.filter(
-    t => !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase())
+    t => matchesSearch(t, searchQuery)
   );
 
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
@@ -606,9 +764,8 @@ export default function AdminTournamentsPage() {
     return null;
   };
 
-  // ── Stat cards ───────────────────────────────────────────────────────────────
+  // ── Counts shown in the view toggle ─────────────────────────────────────────
   const totalMine = myTournaments.length;
-  const approvedMine = myTournaments.filter(t => t.status === "APPROVED").length;
   const pendingQueue = approvalQueue.length;
 
   const isExpired = (t: { date?: string; dateTo?: string }): boolean => {
@@ -639,536 +796,246 @@ export default function AdminTournamentsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Page header ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-black text-[#FF7400]">Tournaments</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {ROLE_LABEL[userRole] || "Admin"} — Tournament Management
-          </p>
-        </div>
-        {canCreate && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-2 px-6 py-4 bg-[#FF7400] text-white font-bold rounded-2xl shadow-lg shadow-[#FF7400]/20 hover:scale-105 active:scale-95 transition-all w-fit"
-          >
-            <Plus size={20} /> Create Tournament
-          </button>
-        )}
-      </div>
-
-      {/* ── Stats row ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Pending my approval */}
-        {hasApprovalRole && (
-          <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-amber-400 shadow-md flex flex-col justify-between h-[120px]">
-            <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">PENDING MY APPROVAL</p>
-            <div className="flex items-center justify-between">
-              <h3 className="text-4xl font-black text-slate-900">{pendingQueue}</h3>
-              <div className="w-[46px] h-[46px] bg-amber-50 rounded-full flex items-center justify-center shadow-inner">
-                <AlertCircle size={22} className="text-amber-500" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* My tournaments */}
-        {canCreate && (
-          <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-[#FF7400] shadow-md flex flex-col justify-between h-[120px]">
-            <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">MY TOURNAMENTS</p>
-            <div className="flex items-center justify-between">
-              <h3 className="text-4xl font-black text-slate-900">{totalMine}</h3>
-              <div className="w-[46px] h-[46px] bg-orange-50 rounded-full flex items-center justify-center shadow-inner">
-                <Trophy size={22} className="text-[#FF7400]" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Fully approved (creator view) or Total in system (approver view) */}
-        {canCreate ? (
-          <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-emerald-500 shadow-md flex flex-col justify-between h-[120px]">
-            <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">FULLY APPROVED</p>
-            <div className="flex items-center justify-between">
-              <h3 className="text-4xl font-black text-slate-900">{approvedMine}</h3>
-              <div className="w-[46px] h-[46px] bg-emerald-50 rounded-full flex items-center justify-center shadow-inner">
-                <CheckCircle2 size={22} className="text-emerald-500" />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-[#FF7400] shadow-md flex flex-col justify-between h-[120px]">
-              <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">PENDING IN QUEUE</p>
-              <div className="flex items-center justify-between">
-                <h3 className="text-4xl font-black text-slate-900">{allTournaments.length}</h3>
-                <div className="w-[46px] h-[46px] bg-orange-50 rounded-full flex items-center justify-center shadow-inner">
-                  <Trophy size={22} className="text-[#FF7400]" />
-                </div>
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-[2px] border border-b-[4px] border-emerald-500 shadow-md flex flex-col justify-between h-[120px]">
-              <p className="text-[11px] font-semibold text-slate-500 tracking-[0.15em]">APPROVED BY ME</p>
-              <div className="flex items-center justify-between">
-                <h3 className="text-4xl font-black text-slate-900">{approvedByMeList.length}</h3>
-                <div className="w-[46px] h-[46px] bg-emerald-50 rounded-full flex items-center justify-center shadow-inner">
-                  <CheckCircle2 size={22} className="text-emerald-500" />
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Tabs ── */}
-      <div className="flex gap-0 border-b border-slate-200">
-        {[
-          ...(hasApprovalRole ? [{
-            key: "approval" as const,
-            label: `Approval Queue${pendingQueue > 0 ? ` (${pendingQueue})` : ""}`,
-          }] : []),
-          ...(canCreate ? [{ key: "mine" as const, label: "My Tournaments" }] : []),
-          { key: "approved" as const, label: "Approved Tournaments" },
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-5 py-3 text-sm font-bold border-b-2 -mb-[2px] transition-all ${activeTab === tab.key
-              ? "border-[#FF7400] text-[#FF7400]"
-              : "border-transparent text-slate-400 hover:text-slate-600"
-              }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Search + filter bar ── */}
-      <div className="flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-grow w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search tournaments..."
-            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[2px] focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 font-medium text-sm text-slate-700 shadow-sm"
-          />
-        </div>
-
-        {/* Status filter only for "My Tournaments" tab */}
-        {activeTab === "mine" && (
-          <div className="relative" ref={filterRef}>
-            <div
-              className="p-[1.5px] rounded-[2px] shrink-0 inline-flex shadow-sm"
-              style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}
-            >
+      {/* ── Toolbar: view toggle (with counts), search, create ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+        <div className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-lg w-fit" role="tablist" aria-label="Tournament views">
+          {[
+            ...(hasApprovalRole ? [{ key: "approval" as const, label: "Approval Queue", count: pendingQueue }] : []),
+            ...(canCreate ? [{ key: "mine" as const, label: "My Tournaments", count: totalMine }] : []),
+            { key: "approved" as const, label: "Approved", count: approvedByMeList.length },
+          ].map(tab => {
+            const active = activeTab === tab.key;
+            return (
               <button
-                onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-800 font-bold rounded-[2px] hover:bg-slate-50 transition-all text-sm"
+                key={tab.key}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-bold transition-colors duration-300 ${
+                  active ? "text-white" : "text-slate-500 hover:text-slate-800"
+                }`}
               >
-                <Filter size={16} />
-                {filter === "ALL" ? "Filter" : filter}
+                {active && (
+                  <motion.span
+                    layoutId="tournament-view-pill"
+                    transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                    className="absolute inset-0 rounded-md bg-[#FF7400]"
+                  />
+                )}
+                <span className="relative">{tab.label}</span>
+                <span className={`relative tabular-nums ${active ? "text-white/80" : "text-slate-400"}`}>{tab.count}</span>
               </button>
-            </div>
-            {isFilterOpen && (
-              <div className="absolute top-full mt-2 right-0 bg-white border border-slate-200 shadow-xl rounded-[2px] overflow-hidden z-50 w-44">
-                {["ALL", "APPROVED", "PENDING", "REJECTED"].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => { setFilter(f); setIsFilterOpen(false); }}
-                    className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors ${filter === f ? "bg-orange-50 text-[#FF7400]" : "text-slate-600 hover:bg-slate-50"
-                      }`}
-                  >
-                    {f === "ALL" ? "All Tournaments" : f}
-                  </button>
-                ))}
-              </div>
-            )}
+            );
+          })}
+        </div>
+
+        <div className="flex gap-3 lg:ml-auto">
+          <div className="relative flex-1 lg:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search title or location"
+              className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#FF7400] text-sm text-slate-700"
+            />
           </div>
-        )}
+          {canCreate && (
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-[#FF7400] hover:bg-[#E56900] text-white font-bold rounded-lg text-sm transition-colors"
+            >
+              <Plus size={16} className="stroke-[2.5]" /> Create Tournament
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* ── Main content area ── */}
+      {/* Status toggle for My Tournaments */}
+      {activeTab === "mine" && (
+        <div className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-lg w-fit -mt-3" role="tablist" aria-label="Filter my tournaments by status">
+          {MINE_STATUS_TABS.map(tab => {
+            const active = filter === tab.id;
+            const count = tab.id === "ALL" ? myTournaments.length : myTournaments.filter(t => t.status === tab.id).length;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFilter(tab.id)}
+                className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors duration-300 ${
+                  active ? "text-[#FF7400]" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="tournament-status-pill"
+                    transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                    className="absolute inset-0 rounded-md bg-orange-50 border border-orange-200"
+                  />
+                )}
+                <span className="relative">{tab.label}</span>
+                <span className={`relative tabular-nums ${active ? "text-[#FF7400]/70" : "text-slate-400"}`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Lists ── */}
       {loading ? (
         <div className="flex justify-center py-20">
-          <Loader2 size={40} className="animate-spin text-[#FF7400]" />
+          <Loader2 size={32} className="animate-spin text-[#FF7400]" />
         </div>
       ) : (
         <>
           {/* ════════════ APPROVAL QUEUE ════════════ */}
           {activeTab === "approval" && (
-            <>
-              {displayedApproval.length === 0 ? (
-                <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
-                  <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-300" />
-                  <h3 className="text-lg font-bold text-slate-500">No Pending Approvals</h3>
-                  <p className="text-slate-400 text-sm mt-1">You're all caught up!</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {displayedApproval.map(t => (
-                    <div key={t.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-
-                      {/* Top — image + details */}
-                      <div className="flex">
-                        <div className="w-44 flex-shrink-0 relative" style={{ minHeight: 200 }}>
-                          <img src={t.bannerImage || "/homepage/whatjudo/judo1.png"} alt="Judo" className="absolute inset-0 w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-grow p-5">
-                          <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-                            {[
-                              { label: "Tournament Name", value: t.title },
-                              { label: "Level", value: t.level },
-                              { label: "Gender", value: t.gender || "—" },
-                              { label: "Category", value: t.category || "N/A" },
-                              { label: "Date", value: new Date(t.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) },
-                              { label: "Time", value: new Date(t.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
-                              { label: "Location", value: t.location },
-                              { label: "Tournament Fees", value: t.entryFee === 0 ? "Free" : String(t.entryFee) },
-                            ].map(({ label, value }) => (
-                              <div key={label}>
-                                <p className="text-[11px] font-bold text-[#FF7400] mb-0.5">{label}</p>
-                                <p className="text-sm font-semibold text-slate-700 leading-tight">{value}</p>
-                              </div>
-                            ))}
+            displayedApproval.length === 0 ? (
+              <EmptyState icon={<CheckCircle2 size={32} />} title={searchQuery ? "No tournaments match your search" : "No tournaments waiting for you"} text={searchQuery ? "Try a different title or location." : "You're all caught up."} />
+            ) : (
+              <div className="space-y-4">
+                {displayedApproval.map(t => {
+                  const approvedAbove = safeStatus(t.superAdminApproval) === "APPROVED" || safeStatus(t.ceoApproval) === "APPROVED";
+                  return (
+                    <motion.div key={t.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="h-1 bg-amber-400" />
+                      <div className="p-4 flex flex-col md:flex-row gap-4">
+                        <div className="flex gap-4 flex-1 min-w-0">
+                          <DateBadge date={t.date} />
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-[15px] font-black text-slate-900 leading-snug">{t.title}</h3>
+                            <TournamentMeta t={t} />
                           </div>
                         </div>
-                      </div>
-
-                      {/* Tournament Chat Section */}
-                      <div className="bg-slate-50/50 border-t border-slate-100 p-5 space-y-3">
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                          <MessageSquare size={13} className="text-[#FF7400]" />
-                          Communication History & Comments
-                        </h4>
-
-                        {/* Messages list */}
-                        {tMessages[t.id]?.length > 0 ? (
-                          <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
-                            {tMessages[t.id].map((msg) => (
-                              <div key={msg.id} className="flex items-start gap-2.5">
-                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px] font-black ${
-                                  msg.senderRole === "CLUB" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-[#FF7400]"
-                                }`}>
-                                  {msg.senderName.charAt(0)}
-                                </div>
-                                <div className="flex-grow">
-                                  <p className="text-xs text-slate-700 font-semibold leading-relaxed">
-                                    <span className="font-bold text-slate-900 mr-1.5">{msg.senderName}:</span>
-                                    {msg.message}
-                                  </p>
-                                  <p className="text-[9px] text-slate-400 mt-0.5">
-                                    {new Date(msg.createdAt).toLocaleDateString("en-GB")} {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs font-semibold text-slate-400">No communication history yet.</p>
-                        )}
-                      </div>
-
-                      {/* Bottom row */}
-                      <div className="flex items-center px-4 py-3 border-t border-slate-100">
-                        {/* Send Reply — fixed width, orange border */}
-                        <div className="w-72 rounded-[2px] p-[1.5px]" style={{ background: "linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)" }}>
-                          <div className="flex items-center gap-2 bg-white rounded-[2px] px-3 py-2">
-                            <input
-                              type="text"
-                              placeholder="Send Reply"
-                              value={replyTexts[t.id] || ""}
-                              onChange={(e) => setReplyTexts(prev => ({ ...prev, [t.id]: e.target.value }))}
-                              onKeyDown={(e) => e.key === "Enter" && handleSendTournamentReply(t.id)}
-                              className="flex-grow bg-transparent text-sm text-slate-600 placeholder-slate-400 outline-none"
-                            />
-                            <button
-                              onClick={() => handleSendTournamentReply(t.id)}
-                              disabled={!replyTexts[t.id]?.trim() || replyLoading[t.id]}
-                              className="text-slate-400 hover:text-[#FF7400] disabled:opacity-30 transition-colors shrink-0"
-                            >
-                              {replyLoading[t.id] ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Buttons pushed to far right */}
-                        <div className="ml-auto flex items-center gap-2">
-                          {(safeStatus(t.superAdminApproval) === "APPROVED" || safeStatus(t.ceoApproval) === "APPROVED") ? (
-                            <div className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                              <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                              <span className="text-xs font-bold text-emerald-700 whitespace-nowrap">
-                                Approved by {safeStatus(t.superAdminApproval) === "APPROVED" ? "Super Admin" : "CEO"}
-                              </span>
-                            </div>
+                        <div className="flex items-start gap-2 shrink-0">
+                          {approvedAbove ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700">
+                              <CheckCircle2 size={14} /> Approved by {safeStatus(t.superAdminApproval) === "APPROVED" ? "Super Admin" : "CEO"}
+                            </span>
                           ) : (
                             <>
                               <button
                                 onClick={() => handleAction(t.id, "APPROVED")}
                                 disabled={actionLoading === t.id}
-                                className="px-5 py-2 bg-[#FF7400] text-white text-sm font-bold rounded-lg hover:bg-[#E56900] disabled:opacity-50 transition-all"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF7400] hover:bg-[#E56900] text-white text-sm font-bold rounded-lg disabled:opacity-50"
                               >
-                                {actionLoading === t.id ? <Loader2 size={15} className="animate-spin" /> : "Approve"}
+                                {actionLoading === t.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Approve
                               </button>
                               <button
                                 onClick={() => handleAction(t.id, "REJECTED")}
                                 disabled={!!actionLoading}
-                                className="px-5 py-2 bg-white border border-slate-300 text-slate-600 text-sm font-bold rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 transition-all"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 text-sm font-bold rounded-lg disabled:opacity-50"
                               >
-                                Reject
+                                <XCircle size={14} /> Reject
                               </button>
                             </>
                           )}
                         </div>
                       </div>
 
-
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+                      {/* Conversation with the organiser: always open here, since approvers reply from the queue */}
+                      <div className="border-t border-slate-100 bg-slate-50/60 p-4 space-y-3">
+                        <MessageThread messages={tMessages[t.id]} />
+                        <div className="flex items-center gap-2 max-w-xl">
+                          <input
+                            type="text"
+                            placeholder="Write a reply to the organiser…"
+                            value={replyTexts[t.id] || ""}
+                            onChange={(e) => setReplyTexts(prev => ({ ...prev, [t.id]: e.target.value }))}
+                            onKeyDown={(e) => e.key === "Enter" && handleSendTournamentReply(t.id)}
+                            className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-[#FF7400]"
+                          />
+                          <button
+                            onClick={() => handleSendTournamentReply(t.id)}
+                            disabled={!replyTexts[t.id]?.trim() || replyLoading[t.id]}
+                            aria-label="Send reply"
+                            className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-[#FF7400] hover:border-[#FF7400] rounded-lg disabled:opacity-40"
+                          >
+                            {replyLoading[t.id] ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )
           )}
 
           {/* ════════════ APPROVED TOURNAMENTS ════════════ */}
           {activeTab === "approved" && (
-            <>
-              {loading ? (
-                <div className="flex justify-center py-20">
-                  <Loader2 size={32} className="animate-spin text-[#FF7400]" />
-                </div>
-              ) : displayedApproved.length === 0 ? (
-                <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
-                  <CheckCircle2 size={40} className="mx-auto mb-3 text-slate-200" />
-                  <h3 className="text-lg font-bold text-slate-500">No Approved Tournaments</h3>
-                  <p className="text-slate-400 text-sm mt-1">You haven't approved any tournaments yet.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {displayedApproved.map(t => (
-                    <motion.div
-                      key={t.id}
-                      whileHover={{ y: -4 }}
-                      className="bg-white rounded-[2px] shadow-lg overflow-hidden flex flex-col"
-                    >
-                      <div className="h-32 bg-gradient-to-br from-emerald-900 via-emerald-700 to-[#FF7400] relative overflow-hidden">
-                        {t.bannerImage && <img src={t.bannerImage} alt="Banner" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-60" />}
-                        <div className="absolute inset-0 bg-black/20" />
-                        <div className="absolute top-3 left-3 bg-white/20 backdrop-blur text-white text-[10px] font-bold px-3 py-1 rounded-full border border-white/30">
-                          {t.level}
-                        </div>
-                        <div className="absolute top-3 right-3 bg-emerald-500/80 backdrop-blur text-white text-[10px] font-bold px-3 py-1 rounded-full border border-emerald-400/30 flex items-center gap-1">
-                          <CheckCircle2 size={10} /> Approved
-                        </div>
-                        {t.club && (
-                          <div className="absolute bottom-3 left-3 right-3 bg-black/40 backdrop-blur rounded-xl p-2.5 border border-white/20">
-                            <p className="text-white text-xs font-bold truncate">{t.club.name}</p>
-                            {t.club.district && (
-                              <p className="text-white/70 text-[10px] truncate">{t.club.district.name}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-5 flex-grow flex flex-col">
-                        <h3 className="text-lg font-bold text-slate-800 mb-3 leading-snug">{t.title}</h3>
-
-                        <div className="space-y-2 text-sm text-slate-500">
-                          <div className="flex items-center gap-2">
-                            <Clock size={13} className="text-[#FF7400]" />
-                            {new Date(t.date).toLocaleDateString("en-GB")}
-                            {t.dateTo && ` – ${new Date(t.dateTo).toLocaleDateString("en-GB")}`}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <MapPin size={13} className="text-[#FF7400]" />{t.location}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Users size={13} className="text-[#FF7400]" />
-                            Category: {t.category || "N/A"} · {t.gender}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <IndianRupee size={13} className="text-[#FF7400]" />
-                            {t.entryFee === 0 ? "Free Entry" : `₹${t.entryFee}`}
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex gap-2">
-                          <button
-                            onClick={() => handleDownloadReport(t.id, t.title)}
-                            disabled={downloadingReportId === t.id}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 font-bold rounded-xl text-xs transition-all border border-orange-200 shrink-0 disabled:opacity-50"
-                            title="Download tournament report"
-                          >
-                            {downloadingReportId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                            <span>Report</span>
-                          </button>
-                          {!t.hasPendingPlayers ? (
-                            <Link
-                              href={`/dashboard/admin/tournaments/${t.id}`}
-                              className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs hover:bg-slate-800 transition-all"
-                            >
-                              <Trophy size={12} /> Manage Tournament
-                              <ChevronRight size={12} />
-                            </Link>
-                          ) : (
-                            <button
-                              disabled
-                              className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-100 text-slate-400 font-bold rounded-xl text-xs cursor-not-allowed"
-                            >
-                              <AlertCircle size={12} /> Resolve Pending Players
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </>
+            displayedApproved.length === 0 ? (
+              <EmptyState icon={<Trophy size={32} />} title={searchQuery ? "No tournaments match your search" : "No approved tournaments yet"} text={searchQuery ? "Try a different title or location." : "Tournaments you approve will appear here."} />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {displayedApproved.map(t => (
+                  <TournamentCard key={t.id} t={t} strip="bg-emerald-500"
+                    status={isExpired(t)
+                      ? <StatusLine tone="text-slate-500" icon={<Clock size={14} />} label="Completed" />
+                      : <StatusLine tone="text-emerald-700" icon={<CheckCircle2 size={14} />} label="Approved" />}
+                    faded={isExpired(t)}
+                    messages={tMessages[t.id]}
+                    chatOpen={!!openChats[t.id]}
+                    onToggleChat={() => setOpenChats(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                    actions={
+                      <>
+                        <button
+                          onClick={() => handleDownloadReport(t.id, t.title)}
+                          disabled={downloadingReportId === t.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:text-[#FF7400] hover:border-[#FF7400] text-xs font-bold rounded-lg disabled:opacity-50"
+                          title="Download tournament report"
+                        >
+                          {downloadingReportId === t.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Report
+                        </button>
+                        <ManageLink t={t} />
+                      </>
+                    }
+                  />
+                ))}
+              </div>
+            )
           )}
 
           {/* ════════════ MY TOURNAMENTS ════════════ */}
           {activeTab === "mine" && (
-            <>
-              {displayedMine.length === 0 ? (
-                <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
-                  <Trophy size={40} className="mx-auto mb-3 text-slate-200" />
-                  <h3 className="text-lg font-bold text-slate-500">No Tournaments Yet</h3>
-                  <p className="text-slate-400 text-sm mt-1">
-                    Click "Create Tournament" to get started.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {displayedMine.map(t => (
-                    <motion.div
-                      key={t.id}
-                      whileHover={{ y: -4 }}
-                      className="bg-white rounded-[2px] shadow-lg overflow-hidden flex flex-col"
-                    >
-                      {/* Card banner */}
-                      <div className="h-28 bg-gradient-to-br from-[#FF7400]/15 to-amber-50 flex items-center justify-center relative overflow-hidden">
-                        {t.bannerImage ? (
-                          <img src={t.bannerImage} alt="Banner" className="absolute inset-0 w-full h-full object-cover" />
-                        ) : (
-                          <Trophy size={40} className="text-[#FF7400]/20 absolute" />
-                        )}
-                        <span className="absolute top-3 left-3 bg-white/90 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-sm">
-                          {t.level}
-                        </span>
-                        {isExpired(t) ? (
-                          <span className="absolute top-3 right-3 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-slate-100 text-slate-500 border-slate-300 flex items-center gap-1">
-                            <Clock size={10} /> Expired
-                          </span>
-                        ) : (
-                          <span className={`absolute top-3 right-3 text-[10px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${
-                            t.status === "APPROVED" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                            t.status === "CLOSED" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
-                            t.status === "REJECTED" ? "bg-red-50 text-red-600 border-red-200" :
-                            "bg-amber-50 text-amber-700 border-amber-200"
-                          }`}>
-                            {t.status === "APPROVED" ? <><CheckCircle2 size={10} /> Approved</> :
-                             t.status === "CLOSED" ? <><CheckCircle2 size={10} /> Concluded</> :
-                             t.status === "REJECTED" ? <><XCircle size={10} /> Rejected</> : <><Hourglass size={10} /> Pending</>}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Card body */}
-                      <div className="p-5 flex-grow flex flex-col">
-                        <h3 className="text-lg font-bold text-slate-800 mb-3 leading-snug">{t.title}</h3>
-
-                        <div className="space-y-2 text-sm text-slate-500">
-                          <div className="flex items-center gap-2">
-                            <Clock size={13} className="text-[#FF7400]" />
-                            {new Date(t.date).toLocaleDateString("en-GB")}
-                            {t.dateTo && ` – ${new Date(t.dateTo).toLocaleDateString("en-GB")}`}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <MapPin size={13} className="text-[#FF7400]" />{t.location}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <IndianRupee size={13} className="text-[#FF7400]" />
-                            {t.entryFee === 0 ? "Free Entry" : `₹${t.entryFee}`}
-                          </div>
-                        </div>
-
-                        <ApprovalChain />
-
-                        {t.rejectionRemark && (
-                          <div className="mt-3 p-3 bg-red-50 rounded-xl border border-red-100 text-xs text-red-700">
-                            <span className="font-bold">Rejected: </span>{t.rejectionRemark}
-                          </div>
-                        )}
-
-                        {/* Tournament Chat Section */}
-                        <div className="mt-4 bg-slate-50 border-t border-slate-100 p-4 rounded-xl space-y-3">
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            <MessageSquare size={13} className="text-[#FF7400]" />
-                            Communication History
-                          </h4>
-
-                          {/* Messages list */}
-                          {tMessages[t.id]?.length > 0 ? (
-                            <div className="space-y-3 max-h-32 overflow-y-auto pr-1">
-                              {tMessages[t.id].map((msg) => (
-                                <div key={msg.id} className="flex items-start gap-2">
-                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[9px] font-black ${
-                                    msg.senderRole === "CLUB" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-[#FF7400]"
-                                  }`}>
-                                    {msg.senderName.charAt(0)}
-                                  </div>
-                                  <div className="flex-grow">
-                                    <p className="text-[11px] text-slate-700 font-semibold leading-relaxed">
-                                      <span className="font-bold text-slate-900 mr-1">{msg.senderName}:</span>
-                                      {msg.message}
-                                    </p>
-                                    <p className="text-[8px] text-slate-400">
-                                      {new Date(msg.createdAt).toLocaleDateString("en-GB")} {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-[10px] font-semibold text-slate-400">No communication history yet.</p>
-                          )}
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="mt-3 flex gap-2">
-                          {/* Edit button — only creator can edit */}
+            displayedMine.length === 0 ? (
+              <EmptyState
+                icon={<Trophy size={32} />}
+                title={myTournaments.length === 0 ? "No tournaments yet" : "No tournaments match your filters"}
+                text={myTournaments.length === 0 ? "Create your first tournament to get started." : "Try another status or clear the search."}
+                action={myTournaments.length === 0 && canCreate ? <button onClick={() => setIsCreateOpen(true)} className="mt-3 text-sm font-bold text-[#FF7400] hover:underline">Create Tournament</button> : undefined}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {displayedMine.map(t => {
+                  const expired = isExpired(t);
+                  const st = expired ? MINE_STATUS_STYLE.EXPIRED : MINE_STATUS_STYLE[t.status] ?? MINE_STATUS_STYLE.PENDING;
+                  return (
+                    <TournamentCard key={t.id} t={t} strip={st.strip} faded={expired}
+                      status={<StatusLine tone={st.text} icon={st.icon} label={st.label} />}
+                      remark={t.rejectionRemark}
+                      messages={tMessages[t.id]}
+                      chatOpen={!!openChats[t.id]}
+                      onToggleChat={() => setOpenChats(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                      actions={
+                        <>
                           <button
                             onClick={() => openEditModal(t)}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-sm transition-all border border-slate-200 hover:border-slate-300 shrink-0"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:text-[#FF7400] hover:border-[#FF7400] text-xs font-bold rounded-lg"
                             title="Edit tournament details"
                           >
-                            <Edit2 size={14} /> Edit
+                            <Edit2 size={13} /> Edit
                           </button>
-                          {!t.hasPendingPlayers ? (
-                            <Link
-                              href={`/dashboard/admin/tournaments/${t.id}`}
-                              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-[#FF7400] to-orange-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
-                            >
-                              <Trophy size={14} /> Manage
-                              <ChevronRight size={14} />
-                            </Link>
-                          ) : (
-                            <button
-                              disabled
-                              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-slate-100 text-slate-400 font-bold rounded-xl text-sm transition-all cursor-not-allowed"
-                            >
-                              <AlertCircle size={14} /> Resolve Pending Players
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </>
+                          <ManageLink t={t} />
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )
           )}
         </>
       )}

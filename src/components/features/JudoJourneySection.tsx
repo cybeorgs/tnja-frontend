@@ -4,6 +4,7 @@ import React from "react";
 import Image from "next/image";
 import { motion, useInView, Variants } from "framer-motion";
 import { ShieldCheck, Handshake, HeartPulse, ShoppingBag, Heart, ShoppingCart, Tag } from "lucide-react";
+import { TNJA_LOGO } from "@/constants/brand";
 
 const JudoJourneySection = () => {
   // We'll use a ref for the container to trigger animations when it scrolls into view
@@ -99,7 +100,7 @@ const JudoJourneySection = () => {
             </div>
             {/* Judo Uniform Icon */}
             <div className="relative w-8 h-8 z-10">
-              <Image src="/navbar/Logo.png" alt="Icon" fill className="object-contain" />
+              <Image src={TNJA_LOGO} alt="" fill sizes="32px" className="object-contain" />
             </div>
           </motion.div>
 

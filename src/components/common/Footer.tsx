@@ -8,6 +8,7 @@ import { Link2, Users, PhoneCall, ChevronRight, MapPin, Phone, Mail } from 'luci
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { TNJA_LOGO } from "@/constants/brand";
 
 const Footer = () => {
   const pathname = usePathname();
@@ -42,14 +43,10 @@ const Footer = () => {
           
           {/* Column 1: Logo and Socials (Col Span 3) */}
           <div className="flex flex-col items-center text-center lg:col-span-3 lg:pr-8 lg:border-r border-neutral-800/60">
-            <div className="relative w-20 h-20 md:w-28 md:h-28 mb-4">
-              {/* Mobile view logo (using the transparent high-res Logo_2) */}
-              <div className="block md:hidden relative w-full h-full">
-                <Image src="/navbar/Logo_2.png" alt="TNJA Logo Mobile" fill sizes="80px" className="object-contain" />
-              </div>
-              {/* Desktop view logo (using original Logo) */}
-              <div className="hidden md:block relative w-full h-full">
-                <Image src="/navbar/Logo.png" alt="TNJA Logo Desktop" fill sizes="112px" className="object-contain drop-shadow-[0_0_15px_rgba(255,116,0,0.3)]" />
+            {/* The logo has a white background, so it sits on a white badge against the dark footer. */}
+            <div className="relative w-20 h-20 md:w-28 md:h-28 mb-4 rounded-full bg-white p-1.5 md:p-2 shadow-[0_0_20px_rgba(255,116,0,0.25)]">
+              <div className="relative w-full h-full">
+                <Image src={TNJA_LOGO} alt="Tamil Nadu Judo Association logo" fill sizes="112px" className="object-contain" />
               </div>
             </div>
             

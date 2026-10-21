@@ -183,11 +183,7 @@ export default function OfficialsDirectoryPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-black text-[#FF7400]">Officials Directory</h1>
-          <p className="text-slate-600 text-[13px] font-medium mt-1">Manage all promoted officials and administrators</p>
-        </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
         <div className="flex gap-3 shrink-0">
           <button 
             onClick={() => setIsMissingModalOpen(true)}

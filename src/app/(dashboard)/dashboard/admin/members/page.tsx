@@ -132,11 +132,7 @@ export default function MembersListPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-black text-[#FF7400]">Members List</h1>
-          <p className="text-slate-600 text-[13px] font-medium mt-1">Manage all registered members in your location</p>
-        </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
         <div 
           className="p-[1.5px] rounded-[2px] shrink-0 inline-flex"
           style={{ background: 'linear-gradient(to right, #552700 0%, #FF0E00 25%, #FFDA00 75%, #FF7400 100%)' }}

@@ -5,8 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { adminStudentSchema, adminClubSchema, adminMemberSchema } from "@/validation/adminEntitySchema";
 import { usePincodeLookup, PincodeHint } from "@/components/features/registers/usePincodeLookup";
 import {
-  Search,
-  Filter,
+  Search,
   User,
   Shield,
   GraduationCap,
@@ -19,18 +18,15 @@ import {
   Save,
   X,
   CheckCircle2,
-  XCircle,
-  Mail,
-  Calendar,
-  MapPin,
+  XCircle,
   Eye,
-  EyeOff,
-  Phone,
+  EyeOff,
   Plus,
   ChevronDown,
   Trash2,
   Download,
   Upload,
+  Ban,
 } from "lucide-react";
 
 type UserRole = "STUDENT" | "COACH" | "MEMBER" | "CLUB" | "DISTRICT_PRESIDENT" | "DISTRICT_SECRETARY" | "ZONE_PRESIDENT" | "ZONE_SECRETARY" | "STATE_PRESIDENT" | "STATE_SECRETARY" | "CEO";
@@ -75,12 +71,127 @@ const getPermanentIdLabel = (role: string) => {
   return "Member ID";
 };
 
-const getTemporaryIdLabel = (role: string) => {
-  if (role === "STUDENT") return "Temp Player ID";
-  if (role === "COACH") return "Temp Coach ID";
-  if (role === "CLUB") return "Temp Club ID";
-  return "Temp Member ID";
+
+// ─── Directory UI pieces ──────────────────────────────────────────────────────
+
+const ROLE_TABS: { id: UserRole | "ALL" | "PROMOTED"; label: string }[] = [
+  { id: "ALL", label: "All users" },
+  { id: "STUDENT", label: "Players" },
+  { id: "COACH", label: "Coaches" },
+  { id: "MEMBER", label: "Members" },
+  { id: "CLUB", label: "Clubs" },
+  { id: "PROMOTED", label: "Officials" },
+];
+
+const STATUS_FILTERS = [
+  { id: "ALL", label: "All" },
+  { id: "APPROVED", label: "Active" },
+  { id: "BLOCKED", label: "Blocked" },
+];
+
+const STATUS_BADGE: Record<string, { label: string; dot: string; text: string }> = {
+  APPROVED: { label: "Active", dot: "bg-emerald-500", text: "text-emerald-700" },
+  BLOCKED: { label: "Blocked", dot: "bg-red-500", text: "text-red-600" },
+  PENDING: { label: "Pending", dot: "bg-amber-500", text: "text-amber-700" },
+  REJECTED: { label: "Rejected", dot: "bg-red-400", text: "text-red-600" },
+  REPLAY: { label: "Changes requested", dot: "bg-purple-500", text: "text-purple-700" },
+  BPL_REJECTED: { label: "BPL not accepted", dot: "bg-orange-500", text: "text-orange-700" },
 };
+
+const AVATAR_TONE: Record<string, string> = {
+  STUDENT: "bg-orange-100 text-[#C45A00]",
+  COACH: "bg-emerald-100 text-emerald-700",
+  CLUB: "bg-purple-100 text-purple-700",
+};
+
+const formatShortDate = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_BADGE[status] ?? { label: status.replace(/_/g, " ").toLowerCase(), dot: "bg-slate-400", text: "text-slate-600" };
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-bold capitalize ${s.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />{s.label}
+    </span>
+  );
+}
+
+function UserCell({ u }: { u: TNJAUser }) {
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      <span className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${AVATAR_TONE[u.role] ?? "bg-amber-100 text-amber-700"}`}>
+        {(u.fullName || "?").charAt(0).toUpperCase()}
+      </span>
+      <div className="min-w-0">
+        <p className="font-bold text-slate-800 truncate">{u.fullName}</p>
+        <p className="text-xs text-slate-500 truncate">{u.email}</p>
+        {u.mobileNumber && <p className="text-xs text-slate-400">{u.mobileNumber}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Officials can work in a different district from the one they live in; show both when they differ. */
+function DistrictCell({ u }: { u: TNJAUser }) {
+  const work = u.assignedDistrict?.name;
+  const home = u.district?.name || u.districtName;
+  if (work && work !== home) {
+    return (
+      <div className="text-xs">
+        <p className="font-bold text-slate-700">{work}</p>
+        {home && <p className="text-slate-400">Lives in {home}</p>}
+      </div>
+    );
+  }
+  return <span className="text-xs font-semibold text-slate-600">{home || "—"}</span>;
+}
+
+interface FilterSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  children: React.ReactNode;
+}
+
+function FilterSelect({ value, onChange, label, children }: FilterSelectProps) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        className={`appearance-none pl-3 pr-8 py-2 bg-white border rounded-lg text-xs font-bold focus:outline-none focus:border-[#FF7400] cursor-pointer ${
+          value === "ALL" ? "border-slate-200 text-slate-600" : "border-orange-200 text-[#FF7400] bg-orange-50"
+        }`}
+      >
+        {children}
+      </select>
+      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+    </div>
+  );
+}
+
+interface ActionButtonProps {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}
+
+function ActionButton({ icon, label, onClick, danger }: ActionButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`w-8 h-8 inline-flex items-center justify-center rounded-md border border-transparent transition-colors ${
+        danger ? "text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100" : "text-slate-400 hover:text-[#FF7400] hover:bg-orange-50 hover:border-orange-100"
+      }`}
+    >
+      {icon}
+    </button>
+  );
+}
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<TNJAUser[]>([]);
@@ -597,6 +708,18 @@ export default function UserManagementPage() {
     CEO: "bg-slate-800 text-white",
   };
 
+  const canBlock = ["SUPER_ADMIN", "CEO", "STATE_PRESIDENT", "STATE_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY"].includes(currentUserRole || "");
+  const canDelete = currentUserRole === "SUPER_ADMIN" || currentUserRole === "CEO";
+  const renderActions = (u: TNJAUser) => (
+    <>
+      <ActionButton icon={<Eye size={16} />} label="View details" onClick={() => handleViewDetails(u)} />
+      <ActionButton icon={<Edit size={16} />} label="Edit ID or password" onClick={() => handleEdit(u)} />
+      {isMemberRole(u.role) && <ActionButton icon={<Shield size={16} />} label="Promote" onClick={() => handlePromoteClick(u)} />}
+      {u.status !== "BLOCKED" && canBlock && <ActionButton icon={<Ban size={16} />} label="Block" danger onClick={() => handleBlockUser(u)} />}
+      {canDelete && <ActionButton icon={<Trash2 size={16} />} label="Delete" danger onClick={() => confirmDelete(u)} />}
+    </>
+  );
+
   return (
     <div className="space-y-6">
       {/* Toast */}
@@ -616,290 +739,217 @@ export default function UserManagementPage() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-slate-800">User Management</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage passwords, IDs and roles for all registered users.</p>
-        </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-[#FF7400] text-white rounded-xl font-semibold hover:bg-orange-600 transition-all text-sm shadow-sm"
-          >
-            <Plus size={16} />
-            Create New
-          </button>
-          <button
-            onClick={() => setImportModalOpen(true)}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all text-sm shadow-sm"
-          >
-            <Upload size={16} />
-            Import Excel
-          </button>
-          <button
-            onClick={handleExportCSV}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all text-sm shadow-sm cursor-pointer"
-          >
-            <Download size={16} />
-            Export CSV
-          </button>
-          <button
-            onClick={fetchUsers}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm shadow-sm"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-6 w-full">
-        <div className="flex flex-col sm:flex-row w-full gap-4 items-start sm:items-center flex-wrap">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search by name, email, or IDs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] transition-all text-black"
-            />
-          </div>
-          <div className="relative shrink-0 w-full sm:w-auto">
-            <select
-              value={genderFilter}
-              onChange={(e) => setGenderFilter(e.target.value)}
-              className="appearance-none h-full w-full pl-5 pr-12 py-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] hover:border-[#FF7400] hover:shadow-md transition-all text-slate-700 font-semibold shadow-sm cursor-pointer"
-            >
-              <option value="ALL">All Genders</option>
-              <option value="MALE">Male</option>
-              <option value="FEMALE">Female</option>
-            </select>
-            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-          </div>
-          <div className="relative shrink-0 w-full sm:w-auto">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none h-full w-full pl-5 pr-12 py-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] hover:border-[#FF7400] hover:shadow-md transition-all text-slate-700 font-semibold shadow-sm cursor-pointer"
-            >
-              <option value="ALL">All Status</option>
-              <option value="APPROVED">Approved</option>
-              <option value="BLOCKED">Blocked</option>
-            </select>
-            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-          </div>
-          
-          <AnimatePresence>
-            {roleFilter === "PROMOTED" && (
-              <>
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="relative shrink-0 w-full sm:w-auto"
-                >
-                  <select
-                    value={districtFilter}
-                    onChange={(e) => setDistrictFilter(e.target.value)}
-                    className="appearance-none h-full w-full pl-5 pr-12 py-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:border-emerald-500 hover:shadow-md transition-all text-slate-700 font-semibold shadow-sm cursor-pointer"
-                  >
-                    <option value="ALL">All Districts</option>
-                    {districtsList.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="relative shrink-0 w-full sm:w-auto"
-                >
-                  <select
-                    value={promotedRoleFilter}
-                    onChange={(e) => setPromotedRoleFilter(e.target.value)}
-                    className="appearance-none h-full w-full pl-5 pr-12 py-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:border-emerald-500 hover:shadow-md transition-all text-slate-700 font-semibold shadow-sm cursor-pointer"
-                  >
-                    <option value="ALL">All Roles</option>
-                    <option value="DISTRICT_PRESIDENT">District President</option>
-                    <option value="DISTRICT_SECRETARY">District Secretary</option>
-                    <option value="ZONE_PRESIDENT">Zone President</option>
-                    <option value="ZONE_SECRETARY">Zone Secretary</option>
-                    <option value="STATE_PRESIDENT">State President</option>
-                    <option value="STATE_SECRETARY">State Secretary</option>
-                    <option value="CEO">CEO</option>
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
-        
-        <div className="flex gap-4 overflow-x-auto pb-2 w-full scrollbar-hide ">
-          {["ALL", "CLUB", "STUDENT", "COACH", "MEMBER", "PROMOTED"].map((r) => {
-            const label = r === "ALL" ? "All Users" : r === "CLUB" ? "Clubs" : r === "STUDENT" ? "Players" : r === "COACH" ? "Coaches" : r === "MEMBER" ? "Members" : "Promoted Persons";
-            const isActive = roleFilter === r;
-            const activeClass = r === "PROMOTED" 
-              ? "bg-gradient-to-r from-emerald-100 to-emerald-400 text-emerald-900 border-emerald-400 shadow-[0_8px_20px_-6px_rgba(52,211,153,0.6)] font-black"
-              : "bg-gradient-to-r from-amber-100 to-amber-400 text-slate-900 border-amber-400 shadow-[0_8px_20px_-6px_rgba(251,191,36,0.6)] font-black";
-            
+      {/* ── Toolbar: role toggle + actions ── */}
+      <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+        <div className="flex gap-1 p-1 bg-white border border-slate-200 rounded-lg overflow-x-auto scrollbar-hide w-full xl:w-fit" role="tablist" aria-label="Filter users by type">
+          {ROLE_TABS.map((tab) => {
+            const active = roleFilter === tab.id;
             return (
               <button
-                key={r}
-                onClick={() => setRoleFilter(r as any)}
-                className={`min-w-[130px] px-8 py-3 rounded-2xl text-base transition-all whitespace-nowrap border cursor-pointer ${
-                  isActive
-                    ? activeClass
-                    : "bg-white text-slate-700 border-orange-200 hover:border-[#FF7400] hover:bg-orange-50 font-bold shadow-sm"
+                key={tab.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setRoleFilter(tab.id)}
+                className={`relative shrink-0 px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition-colors duration-300 ${
+                  active ? "text-white" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
-                {label}
+                {active && (
+                  <motion.span
+                    layoutId="user-role-pill"
+                    transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                    className="absolute inset-0 rounded-md bg-[#FF7400]"
+                  />
+                )}
+                <span className="relative">{tab.label}</span>
               </button>
             );
           })}
         </div>
+
+        <div className="flex flex-wrap gap-2 xl:ml-auto">
+          <button
+            onClick={() => setCreateModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#FF7400] hover:bg-[#E56900] text-white rounded-lg font-bold text-sm transition-colors"
+          >
+            <Plus size={16} className="stroke-[2.5]" /> Create New
+          </button>
+          <button
+            onClick={() => setImportModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-700 rounded-lg font-bold text-sm transition-colors"
+          >
+            <Upload size={16} /> Import
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={filteredUsers.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-700 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:text-slate-700"
+          >
+            <Download size={16} /> Export
+          </button>
+          <button
+            onClick={fetchUsers}
+            aria-label="Refresh"
+            title="Refresh"
+            className="inline-flex items-center justify-center w-10 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-500 rounded-lg transition-colors"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-20 text-center flex flex-col items-center gap-4">
-            <Loader2 size={40} className="animate-spin text-[#FF7400]" />
-            <p className="text-slate-400">Fetching users...</p>
+      {/* ── Filters ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+        <div className="relative flex-1 lg:max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search name, email, mobile or ID"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#FF7400] text-sm text-slate-800"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 p-1 bg-white border border-slate-200 rounded-lg" role="tablist" aria-label="Filter by status">
+            {STATUS_FILTERS.map((s) => {
+              const active = statusFilter === s.id;
+              return (
+                <button
+                  key={s.id}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setStatusFilter(s.id)}
+                  className={`relative px-3 py-1.5 rounded-md text-xs font-bold transition-colors duration-300 ${active ? "text-[#FF7400]" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="user-status-pill"
+                      transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                      className="absolute inset-0 rounded-md bg-orange-50 border border-orange-200"
+                    />
+                  )}
+                  <span className="relative">{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <FilterSelect value={genderFilter} onChange={setGenderFilter} label="Gender">
+            <option value="ALL">All genders</option>
+            <option value="MALE">Male</option>
+            <option value="FEMALE">Female</option>
+          </FilterSelect>
+
+          {roleFilter === "PROMOTED" && (
+            <>
+              <FilterSelect value={promotedRoleFilter} onChange={setPromotedRoleFilter} label="Office">
+                <option value="ALL">All offices</option>
+                {PROMOTABLE_ROLES.filter((r) => r.id !== "MEMBER").map((r) => (
+                  <option key={r.id} value={r.id}>{r.label}</option>
+                ))}
+              </FilterSelect>
+              <FilterSelect value={districtFilter} onChange={setDistrictFilter} label="District">
+                <option value="ALL">All districts</option>
+                {districtsList.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </FilterSelect>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Directory ── */}
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <p className="text-sm font-bold text-slate-700">
+            {loading ? "Loading users…" : `${filteredUsers.length.toLocaleString("en-IN")} ${filteredUsers.length === 1 ? "user" : "users"}`}
+          </p>
+          {loading && <Loader2 size={16} className="animate-spin text-[#FF7400]" />}
+        </div>
+
+        {!loading && filteredUsers.length === 0 ? (
+          <div className="py-16 text-center">
+            <Search size={28} className="mx-auto text-slate-300 mb-3" />
+            <p className="text-sm font-bold text-slate-500">No users match these filters</p>
+            <p className="text-xs text-slate-400 mt-1">Try another type or status, or clear the search.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-            {filteredUsers.map((u) => (
-              <div key={u.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                
-                {/* Header Section: Avatar, Name, Email */}
-                <div className="p-5 border-b border-slate-100 flex items-start gap-4">
-                  <div className={`w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center font-black text-white shadow-inner bg-gradient-to-br ${
-                    u.role === "CLUB" ? "from-purple-500 to-indigo-600" :
-                    u.role === "STUDENT" ? "from-[#FF7400] to-orange-600" :
-                    u.role === "COACH" ? "from-emerald-500 to-teal-600" :
-                    "from-amber-500 to-orange-600"
-                  }`}>
-                    {u.fullName.charAt(0)}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="font-bold text-slate-800 text-sm truncate">{u.fullName}</h4>
-                    <div className="flex items-center gap-1.5 mt-1 text-[10px] font-medium text-slate-500 truncate">
-                      <Mail size={12} className="text-black" /> {u.email}
-                    </div>
-                    {u.mobileNumber && (
-                      <div className="flex items-center gap-1.5 mt-1 text-[10px] font-medium text-slate-500">
-                        <Phone size={12} className="text-black" /> {u.mobileNumber}
-                      </div>
-                    )}
-                  </div>
-                </div>
+          <>
+            {/* Table (tablet and up) */}
+            <div className={`hidden md:block overflow-x-auto transition-opacity ${loading ? "opacity-50" : ""}`}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider bg-slate-50">
+                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">ID</th>
+                    <th className="px-4 py-3">District</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Joined</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredUsers.map((u) => (
+                    <tr key={`${u.role}-${u.id}`} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-3">
+                        <UserCell u={u} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold ${roleColors[u.role] || "bg-slate-100 text-slate-600"}`}>
+                          {getRoleIcon(u.role)}{getRoleLabel(u.role)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {u.permanentId ? (
+                          <p className="font-mono text-xs font-bold text-slate-800">{u.permanentId}</p>
+                        ) : (
+                          <p className="text-xs text-slate-400">No {getPermanentIdLabel(u.role)} yet</p>
+                        )}
+                        <p className="font-mono text-[11px] text-slate-400">{u.tempId}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <DistrictCell u={u} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StatusBadge status={u.status} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-500">
+                        <p>{formatShortDate(u.createdAt)}</p>
+                        {u.validUntil && <p className="text-emerald-700">Valid to {formatShortDate(u.validUntil)}</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">{renderActions(u)}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-                {/* Body Section: Details */}
-                <div className="p-5 space-y-4 flex-grow bg-slate-50/50">
-                  <div className="flex justify-between items-center">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${roleColors[u.role] || "bg-slate-100 text-slate-600"}`}>
-                      {getRoleIcon(u.role)}
-                      {getRoleLabel(u.role)}
+            {/* Compact rows (phones) */}
+            <ul className={`md:hidden divide-y divide-slate-100 ${loading ? "opacity-50" : ""}`}>
+              {filteredUsers.map((u) => (
+                <li key={`${u.role}-${u.id}`} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <UserCell u={u} />
+                    <StatusBadge status={u.status} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold ${roleColors[u.role] || "bg-slate-100 text-slate-600"}`}>
+                      {getRoleIcon(u.role)}{getRoleLabel(u.role)}
                     </span>
-                    <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black tracking-widest ${
-                      u.status === "APPROVED" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : 
-                      u.status === "REJECTED" ? "bg-red-100 text-red-700 border border-red-200" : "bg-amber-100 text-amber-700 border border-amber-200"
-                    }`}>
-                      {u.status}
-                    </span>
+                    <span className="font-mono font-bold text-slate-700">{u.permanentId || u.tempId}</span>
+                    {u.districtName && <span className="text-slate-500">· {u.districtName}</span>}
                   </div>
-
-                  <div className="flex flex-col gap-1 mt-1">
-                    {u.assignedDistrict?.name && u.assignedDistrict?.name !== u.district?.name ? (
-                      <>
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800">
-                          <MapPin size={12} className="text-[#FF7400]" /> <span className="text-slate-400 font-medium text-[9px]">WORK:</span> {u.assignedDistrict.name}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 pl-[18px]">
-                          <span className="text-slate-400 font-medium text-[9px]">NATIVE:</span> {u.district?.name || "Chennai"}
-                        </div>
-                      </>
-                    ) : u.districtName ? (
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
-                        <MapPin size={12} className="text-[#FF7400]" /> {u.districtName} District
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-100">
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-400 font-bold uppercase">{getTemporaryIdLabel(u.role)}</span>
-                      <code className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[#FF7400] font-mono shadow-sm">{u.tempId}</code>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-400 font-bold uppercase">{getPermanentIdLabel(u.role)}</span>
-                      <code className="bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md text-blue-800 font-mono shadow-sm">{u.permanentId || "NOT SET"}</code>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer Section: Actions */}
-                <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-white">
-                  <div className="text-[10px] font-semibold text-slate-400 flex flex-col gap-1">
-                    <span className="flex items-center gap-1"><Calendar size={12} /> Joined {new Date(u.createdAt).toLocaleDateString()}</span>
-                    {u.validUntil && (
-                      <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-sm border border-emerald-100">
-                        <CheckCircle2 size={10} /> Valid until {new Date(u.validUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isMemberRole(u.role) && (
-                      <button
-                        onClick={() => handlePromoteClick(u)}
-                        className="px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-600 hover:text-white rounded-lg transition-all flex items-center gap-1"
-                        title="Promote Member"
-                      >
-                        <Shield size={12} /> Promote
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleViewDetails(u)}
-                      className="px-3 py-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-600 hover:text-white rounded-lg transition-all flex items-center gap-1"
-                      title="View Details"
-                    >
-                      <Eye size={12} /> View
-                    </button>
-                    <button
-                      onClick={() => handleEdit(u)}
-                      className="px-3 py-1.5 text-[10px] font-bold text-[#FF7400] bg-orange-50 border border-orange-100 hover:bg-[#FF7400] hover:text-white rounded-lg transition-all flex items-center gap-1"
-                      title="Manage Credentials"
-                    >
-                      <Edit size={12} /> Edit
-                    </button>
-                    {u.status !== "BLOCKED" && ["SUPER_ADMIN", "CEO", "STATE_PRESIDENT", "STATE_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY"].includes(currentUserRole || "") && (
-                      <button
-                        onClick={() => handleBlockUser(u)}
-                        className="px-3 py-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-600 hover:text-white rounded-lg transition-all flex items-center gap-1"
-                        title="Block User"
-                      >
-                        <Shield size={12} /> Block
-                      </button>
-                    )}
-                    {(currentUserRole === "SUPER_ADMIN" || currentUserRole === "CEO") && (
-                      <button
-                        onClick={() => confirmDelete(u)}
-                        className="px-3 py-1.5 text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 hover:bg-red-600 hover:text-white rounded-lg transition-all flex items-center gap-1"
-                        title="Delete User"
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            ))}
-          </div>
+                  <div className="flex gap-1">{renderActions(u)}</div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
 

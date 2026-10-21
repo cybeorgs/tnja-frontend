@@ -495,11 +495,7 @@ export default function ClubTournamentsPage() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-black text-[#FF7400]">Tournament Details</h1>
-          <p className="text-slate-500 mt-1 text-sm">Manage your club tournaments and approve player registrations</p>
-        </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
         <button
           onClick={() => setIsCreateModalOpen(true)}
           className="flex items-center gap-2 px-5 py-3 bg-[#FF7400] text-white font-bold rounded-xl shadow-lg shadow-[#FF7400]/20 hover:scale-105 active:scale-95 transition-all w-fit border border-[#E56900]"

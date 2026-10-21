@@ -18,7 +18,7 @@ import { motion } from "framer-motion";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
-export default function GlobalSettingsPage() {
+export default function ConfigurationPage() {
   const [settings, setSettings] = useState({
     playerFee: 0,
     coachFee: 0,
@@ -94,10 +94,6 @@ export default function GlobalSettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">Global Settings</h1>
-        <p className="text-slate-500">Manage registration fees and platform-wide configurations</p>
-      </div>
 
       <motion.div 
         initial={{ opacity: 0, y: 20 }}

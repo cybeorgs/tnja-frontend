@@ -292,23 +292,6 @@ function ApprovalsContent() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-[#FF7400]">Pending Approvals</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Review and approve registrations. An email with login credentials is sent automatically on approval.
-          </p>
-        </div>
-        <button
-          onClick={fetchApplications}
-          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm shadow-sm"
-        >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
-      </div>
-
       {/* Categories Sidebar & Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
         {/* Sidebar */}
@@ -342,24 +325,33 @@ function ApprovalsContent() {
 
         {/* Content Area */}
         <div className="lg:col-span-3">
-          {/* Status Segmented Control */}
-          <div className="flex gap-2 mb-6 bg-slate-50 p-1.5 rounded-2xl border border-slate-100 w-fit">
-            {statusTabs.map((st) => {
-              const isActive = activeStatus === st.id;
-              return (
-                <button
-                  key={st.id}
-                  onClick={() => setActiveStatus(st.id)}
-                  className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-                    isActive
-                      ? "bg-[#FF7400] text-white shadow-md shadow-[#FF7400]/20"
-                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
-                  }`}
-                >
-                  {st.label}
-                </button>
-              );
-            })}
+          {/* Status Segmented Control + Refresh */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <div className="flex flex-wrap gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100 w-fit">
+              {statusTabs.map((st) => {
+                const isActive = activeStatus === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    onClick={() => setActiveStatus(st.id)}
+                    className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
+                      isActive
+                        ? "bg-[#FF7400] text-white shadow-md shadow-[#FF7400]/20"
+                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={fetchApplications}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm shadow-sm"
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
           </div>
 
           {/* List Headers */}

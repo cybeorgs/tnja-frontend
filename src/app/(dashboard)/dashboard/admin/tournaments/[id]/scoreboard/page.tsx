@@ -925,7 +925,9 @@ function ScoreboardInner() {
         {/* ══ HEADER ════════════════════════════════════════════════════════ */}
         <div className="flex flex-wrap items-center justify-between gap-4 px-4 lg:px-8 py-4 border-b border-[#333] bg-[#1a1a1a] shadow-md shrink-0">
         <div className="flex items-center">
-          <img src="/navbar/Logo.png" alt="TNJA Logo" className="h-10 lg:h-16 w-auto object-contain" />
+          <span className="flex items-center justify-center h-11 w-11 lg:h-16 lg:w-16 rounded-full bg-white p-1 shadow-md">
+            <img src={TNJA_LOGO} alt="Tamil Nadu Judo Association logo" className="h-full w-full object-contain" />
+          </span>
         </div>
         <div className="flex flex-col items-center">
           <h1 className="text-[#f97316] text-lg lg:text-xl font-black tracking-wide uppercase text-center">{tournamentTitle}</h1>
@@ -1488,7 +1490,7 @@ function ScoreboardInner() {
         </style>
         
         <div className="text-center border-b-2 border-black pb-6 mb-8 flex flex-col items-center">
-          <img src="/navbar/Logo.png" alt="TNJA Logo" className="w-24 h-24 mb-4 object-contain" />
+          <img src={TNJA_LOGO} alt="Tamil Nadu Judo Association logo" className="w-24 h-24 mb-4 object-contain" />
           <h1 className="text-4xl font-black uppercase tracking-widest mb-2">Tamil Nadu Judo Association</h1>
           <h2 className="text-2xl font-bold text-gray-600 uppercase">Official Match Report</h2>
         </div>
@@ -1575,6 +1577,7 @@ function ScoreboardInner() {
 }
 
 import { Minus, Plus } from "lucide-react";
+import { TNJA_LOGO } from "@/constants/brand";
 
 function ScoreBox({ label, value, theme, onUndo, onAdd }: { label: string; value: number | string; theme: "white" | "blue"; onUndo?: () => void; onAdd?: () => void }) {
   const bgClass = theme === "white" 

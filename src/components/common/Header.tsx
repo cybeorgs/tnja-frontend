@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Button from "./Button";
+import { TNJA_LOGO, TNJA_LOGO_WIDTH, TNJA_LOGO_HEIGHT } from "@/constants/brand";
 
 const Header = () => {
   const [isMounted, setIsMounted] = useState(false);
@@ -111,10 +112,10 @@ const Header = () => {
           <div className="flex-shrink-0">
             <Link href="/" className="group flex items-center gap-2 md:gap-3">
               <Image 
-                src="/navbar/Logo.png" 
-                alt="TNJA Logo" 
-                width={100} 
-                height={100} 
+                src={TNJA_LOGO}
+                alt="Tamil Nadu Judo Association logo"
+                width={TNJA_LOGO_WIDTH}
+                height={TNJA_LOGO_HEIGHT}
                 priority
                 loading="eager"
                 sizes="(max-width: 768px) 100vw, 100px"

@@ -42,7 +42,7 @@ export default function AdminGrievancePage() {
 
   const fetchGrievances = async () => {
     try {
-      const res = await fetch(`${API_BASE}/grievances`);
+      const res = await fetch(`${API_BASE}/grievances`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
       const data = await res.json();
       if (res.ok) setGrievances(data);
     } catch (err) {
@@ -58,7 +58,7 @@ export default function AdminGrievancePage() {
     try {
       const res = await fetch(`${API_BASE}/grievances/${selectedGrievance.id}/reply`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify({ reply: replyText })
       });
       if (res.ok) {
@@ -79,7 +79,7 @@ export default function AdminGrievancePage() {
     try {
       const res = await fetch(`${API_BASE}/grievances/${selectedGrievance.id}/close`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify({ remark: remarkText })
       });
       if (res.ok) {
@@ -127,12 +127,6 @@ export default function AdminGrievancePage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Grievance Management</h1>
-          <p className="text-slate-500">Review and respond to complaints from students, coaches, and referees.</p>
-        </div>
-      </div>
 
       <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-grow">

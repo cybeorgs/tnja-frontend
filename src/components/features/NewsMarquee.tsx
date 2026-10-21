@@ -1,17 +1,26 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
+
+/** Scrolling ticker of upcoming approved tournaments and events; hidden when there are none. */
 const NewsMarquee = () => {
-  const newsItems = [
-    "District-level Judo Meet - July 25",
-    "Coaches Workshop - Registration closes July 20",
-    "State Championship Finals - August 10",
-    "Junior Judo Training Camp - Starts July 15",
-  ];
+  const [newsItems, setNewsItems] = useState<string[]>([]);
 
+  useEffect(() => {
+    fetch(`${API_BASE}/announcements`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((items: { title: string; date: string }[]) =>
+        setNewsItems(items.map((item) =>
+          `${item.title} - ${new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}`
+        ))
+      )
+      .catch(() => setNewsItems([]));
+  }, []);
 
+  if (newsItems.length === 0) return null;
 
   return (
     <div className="w-full bg-white py-16 overflow-hidden relative">

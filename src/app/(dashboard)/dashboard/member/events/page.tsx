@@ -416,11 +416,7 @@ export default function MemberEventsPage() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Events Directory</h1>
-          <p className="text-slate-500">View upcoming events or propose a new one</p>
-        </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
         {["CLUB", "SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "CEO"].includes(userRole) && (
           <button 
             onClick={() => {

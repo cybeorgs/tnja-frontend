@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { ChevronRight, ArrowDown } from "lucide-react";
+import { TNJA_LOGO, TNJA_LOGO_WIDTH, TNJA_LOGO_HEIGHT } from "@/constants/brand";
 
 const HeroSection = () => {
   const handleScrollDown = () => {
@@ -29,10 +30,10 @@ const HeroSection = () => {
         {/* Header (Logo & Title) */}
         <div className="hidden xl:flex flex-col items-center mb-16">
           <Image
-            src="/navbar/Logo.png"
-            alt="TNJA Logo"
-            width={80}
-            height={80}
+            src={TNJA_LOGO}
+            alt="Tamil Nadu Judo Association logo"
+            width={TNJA_LOGO_WIDTH}
+            height={TNJA_LOGO_HEIGHT}
             className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-sm mb-4"
           />
           <h1 className="text-xl md:text-2xl font-bold text-[#FF7400] tracking-wider text-center uppercase">
