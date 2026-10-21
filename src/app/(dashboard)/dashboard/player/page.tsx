@@ -671,7 +671,7 @@ export default function PlayerDashboard() {
               <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-8">
                 <div className="flex justify-between items-center mb-4 pb-4 border-b">
                   <span className="text-gray-500 font-medium">Membership Fee</span>
-                  <span className="text-3xl font-bold text-[#FF7400]">₹ {settings?.playerFee || 500}</span>
+                  <span className="text-3xl font-bold text-[#FF7400]">₹ {settings?.playerFee || 1}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-gray-400">Processing Fee</span>

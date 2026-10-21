@@ -375,7 +375,7 @@ function MemberDashboardContent() {
                 <div className="flex justify-between items-center mb-6">
                   <span className="text-slate-500 font-medium">One-time Fee</span>
                   <span className="text-3xl font-bold text-[#FF7400]">
-                    ₹ {(settings?.[(userRole?.toLowerCase() === 'coach' ? 'coach' : userRole?.toLowerCase() === 'club' ? 'club' : 'member') + 'Fee'] || 1000).toLocaleString()}
+                    ₹ {(settings?.[(userRole?.toLowerCase() === 'coach' ? 'coach' : userRole?.toLowerCase() === 'club' ? 'club' : 'member') + 'Fee'] || 1).toLocaleString()}
                   </span>
                 </div>
                 <button 
