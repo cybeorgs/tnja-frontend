@@ -65,7 +65,7 @@ const GALLERY_DATA: GalleryItem[] = [
   {
     id: 5,
     src: "/images/gallery/gallery-5.png",
-    title: "Official State Referees & Coaches Delegation",
+    title: "Official State Coaches Delegation",
     category: "Ceremonies",
     date: "July 15, 2023",
     year: 2023,
@@ -112,7 +112,7 @@ const GALLERY_DATA: GalleryItem[] = [
   {
     id: 10,
     src: "/images/gallery/gallery-5.png",
-    title: "State Level Referees Licensing Program",
+    title: "State Level Coaches Licensing Program",
     category: "Ceremonies",
     date: "March 18, 2024",
     year: 2024,

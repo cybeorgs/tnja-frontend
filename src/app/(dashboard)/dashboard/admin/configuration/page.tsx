@@ -12,11 +12,22 @@ import {
   Users,
   Building2,
   BadgeCheck,
-  MapPin
+  MapPin,
+  Map as MapIcon,
+  Pencil,
+  X,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
+
+type ConfigTab = "fees" | "codes" | "zones";
+
+const CONFIG_TABS: { id: ConfigTab; label: string; icon: typeof CreditCard }[] = [
+  { id: "fees", label: "Registration Fees", icon: CreditCard },
+  { id: "codes", label: "District Codes", icon: MapPin },
+  { id: "zones", label: "Zone Names", icon: MapIcon },
+];
 
 export default function ConfigurationPage() {
   const [settings, setSettings] = useState({
@@ -29,6 +40,7 @@ export default function ConfigurationPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [tab, setTab] = useState<ConfigTab>("fees");
 
   useEffect(() => {
     fetchSettings();
@@ -87,15 +99,36 @@ export default function ConfigurationPage() {
 
   const feeItems = [
     { key: "playerFee", label: "Player Registration Fee", icon: User },
-    { key: "coachFee", label: "Coach/Referee Registration Fee", icon: BadgeCheck },
-    { key: "memberFee", label: "Member Registration Fee", icon: Users },
+    { key: "coachFee", label: "Coach Registration Fee", icon: BadgeCheck },
+    { key: "memberFee", label: "Administrative Member Registration Fee", icon: Users },
     { key: "clubFee", label: "Club Registration Fee", icon: Building2 },
   ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      <div role="tablist" aria-label="Configuration sections" className="flex bg-white p-1 rounded-2xl border border-slate-200 overflow-x-auto">
+        {CONFIG_TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+              tab === id ? "bg-[#FF7400] text-white shadow-lg shadow-orange-500/20" : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <Icon size={18} />
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <motion.div 
+      {tab === "codes" && <DistrictCodes />}
+      {tab === "zones" && <ZoneNames />}
+
+      {tab === "fees" && (
+      <>
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200"
@@ -180,8 +213,8 @@ export default function ConfigurationPage() {
           </div>
         </div>
       </div>
-
-      <DistrictCodes />
+      </>
+      )}
     </div>
   );
 }
@@ -191,6 +224,7 @@ interface District {
   name: string;
   code: string | null;
   playerIdSeq: number;
+  zoneName: string | null;
 }
 
 /** Next player ID a district will issue: CBE-A-001 … CBE-A-999, then CBE-B-001. */
@@ -310,6 +344,202 @@ function DistrictCodes() {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const NEW_ZONE = "__new__";
+
+/** Zones are named groups of districts; zone officers and zonal events/tournaments follow them. */
+function ZoneNames() {
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
+  const [newZoneFor, setNewZoneFor] = useState<{ districtId: string; name: string } | null>(null);
+
+  const load = () =>
+    fetch(`${API_BASE}/districts`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load districts");
+        setDistricts(data);
+      })
+      .catch((err) => setMessage({ text: err.message, type: "error" }))
+      .finally(() => setLoading(false));
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const call = async (key: string, path: string, body: object) => {
+    setBusy(key);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+      setMessage({ text: data.message, type: "success" });
+      await load();
+      return true;
+    } catch (err) {
+      setMessage({ text: err instanceof Error ? err.message : "Failed to save", type: "error" });
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const moveDistrict = async (d: District, zoneName: string) => {
+    if (zoneName === NEW_ZONE) return setNewZoneFor({ districtId: d.id, name: "" });
+    if (!confirm(`Move ${d.name} to ${zoneName}? Its zone officers and zonal events/tournaments will follow the new zone.`)) return;
+    await call(d.id, `/admin/districts/${d.id}/zone`, { zoneName });
+  };
+
+  const zones = Array.from(new Set(districts.map((d) => d.zoneName).filter(Boolean) as string[])).sort();
+  const groups = [
+    ...zones.map((zone) => ({ zone, list: districts.filter((d) => d.zoneName === zone) })),
+    { zone: null as string | null, list: districts.filter((d) => !d.zoneName) },
+  ].filter((g) => g.list.length > 0);
+
+  return (
+    <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-sm border border-slate-200">
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
+        <div className="p-2 bg-[#FF7400]/10 text-[#FF7400] rounded-lg">
+          <MapIcon size={20} />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Zone Names</h2>
+          <p className="text-slate-500 text-sm">
+            Rename a zone, or move a district to another zone. Renaming also updates that zone&apos;s events and tournaments. Only Super Admin and CEO can change zones.
+          </p>
+        </div>
+      </div>
+
+      {message && (
+        <div className={`mb-4 p-3 rounded-xl text-sm font-medium border ${message.type === "success" ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-600 border-red-100"}`}>
+          {message.text}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-10 flex justify-center">
+          <Loader2 className="w-8 h-8 text-[#FF7400] animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {groups.map(({ zone, list }) => (
+            <section key={zone ?? "none"} className="rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-b border-slate-200">
+                {zone && renaming?.from === zone ? (
+                  <form
+                    className="flex flex-wrap items-center gap-2 w-full"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (await call(`zone:${zone}`, "/admin/zones/rename", { from: zone, to: renaming.to })) setRenaming(null);
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      value={renaming.to}
+                      onChange={(e) => setRenaming({ from: zone, to: e.target.value })}
+                      aria-label={`New name for ${zone}`}
+                      maxLength={40}
+                      className="flex-1 min-w-[160px] px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:outline-none focus:border-[#FF7400]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy === `zone:${zone}` || renaming.to.trim().length < 2 || renaming.to.trim() === zone}
+                      className="px-4 py-2 bg-[#FF7400] text-white rounded-lg text-sm font-bold disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {busy === `zone:${zone}` ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      Rename
+                    </button>
+                    <button type="button" onClick={() => setRenaming(null)} aria-label="Cancel rename" className="p-2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X size={16} />
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <p className="font-bold text-slate-800">
+                      {zone ?? <span className="text-amber-600">No zone</span>}
+                      <span className="ml-2 text-xs font-medium text-slate-400">{list.length} district{list.length === 1 ? "" : "s"}</span>
+                    </p>
+                    {zone && (
+                      <button
+                        onClick={() => setRenaming({ from: zone, to: zone })}
+                        className="flex items-center gap-1.5 text-sm font-bold text-[#FF7400] hover:text-orange-600 cursor-pointer"
+                      >
+                        <Pencil size={14} /> Rename zone
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {list.map((d) => (
+                  <div key={d.id} className="px-4 py-3 flex flex-wrap items-center gap-3">
+                    <p className="flex-1 min-w-[140px] font-semibold text-slate-700">{d.name}</p>
+                    {newZoneFor?.districtId === d.id ? (
+                      <form
+                        className="flex flex-wrap items-center gap-2"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (await call(d.id, `/admin/districts/${d.id}/zone`, { zoneName: newZoneFor.name })) setNewZoneFor(null);
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={newZoneFor.name}
+                          onChange={(e) => setNewZoneFor({ districtId: d.id, name: e.target.value })}
+                          placeholder="New zone name"
+                          aria-label={`New zone for ${d.name}`}
+                          maxLength={40}
+                          className="w-44 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:border-[#FF7400]"
+                        />
+                        <button
+                          type="submit"
+                          disabled={busy === d.id || newZoneFor.name.trim().length < 2}
+                          className="px-3 py-2 bg-[#FF7400] text-white rounded-lg text-sm font-bold disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          {busy === d.id ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                          Save
+                        </button>
+                        <button type="button" onClick={() => setNewZoneFor(null)} aria-label="Cancel" className="p-2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                          <X size={16} />
+                        </button>
+                      </form>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {busy === d.id && <Loader2 size={14} className="animate-spin text-[#FF7400]" />}
+                        <select
+                          value={d.zoneName ?? ""}
+                          disabled={busy === d.id}
+                          onChange={(e) => moveDistrict(d, e.target.value)}
+                          aria-label={`Zone for ${d.name}`}
+                          className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-[#FF7400] cursor-pointer"
+                        >
+                          {!d.zoneName && <option value="">Select zone…</option>}
+                          {zones.map((z) => (
+                            <option key={z} value={z}>{z}</option>
+                          ))}
+                          <option value={NEW_ZONE}>+ New zone…</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>

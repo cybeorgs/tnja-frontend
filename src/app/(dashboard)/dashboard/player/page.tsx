@@ -586,7 +586,7 @@ export default function PlayerDashboard() {
             <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider w-fit mx-auto md:mx-0 ${
               playerData.permanentId ? "bg-green-100 text-green-600" : "bg-orange-100 text-[#FF7400]"
             }`}>
-              {playerData.permanentId ? "Active Member" : "Application Approved"}
+              {playerData.permanentId ? "Active Administrative Member" : "Application Approved"}
             </span>
           </div>
           <p className="text-gray-500 font-medium">
@@ -1145,7 +1145,7 @@ export default function PlayerDashboard() {
                 {playerData.permanentId ? <ShieldCheck size={20} /> : <Loader2 size={20} className="animate-spin" />}
               </div>
               <p className="text-sm font-bold text-gray-700">
-                {playerData.permanentId ? "Verified Member" : "Verification Pending"}
+                {playerData.permanentId ? "Verified Administrative Member" : "Verification Pending"}
               </p>
             </div>
             <p className="text-[13px] text-gray-500 leading-relaxed">

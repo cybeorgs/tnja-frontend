@@ -838,9 +838,9 @@ const CoachRegistrationForm = () => {
                   onChange={handleInputChange}
                 />
                 <InputField 
-                  label="Referee Grading " 
+                  label="Coach Grading" 
                   name="refereeName" 
-                  placeholder="Referee Name" 
+                  placeholder="Coach Grading" 
                   value={formData.refereeName}
                   onChange={handleInputChange}
                 />

@@ -148,7 +148,7 @@ function TrackPageContent() {
   const [newBplProof, setNewBplProof] = useState("");
 
   const role = result?.role || "";
-  const idLabel = ID_LABEL[role] || "Member ID";
+  const idLabel = ID_LABEL[role] || "Administrative Member ID";
   const bplExempt = role === "PLAYER" && !!result?.isBPL && !!result?.bplProof;
   const needsPayment = !!result && result.status === "APPROVED" && !result.permanentId && !bplExempt;
 

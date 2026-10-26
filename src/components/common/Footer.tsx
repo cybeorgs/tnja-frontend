@@ -90,7 +90,7 @@ const Footer = () => {
             <div className="flex flex-col">
               {[
                 "Home", "Latest News", "Upcoming Events", "Courses", 
-                "Gallery", "Members", "Committee", "Terms of Services", "Privacy Policy"
+                "Gallery", "Administrative Members", "Committee", "Terms of Services", "Privacy Policy"
               ].map((item, index) => (
                 <Link 
                   key={item} 

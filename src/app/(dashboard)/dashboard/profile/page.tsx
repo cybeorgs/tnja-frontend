@@ -62,7 +62,8 @@ export default function ProfilePage() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not load your profile");
-        setRole(data.role || data.user?.role || localStorage.getItem("userRole") || "");
+        // A coach in their office view still has a coach profile.
+        setRole((data.accountType === "COACH" ? "COACH" : data.role) || data.user?.role || localStorage.getItem("userRole") || "");
         setProfile(data.user);
       })
       .catch((err) => setError(err.message || "Could not load your profile"))
@@ -138,6 +139,9 @@ export default function ProfilePage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-black text-slate-900 truncate">{name}</h1>
             <span className="px-2 py-0.5 rounded bg-[#FF7400] text-white text-[11px] font-black uppercase tracking-wide">{roleLabel(role || "User")}</span>
+            {profile.officeRole && (
+              <span className="px-2 py-0.5 rounded bg-slate-900 text-[#FFDA00] text-[11px] font-black uppercase tracking-wide">{roleLabel(profile.officeRole)}</span>
+            )}
             {profile.status && !isSuperAdmin && (
               <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-bold uppercase">{profile.status.replace(/_/g, " ")}</span>
             )}

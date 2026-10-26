@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import EventBannerField from "@/components/common/EventBannerField";
+import MapLinkField, { MapLink } from "@/components/common/MapLinkField";
+import ParticipantTypesPicker, { eventParticipantTypes, participantTypesLabel } from "@/components/common/ParticipantTypesPicker";
+import EventScheduleFields, { EVENT_GENDER_OPTIONS, eventDateRangeLabel, eventGenderLabel } from "@/components/common/EventScheduleFields";
 import {
   Calendar,
   Plus,
@@ -33,11 +37,12 @@ const STATUS_STYLE: Record<string, { label: string; text: string; icon: React.Re
 };
 
 const LEVEL_LABEL: Record<string, string> = { CLUB: "Club", DISTRICT: "District", ZONE: "Zone", STATE: "State", NATIONAL: "National" };
-const PARTICIPANT_LABEL: Record<string, string> = { PLAYER: "Players", STUDENT: "Players", COACH: "Coaches", MEMBER: "Members", CLUB: "Clubs", OFFICIAL: "Officials" };
 
 export default function EventsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [filter, setFilter] = useState("ALL");
+  const [zoneFilter, setZoneFilter] = useState("ALL");
+  const [districtFilter, setDistrictFilter] = useState("ALL");
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -54,22 +59,13 @@ export default function EventsPage() {
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
   const [editSubmitLoading, setEditSubmitLoading] = useState(false);
 
-  const EVENT_COLORS = [
-    { label: "Black", value: "#000000", gradient: "from-black via-zinc-800 to-zinc-600" },
-    { label: "Orange", value: "#FF7400", gradient: "from-orange-900 via-orange-600 to-[#FF7400]" },
-    { label: "Indigo", value: "#4F46E5", gradient: "from-indigo-900 via-purple-700 to-[#FF7400]" },
-    { label: "Green", value: "#16A34A", gradient: "from-green-900 via-emerald-700 to-emerald-400" },
-    { label: "Red", value: "#DC2626", gradient: "from-red-900 via-red-700 to-rose-400" },
-    { label: "Blue", value: "#2563EB", gradient: "from-blue-900 via-blue-700 to-sky-400" },
-  ];
-
   const [formData, setFormData] = useState({
     title: "",
     date: "",
     location: "",
     description: "",
     level: "DISTRICT",
-    participantType: "ALL",
+    participantTypes: ["ALL"] as string[],
     districtId: "",
     zoneId: "",
     isPaid: false,
@@ -77,6 +73,9 @@ export default function EventsPage() {
     color: "#FF7400",
     eventSection: "",
     meetingLink: "",
+    bannerImage: "", mapLink: "",
+    endDate: "",
+    gender: "BOTH",
   });
 
   const getFilteredDistrictsForCreation = useCallback(() => {
@@ -84,32 +83,62 @@ export default function EventsPage() {
     const isAdmin = ["SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"].includes(userRole);
     if (isAdmin) return districts;
 
-    const userZone = userProfile.district?.zoneName;
+    const userZone = (userProfile.assignedDistrict ?? userProfile.district)?.zoneName;
     const isZoneAdmin = ["ZONE_PRESIDENT", "ZONE_SECRETARY"].includes(userRole);
 
     if (isZoneAdmin && userZone) {
       return districts.filter(d => d.zoneName === userZone);
     }
 
-    return districts.filter(d => d.id === userProfile.districtId);
+    return districts.filter(d => d.id === (userProfile.assignedDistrictId ?? userProfile.districtId));
   }, [districts, userProfile, userRole]);
 
   const getFilteredZonesForCreation = useCallback(() => {
-    const allZones = ["Chennai Zone", "Salem Zone", "Coimbatore Zone", "Trichy Zone", "Madurai Zone"];
+    // Zones come from the districts table (each district carries its zoneName).
+    const allZones = Array.from(new Set(districts.map((d) => d.zoneName).filter(Boolean))).sort() as string[];
     if (!userProfile) return allZones;
     const isAdmin = ["SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"].includes(userRole);
     if (isAdmin) return allZones;
 
-    const userZone = userProfile.district?.zoneName;
+    const userZone = (userProfile.assignedDistrict ?? userProfile.district)?.zoneName;
     if (userZone) return [userZone];
     return [];
-  }, [userProfile, userRole]);
+  }, [userProfile, userRole, districts]);
 
   const [toast, setToast] = useState<{ msg: string, type: "success" | "error" } | null>(null);
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  // Approve / reject a pending event. The backend enforces scope: district officers
+  // their district's events, zone officers their zone's events, state roles any.
+  const [decidingEventId, setDecidingEventId] = useState<string | null>(null);
+  const handleEventDecision = async (event: any, status: "APPROVED" | "REJECTED", e: React.MouseEvent) => {
+    e.stopPropagation();
+    let remark = "";
+    if (status === "REJECTED") {
+      remark = (window.prompt(`Reason for rejecting "${event.title}"?`) || "").trim();
+      if (!remark) return;
+    }
+    setDecidingEventId(event.id);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/application/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: event.id, type: "event", status, remark }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not update the event");
+      showToast(json.message || `Event ${status.toLowerCase()}`, "success");
+      fetchEvents();
+    } catch (err: any) {
+      showToast(err.message || "Something went wrong", "error");
+    } finally {
+      setDecidingEventId(null);
+    }
   };
 
   const fetchEvents = useCallback(async () => {
@@ -221,7 +250,7 @@ export default function EventsPage() {
       showToast("Event created and submitted for approval!", "success");
       setIsCreateModalOpen(false);
       setFormData({
-        title: "", date: "", location: "", description: "", level: "DISTRICT", participantType: "ALL", districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "",
+        title: "", date: "", location: "", description: "", level: "DISTRICT", participantTypes: ["ALL"], districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "", bannerImage: "", mapLink: "", endDate: "", gender: "BOTH",
       });
       fetchEvents();
     } catch (err: any) {
@@ -237,10 +266,12 @@ export default function EventsPage() {
     setFormData({
       title: event.title || "",
       date: event.date ? new Date(event.date).toISOString().split('T')[0] : "",
+      endDate: (event.endDate || event.date) ? new Date(event.endDate || event.date).toISOString().split("T")[0] : "",
+      gender: event.gender || "BOTH",
       location: event.location || "",
       description: event.description || "",
       level: event.level || "DISTRICT",
-      participantType: event.participantType || "ALL",
+      participantTypes: eventParticipantTypes(event),
       districtId: event.districtId || "",
       zoneId: event.zoneId || "",
       isPaid: event.isPaid || false,
@@ -248,6 +279,7 @@ export default function EventsPage() {
       color: event.color || "#FF7400",
       eventSection: event.eventSection || "",
       meetingLink: event.meetingLink || "",
+      bannerImage: event.bannerImage || "", mapLink: event.mapLink || "",
     });
     setIsEditModalOpen(true);
   };
@@ -273,7 +305,7 @@ export default function EventsPage() {
       setIsEditModalOpen(false);
       setEditingEvent(null);
       setFormData({
-        title: "", date: "", location: "", description: "", level: "DISTRICT", participantType: "ALL", districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: ""
+        title: "", date: "", location: "", description: "", level: "DISTRICT", participantTypes: ["ALL"], districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "", bannerImage: "", mapLink: "", endDate: "", gender: "BOTH"
       });
       fetchEvents();
     } catch (err: any) {
@@ -283,18 +315,29 @@ export default function EventsPage() {
     }
   };
 
+  // Zone / district filter options follow the user's own scope (all for state roles).
+  const zoneOptions = getFilteredZonesForCreation();
+  const districtOptions = getFilteredDistrictsForCreation()
+    .filter((d: any) => zoneFilter === "ALL" || d.zoneName === zoneFilter)
+    .sort((a: any, b: any) => a.name.localeCompare(b.name));
+  // A zone event carries its zone in zoneId; a district event gets its zone from its district.
+  const eventZone = (ev: any) =>
+    ev.level === "ZONE" ? ev.zoneId : districts.find((d) => d.id === ev.districtId)?.zoneName;
+
   const query = searchQuery.trim().toLowerCase();
   const filteredEvents = events.filter(ev => {
     if (filter !== "ALL" && ev.status !== filter) return false;
+    if (zoneFilter !== "ALL" && eventZone(ev) !== zoneFilter) return false;
+    if (districtFilter !== "ALL" && ev.districtId !== districtFilter) return false;
     if (query && !`${ev.title} ${ev.location ?? ""}`.toLowerCase().includes(query)) return false;
     return true;
   });
   const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
   const upcomingEvents = filteredEvents
-    .filter(ev => new Date(ev.date).getTime() >= startOfToday)
+    .filter(ev => new Date(ev.endDate || ev.date).getTime() >= startOfToday)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const pastEvents = filteredEvents
-    .filter(ev => new Date(ev.date).getTime() < startOfToday)
+    .filter(ev => new Date(ev.endDate || ev.date).getTime() < startOfToday)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
@@ -316,8 +359,8 @@ export default function EventsPage() {
       </AnimatePresence>
 
       {/* Toolbar: status tabs (with counts), search, create */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-lg w-fit" role="tablist" aria-label="Filter events by status">
+      <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+        <div className="flex shrink-0 gap-1 p-1 bg-white border border-slate-200 rounded-lg w-fit max-w-full overflow-x-auto" role="tablist" aria-label="Filter events by status">
           {STATUS_TABS.map((tab) => {
             const active = filter === tab.id;
             const count = tab.id === "ALL" ? events.length : events.filter((e) => e.status === tab.id).length;
@@ -327,9 +370,8 @@ export default function EventsPage() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setFilter(tab.id)}
-                className={`relative inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-bold transition-colors duration-300 ${
-                  active ? "text-white" : "text-slate-500 hover:text-slate-800"
-                }`}
+                className={`relative inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-bold transition-colors duration-300 ${active ? "text-white" : "text-slate-500 hover:text-slate-800"
+                  }`}
               >
                 {active && (
                   <motion.span
@@ -345,8 +387,42 @@ export default function EventsPage() {
           })}
         </div>
 
-        <div className="flex gap-3 lg:ml-auto">
-          <div className="relative flex-1 lg:w-72">
+        <div className="flex flex-wrap items-center gap-3 xl:ml-auto">
+          {zoneOptions.length > 1 && (
+            <div className="relative">
+              <select
+                value={zoneFilter}
+                onChange={(e) => { setZoneFilter(e.target.value); setDistrictFilter("ALL"); }}
+                aria-label="Zone"
+                className={`appearance-none pl-3 pr-9 py-2.5 bg-white border rounded-lg text-sm font-bold focus:outline-none focus:border-[#FF7400] cursor-pointer ${zoneFilter === "ALL" ? "border-slate-200 text-slate-600" : "border-orange-200 text-[#FF7400] bg-orange-50"
+                  }`}
+              >
+                <option value="ALL">All zones</option>
+                {zoneOptions.map((z) => (
+                  <option key={z} value={z}>{z}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+          {districtOptions.length > 1 && (
+            <div className="relative">
+              <select
+                value={districtFilter}
+                onChange={(e) => setDistrictFilter(e.target.value)}
+                aria-label="District"
+                className={`appearance-none pl-3 pr-9 py-2.5 bg-white border rounded-lg text-sm font-bold focus:outline-none focus:border-[#FF7400] cursor-pointer ${districtFilter === "ALL" ? "border-slate-200 text-slate-600" : "border-orange-200 text-[#FF7400] bg-orange-50"
+                  }`}
+              >
+                <option value="ALL">All districts</option>
+                {districtOptions.map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+          <div className="relative flex-1 min-w-48 xl:flex-none xl:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
@@ -410,7 +486,12 @@ export default function EventsPage() {
                       onClick={() => setSelectedEvent(event)}
                       className={`group relative bg-white border border-slate-200 rounded-lg overflow-hidden cursor-pointer hover:border-[#FF7400] hover:shadow-md transition-all ${isPast ? "opacity-75" : ""}`}
                     >
-                      <div className="h-1" style={{ background: event.color || "#FF7400" }} />
+                      {event.bannerImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={event.bannerImage} alt="" className="w-full aspect-[2/1] object-cover" />
+                      ) : (
+                        <div className="h-1" style={{ background: event.color || "#FF7400" }} />
+                      )}
                       <div className="p-4 flex gap-4">
                         {/* Date badge */}
                         <div className="w-14 shrink-0 text-center border border-slate-200 rounded-lg overflow-hidden h-fit">
@@ -440,9 +521,9 @@ export default function EventsPage() {
                             <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-bold">
                               {LEVEL_LABEL[event.level] ?? event.level}{event.district?.name ? ` · ${event.district.name}` : ""}
                             </span>
-                            {event.participantType && event.participantType !== "ALL" && (
+                            {!eventParticipantTypes(event).includes("ALL") && (
                               <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-bold">
-                                {PARTICIPANT_LABEL[event.participantType] ?? event.participantType}
+                                {participantTypesLabel(eventParticipantTypes(event))}
                               </span>
                             )}
                             {event.eventSection && (
@@ -461,6 +542,24 @@ export default function EventsPage() {
                           {st.icon}
                           {event.status === "APPROVED" && event.approvedBy ? `Approved by ${event.approvedBy}` : st.label}
                         </span>
+                        {event.status === "PENDING" && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => handleEventDecision(event, "APPROVED", e)}
+                              disabled={decidingEventId === event.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-md disabled:opacity-50"
+                            >
+                              {decidingEventId === event.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Approve
+                            </button>
+                            <button
+                              onClick={(e) => handleEventDecision(event, "REJECTED", e)}
+                              disabled={decidingEventId === event.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-bold rounded-md disabled:opacity-50"
+                            >
+                              <XCircle size={12} /> Reject
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -555,8 +654,8 @@ export default function EventsPage() {
                   {formData.eventSection === "Seminar (Online)" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Meeting Link</label>
-                      <input 
-                        type="url" 
+                      <input
+                        type="url"
                         required
                         value={formData.meetingLink}
                         onChange={e => setFormData({ ...formData, meetingLink: e.target.value })}
@@ -578,20 +677,20 @@ export default function EventsPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Date</label>
-                    <input
-                      type="date"
-                      required
-                      min={new Date().toISOString().split('T')[0]}
-                      value={formData.date}
-                      onChange={e => setFormData({ ...formData, date: e.target.value })}
-                      className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800"
-                    />
+                  <div className="md:col-span-2">
+                    <EventBannerField value={formData.bannerImage} onChange={(url) => setFormData(f => ({ ...f, bannerImage: url }))} />
                   </div>
 
+                  <EventScheduleFields
+                      date={formData.date}
+                      endDate={formData.endDate}
+                      onChange={({ date, endDate }) => setFormData(f => ({ ...f, date, endDate }))}
+                      labelClassName="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2"
+                      inputClassName="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800"
+                    />
+
                   <div>
-                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Location</label>
+                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Venue</label>
                     <input
                       type="text"
                       required
@@ -600,6 +699,7 @@ export default function EventsPage() {
                       placeholder="e.g. Nehru Stadium"
                       className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800"
                     />
+                    <MapLinkField value={formData.mapLink} onChange={(url) => setFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800" />
                   </div>
 
                   <div className="md:col-span-1">
@@ -615,19 +715,20 @@ export default function EventsPage() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Target Audience</label>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Gender</label>
                     <select
-                      value={formData.participantType}
-                      onChange={e => setFormData({ ...formData, participantType: e.target.value })}
+                      value={formData.gender}
+                      onChange={e => setFormData({ ...formData, gender: e.target.value })}
                       className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800 font-semibold"
                     >
-                      <option value="ALL">Everyone</option>
-                      <option value="STUDENT">Players Only</option>
-                      <option value="COACH">Coaches/Referees Only</option>
-                      <option value="MEMBER">Members Only</option>
-                      <option value="CLUB">Clubs Only</option>
+                      {EVENT_GENDER_OPTIONS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Eligible Participants <span className="normal-case tracking-normal font-semibold text-slate-400">(choose one or more)</span></label>
+                    <ParticipantTypesPicker value={formData.participantTypes} onChange={(types) => setFormData(f => ({ ...f, participantTypes: types }))} />
                   </div>
 
                   <div className="md:col-span-1">
@@ -677,7 +778,7 @@ export default function EventsPage() {
                   {formData.level === "ZONE" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Select Zone</label>
-                      <select 
+                      <select
                         required
                         value={formData.zoneId}
                         onChange={e => setFormData({ ...formData, zoneId: e.target.value })}
@@ -690,34 +791,6 @@ export default function EventsPage() {
                       </select>
                     </div>
                   )}
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">Event Banner Color</label>
-                    <div className="flex gap-3 flex-wrap">
-                      {EVENT_COLORS.map((c) => (
-                        <button
-                          key={c.value}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, color: c.value })}
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 font-bold text-sm transition-all ${formData.color === c.value
-                            ? "border-[#FF7400] shadow-md scale-105"
-                            : "border-slate-200 hover:border-slate-300"
-                            }`}
-                        >
-                          <span
-                            className="w-5 h-5 rounded-full border border-white/30 shadow-sm shrink-0"
-                            style={{ background: c.value }}
-                          />
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-                    {/* Preview */}
-                    <div
-                      className="mt-3 h-12 rounded-xl overflow-hidden"
-                      style={{ background: `linear-gradient(135deg, ${formData.color}dd, ${formData.color}88, ${formData.color}44)` }}
-                    />
-                  </div>
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Description</label>
@@ -829,8 +902,8 @@ export default function EventsPage() {
                   {formData.eventSection === "Seminar (Online)" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Meeting Link</label>
-                      <input 
-                        type="url" 
+                      <input
+                        type="url"
                         required
                         value={formData.meetingLink}
                         onChange={e => setFormData({ ...formData, meetingLink: e.target.value })}
@@ -852,20 +925,20 @@ export default function EventsPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Date</label>
-                    <input
-                      type="date"
-                      required
-                      min={new Date().toISOString().split('T')[0]}
-                      value={formData.date}
-                      onChange={e => setFormData({ ...formData, date: e.target.value })}
-                      className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800"
-                    />
+                  <div className="md:col-span-2">
+                    <EventBannerField value={formData.bannerImage} onChange={(url) => setFormData(f => ({ ...f, bannerImage: url }))} />
                   </div>
 
+                  <EventScheduleFields
+                      date={formData.date}
+                      endDate={formData.endDate}
+                      onChange={({ date, endDate }) => setFormData(f => ({ ...f, date, endDate }))}
+                      labelClassName="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2"
+                      inputClassName="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800"
+                    />
+
                   <div>
-                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Location</label>
+                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Venue</label>
                     <input
                       type="text"
                       required
@@ -874,6 +947,7 @@ export default function EventsPage() {
                       placeholder="e.g. Nehru Stadium"
                       className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800"
                     />
+                    <MapLinkField value={formData.mapLink} onChange={(url) => setFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all text-slate-800" />
                   </div>
 
                   <div className="md:col-span-1">
@@ -889,19 +963,20 @@ export default function EventsPage() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Target Audience</label>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Gender</label>
                     <select
-                      value={formData.participantType}
-                      onChange={e => setFormData({ ...formData, participantType: e.target.value })}
+                      value={formData.gender}
+                      onChange={e => setFormData({ ...formData, gender: e.target.value })}
                       className="w-full px-6 py-4 bg-white border-2 border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 focus:border-[#FF7400] transition-all font-semibold text-slate-800"
                     >
-                      <option value="ALL">Everyone</option>
-                      <option value="STUDENT">Players Only</option>
-                      <option value="COACH">Coaches/Referees Only</option>
-                      <option value="MEMBER">Members Only</option>
-                      <option value="CLUB">Clubs Only</option>
+                      {EVENT_GENDER_OPTIONS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-bold text-slate-600 uppercase tracking-widest mb-2">Eligible Participants <span className="normal-case tracking-normal font-semibold text-slate-400">(choose one or more)</span></label>
+                    <ParticipantTypesPicker value={formData.participantTypes} onChange={(types) => setFormData(f => ({ ...f, participantTypes: types }))} />
                   </div>
 
                   <div className="md:col-span-1">
@@ -1044,7 +1119,7 @@ export default function EventsPage() {
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
-                    <p className="text-sm font-bold text-slate-700">{new Date(selectedEvent.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    <p className="text-sm font-bold text-slate-700">{eventDateRangeLabel(selectedEvent.date, selectedEvent.endDate)}</p>
                   </div>
                 </div>
 
@@ -1053,8 +1128,9 @@ export default function EventsPage() {
                     <MapPin size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location / Venue</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Venue</p>
                     <p className="text-sm font-bold text-slate-700">{selectedEvent.location}</p>
+                    <MapLink href={selectedEvent.mapLink} className="mt-0.5" />
                   </div>
                 </div>
 
@@ -1063,8 +1139,9 @@ export default function EventsPage() {
                     <User size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Target Audience</p>
-                    <p className="text-sm font-bold text-slate-700">{selectedEvent.participantType === "ALL" ? "Everyone" : `${selectedEvent.participantType}s Only`}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Eligible Participants</p>
+                    <p className="text-sm font-bold text-slate-700">{participantTypesLabel(eventParticipantTypes(selectedEvent))}</p>
+                    <p className="text-xs font-semibold text-slate-500 mt-0.5">Gender: {eventGenderLabel(selectedEvent.gender)}</p>
                   </div>
                 </div>
 

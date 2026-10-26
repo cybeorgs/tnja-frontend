@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   IndianRupee,
   Receipt,
@@ -76,7 +77,7 @@ const PURPOSES: { id: Purpose; label: string }[] = [
 ];
 
 const PURPOSE_LABEL: Record<string, string> = { REGISTRATION: "Registration fees", TOURNAMENT: "Tournament entries", EVENT: "Event entries" };
-const TYPE_LABEL: Record<string, string> = { PLAYER: "Players", COACH: "Coaches / Referees", MEMBER: "Members", CLUB: "Clubs" };
+const TYPE_LABEL: Record<string, string> = { PLAYER: "Players", COACH: "Coaches", MEMBER: "Administrative Members", CLUB: "Clubs" };
 
 const STATUS_STYLE: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   CAPTURED: { label: "Successful", className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <CheckCircle2 size={13} /> },
@@ -122,15 +123,38 @@ function buildQuery(params: Record<string, string | number | undefined>) {
   return qs.toString();
 }
 
+// useSearchParams needs a Suspense boundary for the production build.
 export default function PaymentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaymentsReport />
+    </Suspense>
+  );
+}
+
+function PaymentsReport() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // The category lives in the URL (?purpose=EVENT) so the sidebar's Event / Tournament links open the report pre-filtered.
+  const purposeParam = searchParams.get("purpose");
+  const purpose: Purpose = PURPOSES.some((p) => p.id === purposeParam) ? (purposeParam as Purpose) : "ALL";
+  const setPurpose = (value: Purpose) =>
+    router.replace(value === "ALL" ? pathname : `${pathname}?purpose=${value}`, { scroll: false });
+
   const [preset, setPreset] = useState<Preset>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [purpose, setPurpose] = useState<Purpose>("ALL");
   const [status, setStatus] = useState<StatusFilter>("ALL");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  // A sidebar link changes the category without going through changeFilter, so reset paging here too.
+  const [pagedPurpose, setPagedPurpose] = useState(purpose);
+  if (pagedPurpose !== purpose) {
+    setPagedPurpose(purpose);
+    setPage(1);
+  }
   const [reloadTick, setReloadTick] = useState(0);
   const [result, setResult] = useState<{ key: string; report?: Report; error?: string } | null>(null);
   const [exporting, setExporting] = useState(false);

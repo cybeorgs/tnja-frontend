@@ -62,6 +62,9 @@ export default function LoginPage() {
       localStorage.setItem("userName", data.user.fullName);
       localStorage.setItem("userStatus", data.user.status || "APPROVED");
       localStorage.setItem("userEmail", data.user.email);
+      // A coach who also holds an office can switch to the office dashboard from the sidebar.
+      if (data.user.officeRole) localStorage.setItem("officeRole", data.user.officeRole);
+      else localStorage.removeItem("officeRole");
 
       // Remember Me Logic
       if (rememberMe) {

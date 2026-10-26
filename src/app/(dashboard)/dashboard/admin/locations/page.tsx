@@ -76,7 +76,7 @@ export default function LocationsPage() {
                     <tr>
                       <th className="px-8 py-5 text-sm font-bold text-slate-400 uppercase tracking-wider">Taluk Name</th>
                       <th className="px-8 py-5 text-sm font-bold text-slate-400 uppercase tracking-wider text-center">Clubs</th>
-                      <th className="px-8 py-5 text-sm font-bold text-slate-400 uppercase tracking-wider text-center">Members</th>
+                      <th className="px-8 py-5 text-sm font-bold text-slate-400 uppercase tracking-wider text-center">Administrative Members</th>
                       <th className="px-8 py-5 text-sm font-bold text-slate-400 uppercase tracking-wider text-center">Players</th>
                       <th className="px-8 py-5 text-sm font-bold text-slate-400 uppercase tracking-wider text-right">Action</th>
                     </tr>

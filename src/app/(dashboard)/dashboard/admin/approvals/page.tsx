@@ -76,7 +76,7 @@ function resolveApplication(raw: any, type: ApprovalType): Application {
       break;
     case "MEMBER":
       name = raw.fullName;
-      subtitle = raw.employmentType || "Member";
+      subtitle = raw.employmentType || "Administrative Member";
       location = raw.district?.name || raw.city || "—";
       break;
     case "EVENT":
@@ -107,7 +107,9 @@ function ApprovalsContent() {
   type RejectMode = "REJECTED" | "BPL_REJECTED";
 
   const searchParams = useSearchParams();
-  const initialTab = (searchParams?.get("type") as ApprovalType) || "CLUB";
+  // Events are approved from their own page, so this screen only covers people and clubs.
+  const typeParam = searchParams?.get("type") as ApprovalType | null;
+  const initialTab: ApprovalType = typeParam && typeParam !== "EVENT" ? typeParam : "STUDENT";
 
   const [activeTab, setActiveTab] = useState<ApprovalType>(initialTab);
   const [activeStatus, setActiveStatus] = useState<StatusType>("PENDING");
@@ -118,16 +120,17 @@ function ApprovalsContent() {
   const [selectedItem, setSelectedItem] = useState<Application | null>(null);
   const [remark, setRemark] = useState("");
   const [applications, setApplications] = useState<Application[]>([]);
+  const [districts, setDistricts] = useState<{ id: string; name: string }[]>([]);
+  const [districtFilter, setDistrictFilter] = useState<string>("ALL");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const tabs: { id: ApprovalType; label: string; icon: React.ComponentType<any> }[] = [
-    { id: "CLUB", label: "Clubs", icon: Shield },
     { id: "STUDENT", label: "Players", icon: Users },
     { id: "COACH", label: "Coaches", icon: UserCheck },
-    { id: "MEMBER", label: "Members", icon: Award },
-    { id: "EVENT", label: "Events", icon: Calendar },
+    { id: "MEMBER", label: "Administrative Members", icon: Award },
+    { id: "CLUB", label: "Clubs", icon: Shield },
   ];
 
   const statusTabs: { id: StatusType; label: string }[] = [
@@ -163,6 +166,22 @@ function ApprovalsContent() {
   useEffect(() => {
     fetchApplications();
   }, [fetchApplications]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/districts`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setDistricts(Array.isArray(data) ? data : []))
+      .catch(() => setDistricts([]));
+  }, []);
+
+  // District filter is applied client-side on the already-loaded list.
+  const selectedDistrict = districts.find((d) => d.id === districtFilter);
+  const visibleApplications = selectedDistrict
+    ? applications.filter((a) => {
+        const d = a.rawData?.district;
+        return (d?.id ?? a.rawData?.districtId) === selectedDistrict.id || d?.name === selectedDistrict.name;
+      })
+    : applications;
   const autoOpened = React.useRef(false);
   useEffect(() => {
     const id = searchParams?.get("id");
@@ -345,13 +364,31 @@ function ApprovalsContent() {
                 );
               })}
             </div>
-            <button
-              onClick={fetchApplications}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm shadow-sm"
-            >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <select
+                  value={districtFilter}
+                  onChange={(e) => setDistrictFilter(e.target.value)}
+                  aria-label="District"
+                  className={`appearance-none pl-4 pr-9 py-2.5 bg-white border rounded-xl text-sm font-semibold shadow-sm focus:outline-none focus:border-[#FF7400] cursor-pointer ${
+                    districtFilter === "ALL" ? "border-slate-200 text-slate-600" : "border-orange-200 text-[#FF7400] bg-orange-50"
+                  }`}
+                >
+                  <option value="ALL">All districts</option>
+                  {districts.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+              <button
+                onClick={fetchApplications}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm shadow-sm"
+              >
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                Refresh
+              </button>
+            </div>
           </div>
 
           {/* List Headers */}
@@ -368,18 +405,22 @@ function ApprovalsContent() {
               <Loader2 size={40} className="animate-spin text-[#FF7400]" />
               <p className="text-slate-400 font-medium">Fetching pending approvals...</p>
             </div>
-          ) : applications.length === 0 ? (
+          ) : visibleApplications.length === 0 ? (
             <div className="p-20 text-center flex flex-col items-center gap-4 bg-white rounded-[2px] border border-slate-100 shadow-sm">
               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2 text-slate-300">
                 <MessageSquare size={28} />
               </div>
-              <h3 className="text-lg font-bold text-slate-400">No pending applications</h3>
-              <p className="text-slate-400 text-sm mt-1">Check back later for new applications.</p>
+              <h3 className="text-lg font-bold text-slate-400">
+                {selectedDistrict ? `No applications from ${selectedDistrict.name}` : "No pending applications"}
+              </h3>
+              <p className="text-slate-400 text-sm mt-1">
+                {selectedDistrict ? "Try another district or choose All districts." : "Check back later for new applications."}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
               <AnimatePresence mode="popLayout">
-                {applications.map((item) => {
+                {visibleApplications.map((item) => {
                   const sc = statusConfig[item.status] || statusConfig["PENDING"];
                   return (
                     <motion.div
@@ -410,7 +451,7 @@ function ApprovalsContent() {
                                 <span className="shrink-0 text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-sm">BPL</span>
                               )}
                             </p>
-                            {item.subtitle && item.subtitle !== "No Club" && item.subtitle !== "Member" && item.subtitle !== "Coach" && (
+                            {item.subtitle && item.subtitle !== "No Club" && item.subtitle !== "Administrative Member" && item.subtitle !== "Coach" && (
                               <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subtitle}</p>
                             )}
                             {item.rawData?.rejectionRemark && (

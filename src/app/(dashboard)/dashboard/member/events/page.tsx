@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Calendar, 
-  Plus, 
-  MapPin, 
-  Clock, 
+import EventBannerField from "@/components/common/EventBannerField";
+import MapLinkField, { MapLink } from "@/components/common/MapLinkField";
+import ParticipantTypesPicker, { eventParticipantTypes, participantTypesLabel } from "@/components/common/ParticipantTypesPicker";
+import EventScheduleFields, { EVENT_GENDER_OPTIONS, eventDateRangeLabel, eventGenderLabel } from "@/components/common/EventScheduleFields";
+import {
+  Calendar,
+  Plus,
+  MapPin,
+  Clock,
   Search,
   CheckCircle2,
   XCircle,
@@ -31,7 +35,7 @@ export default function MemberEventsPage() {
   const [sectionOpen, setSectionOpen] = useState(false);
   const sectionRef = useRef<HTMLDivElement>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
-  
+
   const [activeSection, setActiveSection] = useState<"active" | "mine">("active");
   const [myEvents, setMyEvents] = useState<any[]>([]);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -44,7 +48,7 @@ export default function MemberEventsPage() {
     location: "",
     description: "",
     level: "DISTRICT",
-    participantType: "ALL",
+    participantTypes: ["ALL"] as string[],
     districtId: "",
     zoneId: "",
     isPaid: false,
@@ -52,6 +56,9 @@ export default function MemberEventsPage() {
     color: "#FF7400",
     eventSection: "",
     meetingLink: "",
+    bannerImage: "", mapLink: "",
+    endDate: "",
+    gender: "BOTH",
   });
 
   const getFilteredDistrictsForCreation = useCallback(() => {
@@ -70,7 +77,8 @@ export default function MemberEventsPage() {
   }, [districts, userProfile, userRole]);
 
   const getFilteredZonesForCreation = useCallback(() => {
-    const allZones = ["Chennai Zone", "Salem Zone", "Coimbatore Zone", "Trichy Zone", "Madurai Zone"];
+    // Zones come from the districts table (each district carries its zoneName).
+    const allZones = Array.from(new Set(districts.map((d) => d.zoneName).filter(Boolean))).sort() as string[];
     if (!userProfile) return allZones;
     const isAdmin = ["SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"].includes(userRole);
     if (isAdmin) return allZones;
@@ -78,9 +86,9 @@ export default function MemberEventsPage() {
     const userZone = userProfile.district?.zoneName;
     if (userZone) return [userZone];
     return [];
-  }, [userProfile, userRole]);
+  }, [userProfile, userRole, districts]);
 
-  const [toast, setToast] = useState<{msg: string, type: "success" | "error"} | null>(null);
+  const [toast, setToast] = useState<{ msg: string, type: "success" | "error" } | null>(null);
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -302,7 +310,7 @@ export default function MemberEventsPage() {
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to apply for event");
-        
+
         showToast("Successfully applied for this event!", "success");
         fetchEvents();
       }
@@ -326,11 +334,11 @@ export default function MemberEventsPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to propose event");
-      
+
       showToast("Event created and submitted for approval! It will appear here once approved.", "success");
       setIsCreateModalOpen(false);
       setFormData({
-        title: "", date: "", location: "", description: "", level: "DISTRICT", participantType: "ALL", districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: ""
+        title: "", date: "", location: "", description: "", level: "DISTRICT", participantTypes: ["ALL"], districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "", bannerImage: "", mapLink: "", endDate: "", gender: "BOTH"
       });
     } catch (err: any) {
       showToast(err.message || "Something went wrong", "error");
@@ -344,10 +352,12 @@ export default function MemberEventsPage() {
     setFormData({
       title: event.title || "",
       date: event.date ? new Date(event.date).toISOString().split('T')[0] : "",
+      endDate: (event.endDate || event.date) ? new Date(event.endDate || event.date).toISOString().split("T")[0] : "",
+      gender: event.gender || "BOTH",
       location: event.location || "",
       description: event.description || "",
       level: event.level || "DISTRICT",
-      participantType: event.participantType || "ALL",
+      participantTypes: eventParticipantTypes(event),
       districtId: event.districtId || "",
       zoneId: event.zoneId || "",
       isPaid: event.isPaid || false,
@@ -355,6 +365,7 @@ export default function MemberEventsPage() {
       color: event.color || "#FF7400",
       eventSection: event.eventSection || "",
       meetingLink: event.meetingLink || "",
+      bannerImage: event.bannerImage || "", mapLink: event.mapLink || "",
     });
     setIsEditModalOpen(true);
   };
@@ -375,12 +386,12 @@ export default function MemberEventsPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to update event");
-      
+
       showToast("Event updated successfully!", "success");
       setIsEditModalOpen(false);
       setEditingEvent(null);
       setFormData({
-        title: "", date: "", location: "", description: "", level: "DISTRICT", participantType: "ALL", districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: ""
+        title: "", date: "", location: "", description: "", level: "DISTRICT", participantTypes: ["ALL"], districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "", bannerImage: "", mapLink: "", endDate: "", gender: "BOTH"
       });
       fetchMyEvents();
       fetchEvents();
@@ -405,9 +416,8 @@ export default function MemberEventsPage() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className={`fixed top-6 right-6 z-200 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-bold text-sm ${
-              toast.type === "success" ? "bg-emerald-600" : "bg-red-600"
-            }`}
+            className={`fixed top-6 right-6 z-200 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-bold text-sm ${toast.type === "success" ? "bg-emerald-600" : "bg-red-600"
+              }`}
           >
             {toast.type === "success" ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
             {toast.msg}
@@ -418,9 +428,9 @@ export default function MemberEventsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
         {["CLUB", "SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "CEO"].includes(userRole) && (
-          <button 
+          <button
             onClick={() => {
-              setFormData({ title: "", date: "", location: "", description: "", level: "DISTRICT", participantType: "ALL", districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "" });
+              setFormData({ title: "", date: "", location: "", description: "", level: "DISTRICT", participantTypes: ["ALL"], districtId: "", zoneId: "", isPaid: false, entryFee: "", color: "#FF7400", eventSection: "", meetingLink: "", bannerImage: "", mapLink: "", endDate: "", gender: "BOTH" });
               setIsCreateModalOpen(true);
             }}
             className="flex items-center gap-2 px-6 py-4 bg-[#FF7400] text-white font-bold rounded-2xl shadow-lg shadow-[#FF7400]/20 hover:scale-105 active:scale-95 transition-all"
@@ -451,8 +461,8 @@ export default function MemberEventsPage() {
       {/* Filters & Search */}
       <div className="relative w-full max-w-md">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-        <input 
-          type="text" 
+        <input
+          type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search active events..."
@@ -463,189 +473,192 @@ export default function MemberEventsPage() {
       {/* Events List */}
       {activeSection === "active" && (
         <>
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 size={40} className="animate-spin text-[#FF7400]" />
-        </div>
-      ) : filteredEvents.length === 0 ? (
-        <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
-          <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-            <Calendar size={32} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-500">No Active Events</h3>
-          <p className="text-slate-400 text-sm mt-2">There are currently no upcoming approved events.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredEvents.map((event) => (
-            <motion.div 
-              key={event.id}
-              whileHover={{ y: -5 }}
-              onClick={() => setSelectedEvent(event)}
-              className="bg-white rounded-[2px] border border-slate-200 shadow-sm overflow-hidden flex flex-col group cursor-pointer"
-            >
-              <div className="h-32 bg-slate-100 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#FF7400]/20 to-[#FFDA00]/20 group-hover:opacity-100 transition-opacity"></div>
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold text-slate-800 shadow-sm flex items-center gap-2">
-                  <span>{event.level} LEVEL</span>
-                  <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
-                  <span className="text-[#FF7400]">{event.participantType}</span>
-                </div>
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 size={40} className="animate-spin text-[#FF7400]" />
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
+              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                <Calendar size={32} />
               </div>
-
-              <div className="p-8 -mt-10 relative flex-grow">
-                <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center text-[#FF7400] mb-6 border border-slate-50">
-                  <Calendar size={32} />
-                </div>
-
-                <h3 className="text-xl font-bold text-slate-800 mb-4 line-clamp-2 leading-tight">
-                  {event.title}
-                </h3>
-
-                <div className="space-y-3 mb-8">
-                  <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                    <Clock size={16} className="text-[#FF7400]" />
-                    {new Date(event.date).toLocaleDateString()}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                    <MapPin size={16} className="text-[#FF7400]" />
-                    {event.location}
-                  </div>
-                  {event.meetingLink && (
-                    <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                      <Video size={16} className="text-[#FF7400]" />
-                      <a
-                        href={event.meetingLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-orange-600 hover:text-orange-700 hover:underline font-bold transition-all"
-                      >
-                        Join Meeting
-                      </a>
+              <h3 className="text-lg font-bold text-slate-500">No Active Events</h3>
+              <p className="text-slate-400 text-sm mt-2">There are currently no upcoming approved events.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredEvents.map((event) => (
+                <motion.div
+                  key={event.id}
+                  whileHover={{ y: -5 }}
+                  onClick={() => setSelectedEvent(event)}
+                  className="bg-white rounded-[2px] border border-slate-200 shadow-sm overflow-hidden flex flex-col group cursor-pointer"
+                >
+                  <div className="h-32 bg-slate-100 relative overflow-hidden">
+                    {event.bannerImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={event.bannerImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#FF7400]/20 to-[#FFDA00]/20 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold text-slate-800 shadow-sm flex items-center gap-2">
+                      <span>{event.level} LEVEL</span>
+                      <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                      <span className="text-[#FF7400]">{participantTypesLabel(eventParticipantTypes(event))}</span>
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 text-sm text-slate-500 font-medium pt-1">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${event.isPaid ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
-                      {event.isPaid ? `Entry Fee: ₹${event.entryFee}` : 'Free Entry'}
-                    </span>
                   </div>
-                  {(event.district?.name || event.zoneId) && (
-                    <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mt-1">
-                      <div className="w-4 h-4 rounded-sm bg-slate-100 flex items-center justify-center">
-                        <MapPin size={10} className="text-slate-400" />
+
+                  <div className="p-8 -mt-10 relative flex-grow">
+                    <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center text-[#FF7400] mb-6 border border-slate-50">
+                      <Calendar size={32} />
+                    </div>
+
+                    <h3 className="text-xl font-bold text-slate-800 mb-4 line-clamp-2 leading-tight">
+                      {event.title}
+                    </h3>
+
+                    <div className="space-y-3 mb-8">
+                      <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                        <Clock size={16} className="text-[#FF7400]" />
+                        {new Date(event.date).toLocaleDateString()}
                       </div>
-                      <span className="text-xs">Region: {event.district?.name || event.zoneId}</span>
-                    </div>
-                  )}
-                  {event.approvedBy && (
-                    <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium mt-3 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
-                      <CheckCircle2 size={16} />
-                      <span className="text-xs">Approved by <strong>{event.approvedBy}</strong></span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6 flex gap-3 pt-6 border-t border-slate-100">
-                  {userRole !== "CLUB" && (
-                    (() => {
-                      const userReg = event.registrations?.[0];
-                      if (userReg) {
-                        const statusColors: Record<string, string> = {
-                          PENDING: "bg-amber-50 text-amber-700 border-amber-200",
-                          APPROVED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                          REJECTED: "bg-red-50 text-red-700 border-red-200",
-                        };
-                        const statusColor = statusColors[userReg.status] || "bg-slate-50 text-slate-700 border-slate-200";
-                        return (
-                          <div className={`w-full py-3 border text-center text-sm font-bold rounded-xl ${statusColor}`}>
-                            Applied 
+                      <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                        <MapPin size={16} className="text-[#FF7400]" />
+                        {event.location}
+                      </div>
+                      {event.meetingLink && (
+                        <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                          <Video size={16} className="text-[#FF7400]" />
+                          <a
+                            href={event.meetingLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-orange-600 hover:text-orange-700 hover:underline font-bold transition-all"
+                          >
+                            Join Meeting
+                          </a>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-sm text-slate-500 font-medium pt-1">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${event.isPaid ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                          {event.isPaid ? `Entry Fee: ₹${event.entryFee}` : 'Free Entry'}
+                        </span>
+                      </div>
+                      {(event.district?.name || event.zoneId) && (
+                        <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mt-1">
+                          <div className="w-4 h-4 rounded-sm bg-slate-100 flex items-center justify-center">
+                            <MapPin size={10} className="text-slate-400" />
                           </div>
-                        );
-                      }
-                      return (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleApply(event); }}
-                          className="w-full py-3 bg-[#FF7400] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                        >
-                          Apply Now
-                        </button>
-                      );
-                    })()
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
-      </>
+                          <span className="text-xs">Region: {event.district?.name || event.zoneId}</span>
+                        </div>
+                      )}
+                      {event.approvedBy && (
+                        <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium mt-3 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
+                          <CheckCircle2 size={16} />
+                          <span className="text-xs">Approved by <strong>{event.approvedBy}</strong></span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-6 flex gap-3 pt-6 border-t border-slate-100">
+                      {userRole !== "CLUB" && (
+                        (() => {
+                          const userReg = event.registrations?.[0];
+                          if (userReg) {
+                            const statusColors: Record<string, string> = {
+                              PENDING: "bg-amber-50 text-amber-700 border-amber-200",
+                              APPROVED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                              REJECTED: "bg-red-50 text-red-700 border-red-200",
+                            };
+                            const statusColor = statusColors[userReg.status] || "bg-slate-50 text-slate-700 border-slate-200";
+                            return (
+                              <div className={`w-full py-3 border text-center text-sm font-bold rounded-xl ${statusColor}`}>
+                                Applied
+                              </div>
+                            );
+                          }
+                          return (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleApply(event); }}
+                              className="w-full py-3 bg-[#FF7400] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                            >
+                              Apply Now
+                            </button>
+                          );
+                        })()
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {activeSection === "mine" && (
         <>
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 size={40} className="animate-spin text-[#FF7400]" />
-          </div>
-        ) : myEvents.length === 0 ? (
-          <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
-            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-              <Calendar size={32} />
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 size={40} className="animate-spin text-[#FF7400]" />
             </div>
-            <h3 className="text-lg font-bold text-slate-500">No Proposed Events</h3>
-            <p className="text-slate-400 text-sm mt-2">You haven't proposed any events yet.</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {myEvents.map((event) => (
-              <motion.div 
-                key={event.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4 p-6"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="p-3 bg-[#FF7400]/10 text-[#FF7400] rounded-2xl shrink-0">
-                    <Calendar size={24} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-xl font-bold text-slate-800">{event.title}</h3>
-                      <span className={`flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full border ${
-                        event.status === "APPROVED" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                        event.status === "REJECTED" ? "bg-red-50 text-red-600 border-red-200" :
-                        "bg-amber-50 text-amber-700 border-amber-200"
-                      }`}>
-                        {event.status === "APPROVED" ? <><CheckCircle2 size={12}/> Approved</> :
-                         event.status === "REJECTED" ? <><XCircle size={12}/> Rejected</> : 
-                         <><Clock size={12}/> Pending</>}
-                      </span>
+          ) : myEvents.length === 0 ? (
+            <div className="text-center py-20 bg-white border border-slate-200 rounded-3xl">
+              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                <Calendar size={32} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-500">No Proposed Events</h3>
+              <p className="text-slate-400 text-sm mt-2">You haven't proposed any events yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {myEvents.map((event) => (
+                <motion.div
+                  key={event.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4 p-6"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-[#FF7400]/10 text-[#FF7400] rounded-2xl shrink-0">
+                      <Calendar size={24} />
                     </div>
-                    <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500 font-medium">
-                      <span className="flex items-center gap-1.5"><Clock size={14} className="text-[#FF7400]" />{new Date(event.date).toLocaleDateString()}</span>
-                      <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#FF7400]" />{event.location}</span>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-xl font-bold text-slate-800">{event.title}</h3>
+                        <span className={`flex items-center gap-1 text-[10px] font-black px-2.5 py-1 rounded-full border ${event.status === "APPROVED" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                            event.status === "REJECTED" ? "bg-red-50 text-red-600 border-red-200" :
+                              "bg-amber-50 text-amber-700 border-amber-200"
+                          }`}>
+                          {event.status === "APPROVED" ? <><CheckCircle2 size={12} /> Approved</> :
+                            event.status === "REJECTED" ? <><XCircle size={12} /> Rejected</> :
+                              <><Clock size={12} /> Pending</>}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500 font-medium">
+                        <span className="flex items-center gap-1.5"><Clock size={14} className="text-[#FF7400]" />{new Date(event.date).toLocaleDateString()}</span>
+                        <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#FF7400]" />{event.location}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => handleOpenEdit(event)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-xl transition-all text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => setSelectedEvent(event)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all text-sm"
-                  >
-                    View Details
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleOpenEdit(event)}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-xl transition-all text-sm"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setSelectedEvent(event)}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all text-sm"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -653,7 +666,7 @@ export default function MemberEventsPage() {
       <AnimatePresence>
         {isCreateModalOpen && (
           <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm ">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -664,7 +677,7 @@ export default function MemberEventsPage() {
                   <h2 className="text-3xl font-bold text-slate-800 mb-2">Propose New Event</h2>
                   <p className="text-slate-500">Fill in the details to propose a new event.</p>
                 </div>
-                <button 
+                <button
                   onClick={() => setIsCreateModalOpen(false)}
                   className="p-2 bg-slate-100 text-slate-400 hover:text-red-500 rounded-full transition-all cursor-pointer"
                 >
@@ -723,8 +736,8 @@ export default function MemberEventsPage() {
                   {formData.eventSection === "Seminar (Online)" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Meeting Link</label>
-                      <input 
-                        type="url" 
+                      <input
+                        type="url"
                         required
                         value={formData.meetingLink}
                         onChange={e => setFormData({ ...formData, meetingLink: e.target.value })}
@@ -736,45 +749,46 @@ export default function MemberEventsPage() {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Event Title</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       required
                       value={formData.title}
-                      onChange={e => setFormData({...formData, title: e.target.value})}
+                      onChange={e => setFormData({ ...formData, title: e.target.value })}
                       placeholder="Enter a descriptive title"
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
                     />
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Date</label>
-                    <input 
-                      type="date" 
-                      required
-                      min={new Date().toISOString().split('T')[0]}
-                      value={formData.date}
-                      onChange={e => setFormData({...formData, date: e.target.value})}
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
-                    />
+
+                  <div className="md:col-span-2">
+                    <EventBannerField value={formData.bannerImage} onChange={(url) => setFormData(f => ({ ...f, bannerImage: url }))} />
                   </div>
-                  
+
+                  <EventScheduleFields
+                      date={formData.date}
+                      endDate={formData.endDate}
+                      onChange={({ date, endDate }) => setFormData(f => ({ ...f, date, endDate }))}
+                      labelClassName="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2"
+                      inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
+                    />
+
                   <div>
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Location</label>
-                    <input 
-                      type="text" 
+                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Venue</label>
+                    <input
+                      type="text"
                       required
                       value={formData.location}
-                      onChange={e => setFormData({...formData, location: e.target.value})}
+                      onChange={e => setFormData({ ...formData, location: e.target.value })}
                       placeholder="e.g. Nehru Stadium"
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
                     />
+                    <MapLinkField value={formData.mapLink} onChange={(url) => setFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
 
                   <div className="md:col-span-1">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Event Level</label>
                     <select
                       value={formData.level}
-                      onChange={e => setFormData({...formData, level: e.target.value})}
+                      onChange={e => setFormData({ ...formData, level: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                     >
                       <option value="DISTRICT">District Level</option>
@@ -783,26 +797,27 @@ export default function MemberEventsPage() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Target Audience</label>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Gender</label>
                     <select
-                      value={formData.participantType}
-                      onChange={e => setFormData({...formData, participantType: e.target.value})}
+                      value={formData.gender}
+                      onChange={e => setFormData({ ...formData, gender: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                     >
-                      <option value="ALL">Everyone</option>
-                      <option value="STUDENT">Players Only</option>
-                      <option value="COACH">Coaches/Referees Only</option>
-                      <option value="MEMBER">Members Only</option>
-                      <option value="CLUB">Clubs Only</option>
+                      {EVENT_GENDER_OPTIONS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Eligible Participants <span className="normal-case tracking-normal font-semibold text-slate-400">(choose one or more)</span></label>
+                    <ParticipantTypesPicker value={formData.participantTypes} onChange={(types) => setFormData(f => ({ ...f, participantTypes: types }))} />
                   </div>
 
                   <div className="md:col-span-1">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Entry Type</label>
                     <select
                       value={formData.isPaid ? "paid" : "free"}
-                      onChange={e => setFormData({...formData, isPaid: e.target.value === "paid", entryFee: e.target.value === "free" ? "" : formData.entryFee})}
+                      onChange={e => setFormData({ ...formData, isPaid: e.target.value === "paid", entryFee: e.target.value === "free" ? "" : formData.entryFee })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                     >
                       <option value="free">Free</option>
@@ -813,12 +828,12 @@ export default function MemberEventsPage() {
                   {formData.isPaid && (
                     <div className="md:col-span-1">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Entry Fee (₹)</label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         required
                         min="1"
                         value={formData.entryFee}
-                        onChange={e => setFormData({...formData, entryFee: e.target.value})}
+                        onChange={e => setFormData({ ...formData, entryFee: e.target.value })}
                         placeholder="Enter amount in ₹"
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                       />
@@ -828,10 +843,10 @@ export default function MemberEventsPage() {
                   {formData.level === "DISTRICT" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Select District</label>
-                      <select 
+                      <select
                         required
                         value={formData.districtId}
-                        onChange={e => setFormData({...formData, districtId: e.target.value})}
+                        onChange={e => setFormData({ ...formData, districtId: e.target.value })}
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                       >
                         <option value="">Select District</option>
@@ -845,10 +860,10 @@ export default function MemberEventsPage() {
                   {formData.level === "ZONE" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Select Zone</label>
-                      <select 
+                      <select
                         required
                         value={formData.zoneId}
-                        onChange={e => setFormData({...formData, zoneId: e.target.value})}
+                        onChange={e => setFormData({ ...formData, zoneId: e.target.value })}
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                       >
                         <option value="">Select Zone</option>
@@ -861,10 +876,10 @@ export default function MemberEventsPage() {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Description</label>
-                    <textarea 
+                    <textarea
                       required
                       value={formData.description}
-                      onChange={e => setFormData({...formData, description: e.target.value})}
+                      onChange={e => setFormData({ ...formData, description: e.target.value })}
                       placeholder="Detailed description of the event..."
                       className="w-full h-32 px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all resize-none"
                     ></textarea>
@@ -872,14 +887,14 @@ export default function MemberEventsPage() {
                 </div>
 
                 <div className="flex gap-4 pt-4">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setIsCreateModalOpen(false)}
                     className="flex-grow py-5 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
                   >
                     Discard
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     disabled={submitLoading}
                     className="flex-grow py-5 bg-[#FF7400] text-white font-bold rounded-2xl shadow-xl shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
@@ -897,7 +912,7 @@ export default function MemberEventsPage() {
       <AnimatePresence>
         {isEditModalOpen && (
           <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -908,7 +923,7 @@ export default function MemberEventsPage() {
                   <h2 className="text-3xl font-bold text-slate-800 mb-2">Edit Event</h2>
                   <p className="text-slate-500">Update the details of your proposed event.</p>
                 </div>
-                <button 
+                <button
                   onClick={() => setIsEditModalOpen(false)}
                   className="p-2 bg-slate-100 text-slate-400 hover:text-red-500 rounded-full transition-all cursor-pointer"
                 >
@@ -968,8 +983,8 @@ export default function MemberEventsPage() {
                   {formData.eventSection === "Seminar (Online)" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Meeting Link</label>
-                      <input 
-                        type="url" 
+                      <input
+                        type="url"
                         required
                         value={formData.meetingLink}
                         onChange={e => setFormData({ ...formData, meetingLink: e.target.value })}
@@ -981,45 +996,46 @@ export default function MemberEventsPage() {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Event Title</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       required
                       value={formData.title}
-                      onChange={e => setFormData({...formData, title: e.target.value})}
+                      onChange={e => setFormData({ ...formData, title: e.target.value })}
                       placeholder="Enter a descriptive title"
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
                     />
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Date</label>
-                    <input 
-                      type="date" 
-                      required
-                      min={new Date().toISOString().split('T')[0]}
-                      value={formData.date}
-                      onChange={e => setFormData({...formData, date: e.target.value})}
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
-                    />
+
+                  <div className="md:col-span-2">
+                    <EventBannerField value={formData.bannerImage} onChange={(url) => setFormData(f => ({ ...f, bannerImage: url }))} />
                   </div>
-                  
+
+                  <EventScheduleFields
+                      date={formData.date}
+                      endDate={formData.endDate}
+                      onChange={({ date, endDate }) => setFormData(f => ({ ...f, date, endDate }))}
+                      labelClassName="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2"
+                      inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
+                    />
+
                   <div>
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Location</label>
-                    <input 
-                      type="text" 
+                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Venue</label>
+                    <input
+                      type="text"
                       required
                       value={formData.location}
-                      onChange={e => setFormData({...formData, location: e.target.value})}
+                      onChange={e => setFormData({ ...formData, location: e.target.value })}
                       placeholder="e.g. Nehru Stadium"
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
                     />
+                    <MapLinkField value={formData.mapLink} onChange={(url) => setFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
 
                   <div className="md:col-span-1">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Event Level</label>
                     <select
                       value={formData.level}
-                      onChange={e => setFormData({...formData, level: e.target.value})}
+                      onChange={e => setFormData({ ...formData, level: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                     >
                       <option value="DISTRICT">District Level</option>
@@ -1028,26 +1044,27 @@ export default function MemberEventsPage() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Target Audience</label>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Gender</label>
                     <select
-                      value={formData.participantType}
-                      onChange={e => setFormData({...formData, participantType: e.target.value})}
+                      value={formData.gender}
+                      onChange={e => setFormData({ ...formData, gender: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                     >
-                      <option value="ALL">Everyone</option>
-                      <option value="STUDENT">Players Only</option>
-                      <option value="COACH">Coaches/Referees Only</option>
-                      <option value="MEMBER">Members Only</option>
-                      <option value="CLUB">Clubs Only</option>
+                      {EVENT_GENDER_OPTIONS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Eligible Participants <span className="normal-case tracking-normal font-semibold text-slate-400">(choose one or more)</span></label>
+                    <ParticipantTypesPicker value={formData.participantTypes} onChange={(types) => setFormData(f => ({ ...f, participantTypes: types }))} />
                   </div>
 
                   <div className="md:col-span-1">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Entry Type</label>
                     <select
                       value={formData.isPaid ? "paid" : "free"}
-                      onChange={e => setFormData({...formData, isPaid: e.target.value === "paid", entryFee: e.target.value === "free" ? "" : formData.entryFee})}
+                      onChange={e => setFormData({ ...formData, isPaid: e.target.value === "paid", entryFee: e.target.value === "free" ? "" : formData.entryFee })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                     >
                       <option value="free">Free</option>
@@ -1058,12 +1075,12 @@ export default function MemberEventsPage() {
                   {formData.isPaid && (
                     <div className="md:col-span-1">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Entry Fee (₹)</label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         required
                         min="1"
                         value={formData.entryFee}
-                        onChange={e => setFormData({...formData, entryFee: e.target.value})}
+                        onChange={e => setFormData({ ...formData, entryFee: e.target.value })}
                         placeholder="Enter amount in ₹"
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                       />
@@ -1073,10 +1090,10 @@ export default function MemberEventsPage() {
                   {formData.level === "DISTRICT" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Select District</label>
-                      <select 
+                      <select
                         required
                         value={formData.districtId}
-                        onChange={e => setFormData({...formData, districtId: e.target.value})}
+                        onChange={e => setFormData({ ...formData, districtId: e.target.value })}
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                       >
                         <option value="">Select District</option>
@@ -1090,10 +1107,10 @@ export default function MemberEventsPage() {
                   {formData.level === "ZONE" && (
                     <div className="md:col-span-2">
                       <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Select Zone</label>
-                      <select 
+                      <select
                         required
                         value={formData.zoneId}
-                        onChange={e => setFormData({...formData, zoneId: e.target.value})}
+                        onChange={e => setFormData({ ...formData, zoneId: e.target.value })}
                         className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
                       >
                         <option value="">Select Zone</option>
@@ -1106,10 +1123,10 @@ export default function MemberEventsPage() {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Description</label>
-                    <textarea 
+                    <textarea
                       required
                       value={formData.description}
-                      onChange={e => setFormData({...formData, description: e.target.value})}
+                      onChange={e => setFormData({ ...formData, description: e.target.value })}
                       placeholder="Detailed description of the event..."
                       className="w-full h-32 px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all resize-none"
                     ></textarea>
@@ -1117,14 +1134,14 @@ export default function MemberEventsPage() {
                 </div>
 
                 <div className="flex gap-4 pt-4">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setIsEditModalOpen(false)}
                     className="flex-grow py-5 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
                   >
                     Discard
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     disabled={editSubmitLoading}
                     className="flex-grow py-5 bg-[#FF7400] text-white font-bold rounded-2xl shadow-xl shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
@@ -1183,7 +1200,7 @@ export default function MemberEventsPage() {
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</p>
-                    <p className="text-sm font-bold text-slate-700">{new Date(selectedEvent.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    <p className="text-sm font-bold text-slate-700">{eventDateRangeLabel(selectedEvent.date, selectedEvent.endDate)}</p>
                   </div>
                 </div>
 
@@ -1192,8 +1209,9 @@ export default function MemberEventsPage() {
                     <MapPin size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location / Venue</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Venue</p>
                     <p className="text-sm font-bold text-slate-700">{selectedEvent.location}</p>
+                    <MapLink href={selectedEvent.mapLink} className="mt-0.5" />
                   </div>
                 </div>
 
@@ -1202,8 +1220,9 @@ export default function MemberEventsPage() {
                     <User size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Target Audience</p>
-                    <p className="text-sm font-bold text-slate-700">{selectedEvent.participantType === "ALL" ? "Everyone" : `${selectedEvent.participantType}s Only`}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Eligible Participants</p>
+                    <p className="text-sm font-bold text-slate-700">{participantTypesLabel(eventParticipantTypes(selectedEvent))}</p>
+                    <p className="text-xs font-semibold text-slate-500 mt-0.5">Gender: {eventGenderLabel(selectedEvent.gender)}</p>
                   </div>
                 </div>
 

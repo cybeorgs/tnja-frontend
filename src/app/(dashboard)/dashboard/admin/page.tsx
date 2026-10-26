@@ -129,10 +129,12 @@ export default function AdminDashboard() {
   );
 
   const canSeeGrievances = STATE_ROLES.includes(role);
+  // Zone officers only approve zonal events and tournaments, not people.
+  const isZoneOfficer = role === "ZONE_PRESIDENT" || role === "ZONE_SECRETARY";
   const tiles = [
     { label: "Players", key: "STUDENT" as const, icon: Users },
-    { label: "Coaches & Referees", key: "COACH" as const, icon: UserCheck },
-    { label: "Members", key: "MEMBER" as const, icon: Award },
+    { label: "Coaches", key: "COACH" as const, icon: UserCheck },
+    { label: "Administrative Members", key: "MEMBER" as const, icon: Award },
     { label: "Clubs", key: "CLUB" as const, icon: Building2 },
   ];
 
@@ -147,13 +149,15 @@ export default function AdminDashboard() {
           {roleLabel(role)}
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link href="/dashboard/admin/approvals?type=STUDENT"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF7400] hover:bg-[#E56900] text-white text-sm font-bold rounded-lg transition-colors">
-            <ShieldCheck size={16} /> Review approvals
-            {stats.pending.total > 0 && (
-              <span className="min-w-5 px-1.5 py-0.5 rounded-full bg-white text-[#FF7400] text-[11px] font-black text-center">{stats.pending.total}</span>
-            )}
-          </Link>
+          {!isZoneOfficer && (
+            <Link href="/dashboard/admin/approvals?type=STUDENT"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF7400] hover:bg-[#E56900] text-white text-sm font-bold rounded-lg transition-colors">
+              <ShieldCheck size={16} /> Review approvals
+              {stats.pending.total > 0 && (
+                <span className="min-w-5 px-1.5 py-0.5 rounded-full bg-white text-[#FF7400] text-[11px] font-black text-center">{stats.pending.total}</span>
+              )}
+            </Link>
+          )}
           <Link href="/dashboard/admin/tournaments"
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-700 text-sm font-bold rounded-lg transition-colors">
             <Trophy size={16} /> Tournaments
@@ -161,7 +165,7 @@ export default function AdminDashboard() {
           {/* Super Admin / CEO use User Management; other officials have the read-only members list. */}
           <Link href={role === "SUPER_ADMIN" || role === "CEO" ? "/dashboard/admin/users" : "/dashboard/admin/members"}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-700 text-sm font-bold rounded-lg transition-colors">
-            <Users size={16} /> {role === "SUPER_ADMIN" || role === "CEO" ? "Users" : "Members"}
+            <Users size={16} /> {role === "SUPER_ADMIN" || role === "CEO" ? "Users" : "Administrative Members"}
           </Link>
         </div>
       </div>
@@ -171,7 +175,7 @@ export default function AdminDashboard() {
         {tiles.map(({ label, key, icon: Icon }) => {
           const pending = stats.pending[key] ?? 0;
           return (
-            <Link key={key} href={`/dashboard/admin/approvals?type=${key}`}
+            <Link key={key} href={isZoneOfficer ? "/dashboard/admin/members" : `/dashboard/admin/approvals?type=${key}`}
               className="group bg-white border border-slate-200 rounded-xl p-5 hover:border-[#FF7400] hover:shadow-md transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500">{label}</span>
@@ -191,6 +195,7 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
         <div className="xl:col-span-2 space-y-6">
           {/* Pending approvals */}
+          {!isZoneOfficer && (
           <Panel title="Awaiting approval" count={stats.pending.total} href="/dashboard/admin/approvals" icon={<ShieldCheck size={16} />}>
             {stats.recentApprovals.length === 0 ? (
               <Empty icon={<ShieldCheck size={26} />} text="No applications waiting — you're all caught up." />
@@ -216,6 +221,7 @@ export default function AdminDashboard() {
               </ul>
             )}
           </Panel>
+          )}
 
           {/* Grievances (state-level roles) */}
           {canSeeGrievances && (

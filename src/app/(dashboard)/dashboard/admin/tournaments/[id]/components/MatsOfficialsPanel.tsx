@@ -241,7 +241,7 @@ export function MatsOfficialsPanel({
                       </button>
                     </div>
                   )}
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Registered Coaches / Referees</label>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Registered Referees</label>
                   <div className="relative">
                     <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input

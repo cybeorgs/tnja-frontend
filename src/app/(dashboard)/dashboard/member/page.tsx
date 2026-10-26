@@ -40,7 +40,7 @@ function MemberDashboardContent() {
     ? "Coach ID" 
     : userRole.toLowerCase() === "club" 
       ? "Club ID" 
-      : "Member ID";
+      : "Administrative Member ID";
 
   useEffect(() => {
     fetchData();
@@ -307,7 +307,7 @@ function MemberDashboardContent() {
               <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider w-fit mx-auto md:mx-0 ${
                 memberData.permanentId ? "bg-green-100 text-green-600" : "bg-orange-100 text-[#FF7400]"
               }`}>
-                {memberData.permanentId ? "Active Member" : "Application Approved"}
+                {memberData.permanentId ? "Active Administrative Member" : "Application Approved"}
               </span>
             </div>
             <div className="flex flex-col md:flex-row items-center justify-center md:justify-start gap-4 mb-4">

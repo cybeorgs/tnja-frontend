@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { MapLink } from "@/components/common/MapLinkField";
 import {
   Trophy,
   MapPin,
@@ -536,6 +537,7 @@ export default function PlayerTournamentsPage() {
                       <div className="flex items-center gap-2">
                         <MapPin size={14} className="text-[#FF7400]" />
                         {tournament.location}
+                        <MapLink href={tournament.mapLink} className="ml-1" />
                       </div>
                       {!isClubTab && tournament.club?.district?.name && (
                         <div className="flex items-center gap-2">

@@ -5,14 +5,14 @@ import MemberCard from '@/components/features/MemberCard';
 export default function ECMembersPage() {
   const breadcrumbItems = [
     { label: "Home", href: "/" },
-    { label: "Executive Committee Members" }
+    { label: "Executive Committee Administrative Members" }
   ];
 
   const title = (
     <>
       <span className="text-[#FF7400]">Executive</span> Committee <br />
       and <br />
-      Honorary <span className="text-[#FF7400]">Members</span>
+      Honorary <span className="text-[#FF7400]">Administrative Members</span>
     </>
   );
 

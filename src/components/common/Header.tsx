@@ -53,17 +53,17 @@ const Header = () => {
   const mainNavLinks = [
     { name: "Home", href: "/" },
     { 
-      name: "Members", 
+      name: "Administrative Members", 
       href: "#", 
       hasDropdown: true,
       dropdownItems: [
-        { name: "EC Members", href: "/members/ec" },
-        { name: "GB Members", href: "/members/gb" },
+        { name: "EC Administrative Members", href: "/members/ec" },
+        { name: "GB Administrative Members", href: "/members/gb" },
         { name: "District Committee", href: "/members/district" },
         { name: "Clubs", href: "/members/clubs" },
         { name: "Police Unit", href: "/members/police", isHighlighted: true, hasSubmenu: true },
         { name: "Pet Unit", href: "/members/pet", hasSubmenu: true },
-        { name: "GB Members", href: "/members/gb" },
+        { name: "GB Administrative Members", href: "/members/gb" },
       ]
     },
     { name: "Committee", href: "#", hasDropdown: true },

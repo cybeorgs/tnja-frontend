@@ -17,13 +17,16 @@ import {
   Plus,
   Calendar,
   ChevronRight,
+  ChevronDown,
   Hourglass,
   Send,
   MessageSquare,
   Edit2,
   Download,
 } from "lucide-react";
-import FileUpload from "@/components/common/FileUpload";
+import EventBannerField from "@/components/common/EventBannerField";
+import MapLinkField from "@/components/common/MapLinkField";
+import { eventDayCount } from "@/components/common/EventScheduleFields";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 const AVAILABLE_CATEGORIES = ["Mini Sub Junior", "Sub Junior", "Cadet", "Junior", "Senior"];
@@ -109,13 +112,30 @@ interface Tournament {
   allowBPL: boolean;
   status: string;
   districtApproval: ApprovalStatus;
+  zoneApproval?: ApprovalStatus;
   stateApproval: ApprovalStatus;
   superAdminApproval: ApprovalStatus;
   ceoApproval: ApprovalStatus;
   rejectionRemark?: string;
   hasPendingPlayers?: boolean;
-  club?: { name: string; district?: { name: string } };
+  club?: { name: string; district?: TournamentDistrict };
+  official?: { assignedDistrict?: TournamentDistrict | null; district?: TournamentDistrict | null };
+  district?: TournamentDistrict | null;
+  zoneId?: string | null;
   bannerImage?: string;
+  mapLink?: string | null;
+}
+
+interface TournamentDistrict { id?: string; name: string; zoneName?: string | null }
+
+/** District a tournament belongs to: its own (district tournaments), else the host club's, else the creating official's. */
+function tournamentDistrict(t: Tournament): TournamentDistrict | null {
+  return t.district ?? t.club?.district ?? t.official?.assignedDistrict ?? t.official?.district ?? null;
+}
+
+/** A zonal tournament carries its zone in zoneId; others take the zone of their district. */
+function tournamentZone(t: Tournament): string | null {
+  return t.level === "ZONE" ? t.zoneId ?? null : tournamentDistrict(t)?.zoneName ?? null;
 }
 
 // ─── Role configuration ───────────────────────────────────────────────────────
@@ -126,8 +146,8 @@ interface Tournament {
 const APPROVAL_LEVEL_MAP: Record<string, string | null> = {
   DISTRICT_PRESIDENT: "district",
   DISTRICT_SECRETARY: "district",
-  ZONE_PRESIDENT: null,   // creator only, no approval seat
-  ZONE_SECRETARY: null,
+  ZONE_PRESIDENT: "zone", // zonal tournaments in their own zone only
+  ZONE_SECRETARY: "zone",
   STATE_PRESIDENT: "state",
   STATE_SECRETARY: "state",
   SUPER_ADMIN: "superAdmin",
@@ -163,7 +183,8 @@ const ROLE_LABEL: Record<string, string> = {
  * Approval chain:
  *   Club created     → District → State → (SuperAdmin OR CEO)
  *   District created →            State → (SuperAdmin OR CEO)  (district auto-skipped)
- *   Zone created     →            State → (SuperAdmin OR CEO)  (district auto-skipped)
+ *   Zonal (by club or district) → Zone → State → (SuperAdmin OR CEO)
+ *   Zone created     →            State → (SuperAdmin OR CEO)  (zone + district auto-skipped)
  *   State created    →                    (SuperAdmin OR CEO)  (district+state auto-skipped)
  *
  * SuperAdmin and CEO are PARALLEL final approvers.
@@ -172,6 +193,8 @@ const ROLE_LABEL: Record<string, string> = {
 function inApprovalQueue(t: Tournament, role: string): boolean {
   // Coerce null/undefined fields from the API into proper status strings
   const district = safeStatus(t.districtApproval);
+  // Only zonal tournaments carry a zone step; older rows may not have the field at all.
+  const zone = t.zoneApproval ?? "NOT_REQUIRED";
   const state = safeStatus(t.stateApproval);
   const superAdmin = safeStatus(t.superAdminApproval);
   const ceo = safeStatus(t.ceoApproval);
@@ -181,11 +204,17 @@ function inApprovalQueue(t: Tournament, role: string): boolean {
     case "DISTRICT_SECRETARY":
       return district === "PENDING";
 
+    case "ZONE_PRESIDENT":
+    case "ZONE_SECRETARY":
+      // The backend already limits this list to zonal tournaments in the officer's zone.
+      return zone === "PENDING";
+
     case "STATE_PRESIDENT":
     case "STATE_SECRETARY":
       // District step must already be resolved (APPROVED or NOT_REQUIRED / auto-skipped)
       return (
         (district === "APPROVED" || district === "NOT_REQUIRED") &&
+        (zone === "APPROVED" || zone === "NOT_REQUIRED") &&
         state === "PENDING"
       );
 
@@ -393,7 +422,7 @@ const emptyForm = {
   title: "", dateFrom: "", dateTo: "", location: "", description: "",
   entryFee: "", totalSlots: "", numberOfMats: "1", ageFrom: "0", ageTo: "100", category: [] as string[],
   gender: "BOTH", allowBPL: false, beltEligibility: "", level: "DISTRICT", zoneId: "", districtId: "", clubId: "",
-  bannerImage: "",
+  bannerImage: "", mapLink: "",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -435,6 +464,8 @@ export default function AdminTournamentsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("ALL");
+  const [zoneFilter, setZoneFilter] = useState("ALL");
+  const [districtFilter, setDistrictFilter] = useState("ALL");
   const [openChats, setOpenChats] = useState<Record<string, boolean>>({});
 
   // Create modal
@@ -473,19 +504,26 @@ export default function AdminTournamentsPage() {
       setActiveTab(isCreatorOnly ? "mine" : "approval");
     }
 
-    // Fetch districts, zones, and clubs for tournament creation
-    fetch(`${API_BASE}/districts`)
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
+    const token = localStorage.getItem("token");
+
+    // Fetch districts, zones, and clubs for tournament creation.
+    // Below state level, zonal tournaments may only be held in the user's own zone.
+    Promise.all([
+      fetch(`${API_BASE}/districts`).then(res => res.ok ? res.json() : []),
+      fetch(`${API_BASE}/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }).then(res => res.ok ? res.json() : null).catch(() => null),
+    ])
+      .then(([data, profile]) => {
         if (Array.isArray(data)) {
           setDistricts(data);
-          const uniqueZones = Array.from(new Set(data.map((d: any) => d.zoneName).filter(Boolean))) as string[];
-          if (uniqueZones.length > 0) setZones(uniqueZones);
+          const uniqueZones = Array.from(new Set(data.map((d: any) => d.zoneName).filter(Boolean))).sort() as string[];
+          const ownZone = (profile?.user?.assignedDistrict ?? profile?.user?.district)?.zoneName;
+          const isStateWide = ["SUPER_ADMIN", "CEO", "STATE_PRESIDENT", "STATE_SECRETARY"].includes(profile?.role);
+          const allowedZones = !isStateWide && ownZone ? [ownZone] : uniqueZones;
+          if (allowedZones.length > 0) setZones(allowedZones);
         }
       })
       .catch(err => console.error("Failed to fetch districts", err));
 
-    const token = localStorage.getItem("token");
     fetch(`${API_BASE}/clubs`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.ok ? res.json() : [])
       .then(data => {
@@ -546,17 +584,32 @@ export default function AdminTournamentsPage() {
 
   const approvalQueue = allTournaments.filter(t => inApprovalQueue(t, userRole));
 
+  // Zone / district filters. `zones` is already limited to the user's own zone below state level.
+  const districtOptions = districts
+    .filter(d => d.zoneName && zones.includes(d.zoneName) && (zoneFilter === "ALL" || d.zoneName === zoneFilter))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const matchesPlace = (t: Tournament) => {
+    if (zoneFilter !== "ALL" && tournamentZone(t) !== zoneFilter) return false;
+    if (districtFilter !== "ALL") {
+      const d = tournamentDistrict(t);
+      const selected = districts.find(x => x.id === districtFilter);
+      if (!d || (d.id ? d.id !== districtFilter : d.name !== selected?.name)) return false;
+    }
+    return true;
+  };
+
   const displayedApproval = approvalQueue.filter(
-    t => matchesSearch(t, searchQuery)
+    t => matchesSearch(t, searchQuery) && matchesPlace(t)
   );
 
   const displayedMine = myTournaments
     .filter(t => filter === "ALL" || t.status === filter)
-    .filter(t => matchesSearch(t, searchQuery));
+    .filter(t => matchesSearch(t, searchQuery) && matchesPlace(t));
 
   const displayedApproved = approvedByMeList.filter(
-    t => matchesSearch(t, searchQuery)
+    t => matchesSearch(t, searchQuery) && matchesPlace(t)
   );
+  const isFiltering = !!searchQuery || zoneFilter !== "ALL" || districtFilter !== "ALL";
 
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
 
@@ -667,7 +720,7 @@ export default function AdminTournamentsPage() {
       zoneId: (t as any).zoneId || "",
       districtId: (t as any).districtId || (t as any).district?.id || "",
       clubId: (t as any).clubId || (t as any).club?.id || "",
-      bannerImage: t.bannerImage || "",
+      bannerImage: t.bannerImage || "", mapLink: t.mapLink || "",
     });
   };
 
@@ -797,8 +850,9 @@ export default function AdminTournamentsPage() {
       </AnimatePresence>
 
       {/* ── Toolbar: view toggle (with counts), search, create ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-lg w-fit" role="tablist" aria-label="Tournament views">
+      {/* One line on wide screens: views · zone · district · search · create (wraps on smaller screens) */}
+      <div className="flex flex-wrap xl:flex-nowrap items-center gap-3">
+        <div className="flex shrink-0 gap-1 p-1 bg-white border border-slate-200 rounded-lg w-fit max-w-full overflow-x-auto" role="tablist" aria-label="Tournament views">
           {[
             ...(hasApprovalRole ? [{ key: "approval" as const, label: "Approval Queue", count: pendingQueue }] : []),
             ...(canCreate ? [{ key: "mine" as const, label: "My Tournaments", count: totalMine }] : []),
@@ -829,8 +883,43 @@ export default function AdminTournamentsPage() {
           })}
         </div>
 
-        <div className="flex gap-3 lg:ml-auto">
-          <div className="relative flex-1 lg:w-72">
+          {zones.length > 1 && (
+            <div className="relative shrink-0 w-48 xl:ml-auto">
+              <select
+                value={zoneFilter}
+                onChange={e => { setZoneFilter(e.target.value); setDistrictFilter("ALL"); }}
+                aria-label="Zone"
+                className={`w-full truncate appearance-none pl-3 pr-9 py-2.5 bg-white border rounded-lg text-sm font-bold focus:outline-none focus:border-[#FF7400] cursor-pointer ${
+                  zoneFilter === "ALL" ? "border-slate-200 text-slate-600" : "border-orange-200 text-[#FF7400] bg-orange-50"
+                }`}
+              >
+                <option value="ALL">All zones</option>
+                {zones.map(z => (
+                  <option key={z} value={z}>{z}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+          {districtOptions.length > 1 && (
+            <div className={`relative shrink-0 w-44 ${zones.length > 1 ? "" : "xl:ml-auto"}`}>
+              <select
+                value={districtFilter}
+                onChange={e => setDistrictFilter(e.target.value)}
+                aria-label="District"
+                className={`w-full truncate appearance-none pl-3 pr-9 py-2.5 bg-white border rounded-lg text-sm font-bold focus:outline-none focus:border-[#FF7400] cursor-pointer ${
+                  districtFilter === "ALL" ? "border-slate-200 text-slate-600" : "border-orange-200 text-[#FF7400] bg-orange-50"
+                }`}
+              >
+                <option value="ALL">All districts</option>
+                {districtOptions.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+          <div className={`relative flex-1 min-w-40 xl:max-w-72 ${zones.length > 1 || districtOptions.length > 1 ? "" : "xl:ml-auto"}`}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
@@ -843,12 +932,11 @@ export default function AdminTournamentsPage() {
           {canCreate && (
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-[#FF7400] hover:bg-[#E56900] text-white font-bold rounded-lg text-sm transition-colors"
+              className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-[#FF7400] hover:bg-[#E56900] text-white font-bold rounded-lg text-sm whitespace-nowrap transition-colors"
             >
               <Plus size={16} className="stroke-[2.5]" /> Create Tournament
             </button>
           )}
-        </div>
       </div>
 
       {/* Status toggle for My Tournaments */}
@@ -892,7 +980,7 @@ export default function AdminTournamentsPage() {
           {/* ════════════ APPROVAL QUEUE ════════════ */}
           {activeTab === "approval" && (
             displayedApproval.length === 0 ? (
-              <EmptyState icon={<CheckCircle2 size={32} />} title={searchQuery ? "No tournaments match your search" : "No tournaments waiting for you"} text={searchQuery ? "Try a different title or location." : "You're all caught up."} />
+              <EmptyState icon={<CheckCircle2 size={32} />} title={isFiltering ? "No tournaments match your filters" : "No tournaments waiting for you"} text={isFiltering ? "Try a different zone, district, title or location." : "You're all caught up."} />
             ) : (
               <div className="space-y-4">
                 {displayedApproval.map(t => {
@@ -967,7 +1055,7 @@ export default function AdminTournamentsPage() {
           {/* ════════════ APPROVED TOURNAMENTS ════════════ */}
           {activeTab === "approved" && (
             displayedApproved.length === 0 ? (
-              <EmptyState icon={<Trophy size={32} />} title={searchQuery ? "No tournaments match your search" : "No approved tournaments yet"} text={searchQuery ? "Try a different title or location." : "Tournaments you approve will appear here."} />
+              <EmptyState icon={<Trophy size={32} />} title={isFiltering ? "No tournaments match your filters" : "No approved tournaments yet"} text={isFiltering ? "Try a different zone, district, title or location." : "Tournaments you approve will appear here."} />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {displayedApproved.map(t => (
@@ -1082,12 +1170,7 @@ export default function AdminTournamentsPage() {
                   </div>
 
                   <div className="md:col-span-2 mt-2">
-                    <FileUpload 
-                      label="Banner Image (Optional)" 
-                      value={formData.bannerImage} 
-                      onChange={(url) => setFormData({ ...formData, bannerImage: url })} 
-                      accept="image/*" 
-                    />
+                    <EventBannerField value={formData.bannerImage} onChange={(url) => setFormData(prev => ({ ...prev, bannerImage: url }))} />
                   </div>
 
                   <div>
@@ -1101,7 +1184,6 @@ export default function AdminTournamentsPage() {
                       <option value="DISTRICT">District</option>
                       <option value="ZONE">Zonal</option>
                       <option value="STATE">State</option>
-                      <option value="NATIONAL">National</option>
                     </select>
                   </div>
 
@@ -1189,8 +1271,10 @@ export default function AdminTournamentsPage() {
                     </div>
                   </div>
 
+                  {/* From / To dates side by side, with the day count */}
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date *</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">From Date *</label>
                     <div className="relative">
                       <input
                         required type="date" min={new Date().toISOString().split('T')[0]} value={formData.dateFrom}
@@ -1208,7 +1292,7 @@ export default function AdminTournamentsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date (optional)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">To Date (optional)</label>
                     <div className="relative">
                       <input
                         type="date" min={formData.dateFrom || new Date().toISOString().split('T')[0]} value={formData.dateTo}
@@ -1223,6 +1307,13 @@ export default function AdminTournamentsPage() {
                         <Calendar size={18} className="text-slate-400" />
                       </div>
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Number of Days</label>
+                    <div className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-600 font-semibold" aria-live="polite">
+                      {eventDayCount(formData.dateFrom, formData.dateTo) ? `${eventDayCount(formData.dateFrom, formData.dateTo)} day${eventDayCount(formData.dateFrom, formData.dateTo) > 1 ? "s" : ""}` : "—"}
+                    </div>
+                  </div>
                   </div>
 
                   <div className="md:col-span-2">
@@ -1271,6 +1362,7 @@ export default function AdminTournamentsPage() {
                       onChange={e => setFormData({ ...formData, location: e.target.value.replace(/[^a-zA-Z0-9\s,.'-]/g, '') })}
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50"
                     />
+                    <MapLinkField value={formData.mapLink} onChange={(url) => setFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50" />
                   </div>
 
                   <div>
@@ -1379,6 +1471,10 @@ export default function AdminTournamentsPage() {
                     />
                   </div>
 
+                  <div className="md:col-span-2">
+                    <EventBannerField value={editFormData.bannerImage} onChange={(url) => setEditFormData(prev => ({ ...prev, bannerImage: url }))} />
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level</label>
                     <select
@@ -1390,7 +1486,6 @@ export default function AdminTournamentsPage() {
                       <option value="DISTRICT">District</option>
                       <option value="ZONE">Zonal</option>
                       <option value="STATE">State</option>
-                      <option value="NATIONAL">National</option>
                     </select>
                   </div>
 
@@ -1478,8 +1573,10 @@ export default function AdminTournamentsPage() {
                     </div>
                   </div>
 
+                  {/* From / To dates side by side, with the day count */}
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date *</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">From Date *</label>
                     <div className="relative">
                       <input
                         required type="date" value={editFormData.dateFrom}
@@ -1497,7 +1594,7 @@ export default function AdminTournamentsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date (optional)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">To Date (optional)</label>
                     <div className="relative">
                       <input
                         type="date" min={editFormData.dateFrom} value={editFormData.dateTo}
@@ -1512,6 +1609,13 @@ export default function AdminTournamentsPage() {
                         <Calendar size={18} className="text-slate-400" />
                       </div>
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Number of Days</label>
+                    <div className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-600 font-semibold" aria-live="polite">
+                      {eventDayCount(editFormData.dateFrom, editFormData.dateTo) ? `${eventDayCount(editFormData.dateFrom, editFormData.dateTo)} day${eventDayCount(editFormData.dateFrom, editFormData.dateTo) > 1 ? "s" : ""}` : "—"}
+                    </div>
+                  </div>
                   </div>
 
                   <div className="md:col-span-2">
@@ -1560,6 +1664,7 @@ export default function AdminTournamentsPage() {
                       onChange={e => setEditFormData({ ...editFormData, location: e.target.value.replace(/[^a-zA-Z0-9\s,.'-]/g, '') })}
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50"
                     />
+                    <MapLinkField value={editFormData.mapLink} onChange={(url) => setEditFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50" />
                   </div>
 
                   <div>

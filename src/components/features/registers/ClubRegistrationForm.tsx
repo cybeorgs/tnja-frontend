@@ -512,9 +512,9 @@ const ClubRegistrationForm = ({ initialData = null, isResubmit = false }: { init
             </div>
           </section>
 
-          {/* Club Coach / Referee Information Details */}
+          {/* Club Coach Information Details */}
           <section className="bg-white border border-[#DEE2E6] rounded-sm overflow-hidden shadow-sm">
-            <SectionHeader title="Club Coach / Referee Information Details" />
+            <SectionHeader title="Club Coach Information Details" />
             <div className="p-8 pt-2 max-w-lg">
               <InputField 
                 label="Select Your Coach" 

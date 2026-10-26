@@ -14,8 +14,8 @@ const ROLES: {
   formTitle: string;
 }[] = [
   { label: "Player", href: "/register/player", icon: GiBlackBelt, formTitle: "New Player Registration Form" },
-  { label: "Coach / Referee", href: "/register/coach", icon: GiWhistle, formTitle: "New Coach / Referee Registration Form" },
-  { label: "Member", href: "/register/member", icon: FaUsers, formTitle: "New Members Registration Form" },
+  { label: "Coach", href: "/register/coach", icon: GiWhistle, formTitle: "New Coach Registration Form" },
+  { label: "Administrative Member", href: "/register/member", icon: FaUsers, formTitle: "New Administrative Member Registration Form" },
   { label: "Club", href: "/register/club", icon: GiTempleGate, formTitle: "New Club Registration Form" },
 ];
 

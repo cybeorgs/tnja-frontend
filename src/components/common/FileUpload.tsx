@@ -13,7 +13,25 @@ interface FileUploadProps {
   error?: string;
   layout?: "default" | "passport";
   required?: boolean;
+  /** When set, images must be exactly this size (in pixels) or the upload is refused. */
+  dimensions?: { width: number; height: number };
 }
+
+/** Reads an image file's natural pixel size in the browser. */
+const readImageSize = (file: File) =>
+  new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      reject(new Error("Could not read this image."));
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  });
 
 const FileUpload: React.FC<FileUploadProps> = ({
   label,
@@ -24,6 +42,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
   error,
   layout = "default",
   required = false,
+  dimensions,
 }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -37,6 +56,20 @@ const FileUpload: React.FC<FileUploadProps> = ({
     if (file.size > 5 * 1024 * 1024) {
       setUploadError("File size exceeds the 5MB limit.");
       return;
+    }
+
+    if (dimensions) {
+      try {
+        const { width, height } = await readImageSize(file);
+        if (width !== dimensions.width || height !== dimensions.height) {
+          setUploadError(`Image must be exactly ${dimensions.width} × ${dimensions.height} px (this one is ${width} × ${height} px).`);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+      } catch (err: any) {
+        setUploadError(err.message || "Could not read this image.");
+        return;
+      }
     }
 
     setUploading(true);

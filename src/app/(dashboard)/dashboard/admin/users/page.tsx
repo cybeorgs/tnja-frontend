@@ -49,12 +49,14 @@ interface TNJAUser {
   losses?: number;
   draws?: number;
   coachId?: string | null;
+  /** Office a coach also holds, e.g. DISTRICT_SECRETARY. */
+  officeRole?: string | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
 const PROMOTABLE_ROLES = [
-  { id: "MEMBER", label: "General Member" },
+  { id: "MEMBER", label: "Administrative Member" },
   { id: "DISTRICT_PRESIDENT", label: "District President" },
   { id: "DISTRICT_SECRETARY", label: "District Secretary" },
   { id: "ZONE_PRESIDENT", label: "Zone President" },
@@ -64,11 +66,14 @@ const PROMOTABLE_ROLES = [
   { id: "CEO", label: "CEO" },
 ];
 
+/** Offices a coach can hold alongside coaching ("" = no office). */
+const COACH_OFFICE_ROLES = PROMOTABLE_ROLES.filter((r) => r.id !== "MEMBER" && r.id !== "CEO");
+
 const getPermanentIdLabel = (role: string) => {
   if (role === "STUDENT") return "Player ID";
   if (role === "COACH") return "Coach ID";
   if (role === "CLUB") return "Club ID";
-  return "Member ID";
+  return "Administrative Member ID";
 };
 
 
@@ -78,7 +83,7 @@ const ROLE_TABS: { id: UserRole | "ALL" | "PROMOTED"; label: string }[] = [
   { id: "ALL", label: "All users" },
   { id: "STUDENT", label: "Players" },
   { id: "COACH", label: "Coaches" },
-  { id: "MEMBER", label: "Members" },
+  { id: "MEMBER", label: "Administrative Members" },
   { id: "CLUB", label: "Clubs" },
   { id: "PROMOTED", label: "Officials" },
 ];
@@ -456,7 +461,7 @@ export default function UserManagementPage() {
 
   const handlePromoteClick = (user: TNJAUser) => {
     setSelectedUser(user);
-    setPromoteRole(user.role);
+    setPromoteRole(user.role === "COACH" ? user.officeRole || "" : user.role);
     setPromoteDistrictId("");
     setPromoteModalOpen(true);
   };
@@ -500,21 +505,27 @@ export default function UserManagementPage() {
     setActionLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/member/promote`, {
+      const isCoach = selectedUser.role === "COACH";
+      const res = await fetch(`${API_BASE}/${isCoach ? "coach" : "member"}/promote`, {
         method: "PATCH",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-          memberId: selectedUser.id,
-          role: promoteRole,
+          ...(isCoach ? { coachId: selectedUser.id } : { memberId: selectedUser.id }),
+          role: isCoach ? promoteRole || null : promoteRole,
           districtId: promoteDistrictId || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Promotion failed");
-      showToast(`Member promoted to ${promoteRole} successfully`, "success");
+      showToast(
+        isCoach
+          ? promoteRole ? `Coach is now ${getRoleLabel(promoteRole)}` : "Coach's office removed"
+          : `Administrative Member promoted to ${promoteRole} successfully`,
+        "success"
+      );
       setPromoteModalOpen(false);
       fetchUsers();
     } catch (err: any) {
@@ -588,16 +599,18 @@ export default function UserManagementPage() {
     // 1. Role Filter for PROMOTED
     if (roleFilter === "PROMOTED") {
       const promotedRoles = ["DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"];
-      if (!promotedRoles.includes(u.role)) return false;
+      const office = u.role === "COACH" ? u.officeRole || "" : u.role;
+      if (!promotedRoles.includes(office)) return false;
       
-      if (promotedRoleFilter !== "ALL" && u.role !== promotedRoleFilter) {
+      if (promotedRoleFilter !== "ALL" && office !== promotedRoleFilter) {
         return false;
       }
 
       // 2. District Filter for PROMOTED
       if (districtFilter !== "ALL") {
         const selectedDistrict = districtsList.find(d => d.id === districtFilter);
-        if (selectedDistrict && u.districtName !== selectedDistrict.name) {
+        const officeDistrict = u.role === "COACH" ? u.assignedDistrict?.name ?? u.districtName : u.districtName;
+        if (selectedDistrict && officeDistrict !== selectedDistrict.name) {
           return false;
         }
       }
@@ -685,7 +698,7 @@ export default function UserManagementPage() {
     }
   };
 
-  const getRoleLabel = (role: UserRole) => {
+  const getRoleLabel = (role: string) => {
     const found = PROMOTABLE_ROLES.find(r => r.id === role);
     return found ? found.label : role;
   };
@@ -715,6 +728,7 @@ export default function UserManagementPage() {
       <ActionButton icon={<Eye size={16} />} label="View details" onClick={() => handleViewDetails(u)} />
       <ActionButton icon={<Edit size={16} />} label="Edit ID or password" onClick={() => handleEdit(u)} />
       {isMemberRole(u.role) && <ActionButton icon={<Shield size={16} />} label="Promote" onClick={() => handlePromoteClick(u)} />}
+      {u.role === "COACH" && u.status === "APPROVED" && <ActionButton icon={<Shield size={16} />} label={u.officeRole ? "Change office" : "Assign office"} onClick={() => handlePromoteClick(u)} />}
       {u.status !== "BLOCKED" && canBlock && <ActionButton icon={<Ban size={16} />} label="Block" danger onClick={() => handleBlockUser(u)} />}
       {canDelete && <ActionButton icon={<Trash2 size={16} />} label="Delete" danger onClick={() => confirmDelete(u)} />}
     </>
@@ -902,6 +916,11 @@ export default function UserManagementPage() {
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold ${roleColors[u.role] || "bg-slate-100 text-slate-600"}`}>
                           {getRoleIcon(u.role)}{getRoleLabel(u.role)}
                         </span>
+                        {u.officeRole && (
+                          <span className={`ml-1 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${roleColors[u.officeRole] || "bg-slate-100 text-slate-600"}`}>
+                            {getRoleLabel(u.officeRole)}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {u.permanentId ? (
@@ -942,6 +961,11 @@ export default function UserManagementPage() {
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold ${roleColors[u.role] || "bg-slate-100 text-slate-600"}`}>
                       {getRoleIcon(u.role)}{getRoleLabel(u.role)}
                     </span>
+                    {u.officeRole && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${roleColors[u.officeRole] || "bg-slate-100 text-slate-600"}`}>
+                        {getRoleLabel(u.officeRole)}
+                      </span>
+                    )}
                     <span className="font-mono font-bold text-slate-700">{u.permanentId || u.tempId}</span>
                     {u.districtName && <span className="text-slate-500">· {u.districtName}</span>}
                   </div>
@@ -1117,7 +1141,7 @@ export default function UserManagementPage() {
                     <Shield size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-black text-slate-800">Promote Member</h3>
+                    <h3 className="text-xl font-black text-slate-800">{selectedUser.role === "COACH" ? "Assign Office to Coach" : "Promote Administrative Member"}</h3>
                     <p className="text-slate-500 text-sm">{selectedUser.fullName}</p>
                   </div>
                 </div>
@@ -1136,10 +1160,16 @@ export default function UserManagementPage() {
                     onChange={(e) => setPromoteRole(e.target.value)}
                     className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-slate-700"
                   >
-                    {PROMOTABLE_ROLES.map(r => (
+                    {selectedUser.role === "COACH" && <option value="">No office (coach only)</option>}
+                    {(selectedUser.role === "COACH" ? COACH_OFFICE_ROLES : PROMOTABLE_ROLES).map(r => (
                       <option key={r.id} value={r.id}>{r.label}</option>
                     ))}
                   </select>
+                  {selectedUser.role === "COACH" && (
+                    <p className="text-[10px] text-slate-400 mt-3 leading-relaxed">
+                      The coach keeps their students and mats, and gets a &quot;Switch to Office View&quot; button in the sidebar for their office dashboard. Zone offices cover the zone of the coach&apos;s own district.
+                    </p>
+                  )}
                 </div>
                 {["DISTRICT_PRESIDENT", "DISTRICT_SECRETARY"].includes(promoteRole) && (
                   <div>
@@ -1201,7 +1231,7 @@ export default function UserManagementPage() {
                   </div>
                   <div>
                     <h3 className="text-xl font-black text-slate-800">Create New Entity</h3>
-                    <p className="text-slate-500 text-sm">Force create an approved Player, Club, or Member.</p>
+                    <p className="text-slate-500 text-sm">Force create an approved Player, Club, or Administrative Member.</p>
                   </div>
                 </div>
                 <button onClick={() => { setCreateModalOpen(false); setFormErrors({}); }} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
@@ -1221,7 +1251,7 @@ export default function UserManagementPage() {
                   >
                     <option value="STUDENT">Player</option>
                     <option value="CLUB">Club</option>
-                    <option value="MEMBER">Member</option>
+                    <option value="MEMBER">Administrative Member</option>
                   </select>
                 </div>
 
@@ -1516,7 +1546,7 @@ export default function UserManagementPage() {
                   className="flex-grow py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {actionLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                  Create {createType === "STUDENT" ? "Player" : createType === "CLUB" ? "Club" : "Member"}
+                  Create {createType === "STUDENT" ? "Player" : createType === "CLUB" ? "Club" : "Administrative Member"}
                 </button>
               </div>
             </motion.div>
@@ -1567,7 +1597,7 @@ export default function UserManagementPage() {
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm font-semibold text-slate-700"
                     >
                       <option value="STUDENT">Players (Students)</option>
-                      <option value="COACH">Coaches & Referees</option>
+                      <option value="COACH">Coaches</option>
                     </select>
                   </div>
 

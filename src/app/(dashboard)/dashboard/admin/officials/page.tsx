@@ -60,9 +60,10 @@ export default function OfficialsDirectoryPage() {
             "STATE_PRESIDENT", "STATE_SECRETARY",
             "CEO", "SUPER_ADMIN"
           ];
-          const officials = membersData.filter((u: any) => 
-            u.status === "APPROVED" && officialRoles.includes(u.role)
-          );
+          // Coaches holding an office are listed under that office.
+          const officials = membersData
+            .map((u: any) => (u.role === "COACH" && u.officeRole ? { ...u, role: u.officeRole, isCoach: true } : u))
+            .filter((u: any) => u.status === "APPROVED" && officialRoles.includes(u.role));
           setMembers(officials);
         }
 
@@ -303,6 +304,7 @@ export default function OfficialsDirectoryPage() {
                 <span className="px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-black text-[#FFDA00] inline-block text-center whitespace-pre-line leading-tight">
                   {member.role.replace("_", "\n")}
                 </span>
+                {member.isCoach && <span className="block mt-1 text-[10px] font-bold text-emerald-600">Coach</span>}
               </div>
 
               {/* Contact */}

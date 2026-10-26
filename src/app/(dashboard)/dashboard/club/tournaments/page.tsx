@@ -27,7 +27,9 @@ import {
   PlayCircle,
   Lock,
 } from "lucide-react";
-import FileUpload from "@/components/common/FileUpload";
+import EventBannerField from "@/components/common/EventBannerField";
+import MapLinkField, { MapLink } from "@/components/common/MapLinkField";
+import { eventDayCount } from "@/components/common/EventScheduleFields";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 const AVAILABLE_CATEGORIES = ["Mini Sub Junior", "Sub Junior", "Cadet", "Junior", "Senior"];
@@ -57,7 +59,7 @@ export default function ClubTournamentsPage() {
 
   const [districts, setDistricts] = useState<Array<{ id: string; name: string; zoneName?: string }>>([]);
   const [clubs, setClubs] = useState<Array<{ id: string; clubName?: string; name?: string; districtId?: string; district?: any }>>([]);
-  const [zones, setZones] = useState<string[]>(["Chennai Zone", "Salem Zone", "Coimbatore Zone", "Trichy Zone", "Madurai Zone"]);
+  const [zones, setZones] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -78,7 +80,7 @@ export default function ClubTournamentsPage() {
     zoneId: "",
     districtId: "",
     clubId: "",
-    bannerImage: "",
+    bannerImage: "", mapLink: "",
   });
 
   const [editData, setEditData] = useState({
@@ -100,7 +102,7 @@ export default function ClubTournamentsPage() {
     zoneId: "",
     districtId: "",
     clubId: "",
-    bannerImage: "",
+    bannerImage: "", mapLink: "",
   });
 
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -217,18 +219,25 @@ export default function ClubTournamentsPage() {
     fetchTournaments();
     fetchApprovedTournaments();
 
-    fetch(`${API_BASE}/districts`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
+    const token = localStorage.getItem("token");
+
+    // A club may only hold zonal tournaments in its own district's zone.
+    Promise.all([
+      fetch(`${API_BASE}/districts`).then((res) => (res.ok ? res.json() : [])),
+      fetch(`${API_BASE}/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+    ])
+      .then(([data, profile]) => {
         if (Array.isArray(data)) {
           setDistricts(data);
-          const uniqueZones = Array.from(new Set(data.map((d: any) => d.zoneName).filter(Boolean))) as string[];
-          if (uniqueZones.length > 0) setZones(uniqueZones);
+          const uniqueZones = Array.from(new Set(data.map((d: any) => d.zoneName).filter(Boolean))).sort() as string[];
+          const ownZone = (profile?.user?.assignedDistrict ?? profile?.user?.district)?.zoneName;
+          const isStateWide = ["SUPER_ADMIN", "CEO", "STATE_PRESIDENT", "STATE_SECRETARY"].includes(profile?.role);
+          const allowedZones = !isStateWide && ownZone ? [ownZone] : uniqueZones;
+          if (allowedZones.length > 0) setZones(allowedZones);
         }
       })
       .catch((err) => console.error("Failed to fetch districts", err));
 
-    const token = localStorage.getItem("token");
     fetch(`${API_BASE}/clubs`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
@@ -329,7 +338,7 @@ export default function ClubTournamentsPage() {
       gender: tournament.gender || "BOTH",
       allowBPL: tournament.allowBPL || false,
       beltEligibility: tournament.beltEligibility || "",
-      bannerImage: tournament.bannerImage || "",
+      bannerImage: tournament.bannerImage || "", mapLink: tournament.mapLink || "",
       level: level,
       zoneId: tournament.zoneId || "",
       districtId: tournament.districtId || tournament.district?.id || "",
@@ -451,7 +460,7 @@ export default function ClubTournamentsPage() {
       if (!res.ok) throw new Error(json.error || "Failed to create tournament");
       showToast("Tournament created! Your club players will be notified.", "success");
       setIsCreateModalOpen(false);
-      setFormData({ title: "", dateFrom: "", dateTo: "", location: "", description: "", entryFee: "", totalSlots: "", numberOfMats: "1", ageFrom: "0", ageTo: "100", category: [], gender: "BOTH", allowBPL: false, beltEligibility: "", level: "DISTRICT", zoneId: "", districtId: "", clubId: "", bannerImage: "" });
+      setFormData({ title: "", dateFrom: "", dateTo: "", location: "", description: "", entryFee: "", totalSlots: "", numberOfMats: "1", ageFrom: "0", ageTo: "100", category: [], gender: "BOTH", allowBPL: false, beltEligibility: "", level: "DISTRICT", zoneId: "", districtId: "", clubId: "", bannerImage: "", mapLink: "" });
       fetchTournaments();
       fetchTournaments();
     } catch (err: any) {
@@ -592,6 +601,7 @@ export default function ClubTournamentsPage() {
                     <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500">
                       <span className="flex items-center gap-1.5"><Clock size={14} className="text-[#FF7400]" />{new Date(tournament.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
                       <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#FF7400]" />{tournament.location}</span>
+                      <MapLink href={tournament.mapLink} />
                       <span className="flex items-center gap-1.5"><IndianRupee size={14} className="text-[#FF7400]" />Entry: ₹{tournament.entryFee}</span>
                       <span className="flex items-center gap-1.5"><Users size={14} className="text-[#FF7400]" />{tournament.registrationCount ?? 0} Registered</span>
                     </div>
@@ -990,18 +1000,13 @@ export default function ClubTournamentsPage() {
                       placeholder="e.g. Club Championship 2026" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
                   <div className="md:col-span-2 mt-2">
-                    <FileUpload 
-                      label="Banner Image (Optional)" 
-                      value={formData.bannerImage} 
-                      onChange={(url) => setFormData({ ...formData, bannerImage: url })} 
-                      accept="image/*" 
-                    />
+                    <EventBannerField value={formData.bannerImage} onChange={(url) => setFormData(prev => ({ ...prev, bannerImage: url }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level</label>
                     <select value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value, zoneId: "", districtId: "", clubId: "" })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold">
-                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option><option value="NATIONAL">National</option>
+                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option>
                     </select>
                   </div>
 
@@ -1064,15 +1069,24 @@ export default function ClubTournamentsPage() {
                       <option value="BOTH">Both</option><option value="MALE">Male Only</option><option value="FEMALE">Female Only</option>
                     </select>
                   </div>
+                  {/* From / To dates side by side, with the day count */}
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date *</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">From Date *</label>
                     <input type="date" lang="en-GB" required min={new Date().toISOString().split('T')[0]} value={formData.dateFrom} onChange={(e) => setFormData({ ...formData, dateFrom: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date (Optional)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">To Date (optional)</label>
                     <input type="date" lang="en-GB" min={formData.dateFrom || new Date().toISOString().split('T')[0]} value={formData.dateTo} onChange={(e) => setFormData({ ...formData, dateTo: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Number of Days</label>
+                    <div className="w-full px-6 py-4 bg-slate-100 border border-slate-200 rounded-2xl text-slate-600 font-semibold" aria-live="polite">
+                      {eventDayCount(formData.dateFrom, formData.dateTo) ? `${eventDayCount(formData.dateFrom, formData.dateTo)} day${eventDayCount(formData.dateFrom, formData.dateTo) > 1 ? "s" : ""}` : "—"}
+                    </div>
+                  </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
@@ -1116,6 +1130,7 @@ export default function ClubTournamentsPage() {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Venue / Location</label>
                     <input type="text" required value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value.replace(/[^a-zA-Z0-9\s,.'-]/g, '') })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
+                    <MapLinkField value={formData.mapLink} onChange={(url) => setFormData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Belt Eligibility</label>
@@ -1196,7 +1211,7 @@ export default function ClubTournamentsPage() {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level</label>
                     <select value={editData.level} onChange={(e) => setEditData({ ...editData, level: e.target.value, zoneId: "", districtId: "", clubId: "" })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold">
-                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option><option value="NATIONAL">National</option>
+                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option>
                     </select>
                   </div>
 
@@ -1259,15 +1274,24 @@ export default function ClubTournamentsPage() {
                       <option value="BOTH">Both</option><option value="MALE">Male Only</option><option value="FEMALE">Female Only</option>
                     </select>
                   </div>
+                  {/* From / To dates side by side, with the day count */}
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date *</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">From Date *</label>
                     <input type="date" lang="en-GB" required min={new Date().toISOString().split('T')[0]} value={editData.dateFrom} onChange={(e) => setEditData({ ...editData, dateFrom: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date (Optional)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">To Date (optional)</label>
                     <input type="date" lang="en-GB" min={editData.dateFrom || new Date().toISOString().split('T')[0]} value={editData.dateTo} onChange={(e) => setEditData({ ...editData, dateTo: e.target.value })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Number of Days</label>
+                    <div className="w-full px-6 py-4 bg-slate-100 border border-slate-200 rounded-2xl text-slate-600 font-semibold" aria-live="polite">
+                      {eventDayCount(editData.dateFrom, editData.dateTo) ? `${eventDayCount(editData.dateFrom, editData.dateTo)} day${eventDayCount(editData.dateFrom, editData.dateTo) > 1 ? "s" : ""}` : "—"}
+                    </div>
+                  </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
@@ -1311,6 +1335,7 @@ export default function ClubTournamentsPage() {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Venue / Location</label>
                     <input type="text" required value={editData.location} onChange={(e) => setEditData({ ...editData, location: e.target.value.replace(/[^a-zA-Z0-9\s,.'-]/g, '') })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
+                    <MapLinkField value={editData.mapLink} onChange={(url) => setEditData(prev => ({ ...prev, mapLink: url }))} inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Belt Eligibility</label>
@@ -1329,12 +1354,7 @@ export default function ClubTournamentsPage() {
                     <label htmlFor="allowBpl_edit" className="text-sm font-bold text-slate-700">Allow BPL Students to Register for Free</label>
                   </div>
                   <div className="md:col-span-2 mt-2">
-                    <FileUpload 
-                      label="Banner Image (Optional)" 
-                      value={editData.bannerImage} 
-                      onChange={(url) => setEditData({ ...editData, bannerImage: url })} 
-                      accept="image/*" 
-                    />
+                    <EventBannerField value={editData.bannerImage} onChange={(url) => setEditData(prev => ({ ...prev, bannerImage: url }))} />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Description</label>

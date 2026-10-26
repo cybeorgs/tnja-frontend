@@ -10,7 +10,6 @@ import {
   User,
   Users,
   ShieldCheck,
-  MapPin,
   Calendar,
   SlidersHorizontal,
   Menu,
@@ -24,7 +23,10 @@ import {
   ScrollText,
   FileCheck2,
   ChevronDown,
+  ArrowLeftRight,
 } from "lucide-react";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
 /** "just now", "5 min ago", "3 h ago", "2 days ago", then the date. */
 function timeAgo(iso: string): string {
@@ -46,6 +48,9 @@ export default function DashboardLayout({
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("User");
   const [userStatus, setUserStatus] = useState<string | null>(null);
+  // Office held by a coach (e.g. DISTRICT_SECRETARY); they switch between the coach and office dashboards.
+  const [officeRole, setOfficeRole] = useState<string | null>(null);
+  const [isSwitchingView, setIsSwitchingView] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -92,6 +97,26 @@ export default function DashboardLayout({
 
   const [isMounted, setIsMounted] = useState(false);
 
+  const switchView = async (view: "OFFICE" | "COACH") => {
+    setIsSwitchingView(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/switch-role`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ view }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not switch view");
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("userRole", data.role);
+      // Full reload so every page, and the notifications socket, picks up the new role.
+      window.location.assign(view === "OFFICE" ? "/dashboard/admin" : "/dashboard/member");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not switch view", "error");
+      setIsSwitchingView(false);
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     const token = localStorage.getItem("token");
@@ -107,6 +132,26 @@ export default function DashboardLayout({
     if (role) setUserRole(role);
     if (name) setUserName(name);
     if (status) setUserStatus(status);
+
+    // Coaches: pick up an office assigned (or removed) since they logged in.
+    const storedOffice = localStorage.getItem("officeRole");
+    setOfficeRole(storedOffice);
+    if (role === "COACH" || storedOffice) {
+      fetch(`${API_BASE}/auth/profile`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data?.user) return;
+          const office: string | null = data.user.officeRole ?? null;
+          setOfficeRole(office);
+          if (office) localStorage.setItem("officeRole", office);
+          else {
+            localStorage.removeItem("officeRole");
+            // The office was taken away while in the office view: return to the coach view.
+            if (role !== "COACH") switchView("COACH");
+          }
+        })
+        .catch(() => {});
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -195,8 +240,17 @@ export default function DashboardLayout({
 
   // Add Super Admin only links
   if (userRole === "SUPER_ADMIN" || userRole === "CEO") {
-    adminNavItems.push({ name: "Locations", href: "/dashboard/admin/locations", icon: MapPin });
-    adminNavItems.push({ name: "Payments", href: "/dashboard/admin/payments", icon: IndianRupee });
+    adminNavItems.push({
+      name: "Payments",
+      href: "/dashboard/admin/payments",
+      icon: IndianRupee,
+      children: [
+        { name: "Event Payments", href: "/dashboard/admin/payments?purpose=EVENT" },
+        { name: "Tournament Payments", href: "/dashboard/admin/payments?purpose=TOURNAMENT" },
+        { name: "Registration Fees", href: "/dashboard/admin/payments?purpose=REGISTRATION" },
+        { name: "All Payments", href: "/dashboard/admin/payments" },
+      ],
+    } as (typeof adminNavItems)[number]);
     adminNavItems.push({ name: "Configuration", href: "/dashboard/admin/configuration", icon: SlidersHorizontal });
   }
 
@@ -205,23 +259,28 @@ export default function DashboardLayout({
     { name: "Approvals", href: "/dashboard/admin/approvals", icon: FileCheck2 },
     { name: "Events", href: "/dashboard/admin/events", icon: Calendar },
     { name: "Tournaments", href: "/dashboard/admin/tournaments", icon: Trophy },
-    { name: "Members List", href: "/dashboard/admin/members", icon: Users },
+    { name: "Administrative Members List", href: "/dashboard/admin/members", icon: Users },
     { name: "Grievances", href: "/dashboard/admin/grievances", icon: MessageSquare },
   ];
 
   const secretaryNavItems = [
     { name: "Dashboard", href: "/dashboard/admin", icon: LayoutDashboard },
-    { name: "Members", href: "/dashboard/admin/members", icon: Users },
+    { name: "Administrative Members", href: "/dashboard/admin/members", icon: Users },
     { name: "Events", href: "/dashboard/admin/events", icon: Calendar },
     { name: "Tournaments", href: "/dashboard/admin/tournaments", icon: Trophy },
     { name: "Approvals", href: "/dashboard/admin/approvals", icon: ClipboardList },
     { name: "Grievances", href: "/dashboard/admin/grievances", icon: ScrollText },
   ];
 
+  // Zone officers approve only zonal events and tournaments (on those pages), so no Approvals entry.
+  const isZoneOfficer = userRole === "ZONE_PRESIDENT" || userRole === "ZONE_SECRETARY";
+  const officerNavItems = (items: typeof presidentNavItems) =>
+    isZoneOfficer ? items.filter((item) => item.href !== "/dashboard/admin/approvals") : items;
+
   const navItems = isPresident
-    ? presidentNavItems
+    ? officerNavItems(presidentNavItems)
     : isSecretary
-    ? secretaryNavItems
+    ? officerNavItems(secretaryNavItems)
     : (userRole === "SUPER_ADMIN" || userRole === "CEO")
     ? adminNavItems
     : userRole === "PLAYER"
@@ -431,13 +490,13 @@ export default function DashboardLayout({
               .map((item) => {
               const hasChildren = !!(item as any).children?.length;
               const children = (item as any).children as { name: string; href: string }[] | undefined;
-              const isOnTournamentsRoute = pathname.startsWith("/dashboard/admin/tournaments");
-              const isDropdownOpen = openDropdown === item.name || (hasChildren && isOnTournamentsRoute && openDropdown !== `${item.name}_closed`);
+              const isOnSectionRoute = pathname.startsWith(item.href);
+              const isDropdownOpen = openDropdown === item.name || (hasChildren && isOnSectionRoute && openDropdown !== `${item.name}_closed`);
               // Section links (e.g. /dashboard/admin/tournaments) also stay active on their sub-pages;
               // role home links like /dashboard/admin only match exactly.
               const isActive = pathname === item.href ||
                 (item.href.split("/").length > 3 && pathname.startsWith(`${item.href}/`));
-              const isParentHighlighted = hasChildren ? isOnTournamentsRoute : isActive;
+              const isParentHighlighted = hasChildren ? isOnSectionRoute : isActive;
 
               if (hasChildren && isSidebarOpen) {
                 return (
@@ -533,6 +592,29 @@ export default function DashboardLayout({
         {/* Footer */}
         {/* Footer: account settings (password, notifications, log out) for every role */}
         <div className={`border-t border-slate-100 p-3 ${!isSidebarOpen ? "flex flex-col items-center" : ""}`}>
+          {officeRole && (
+            <button
+              type="button"
+              onClick={() => switchView(userRole === "COACH" ? "OFFICE" : "COACH")}
+              disabled={isSwitchingView}
+              title={userRole === "COACH" ? `Switch to ${officeRole.replace(/_/g, " ").toLowerCase()} view` : "Switch to coach view"}
+              className={`flex items-center gap-3 px-2 py-2 mb-1 rounded-xl transition-all text-slate-600 hover:bg-orange-50 hover:text-[#FF7400] disabled:opacity-60 cursor-pointer ${!isSidebarOpen ? "w-auto justify-center" : "w-full"}`}
+            >
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-orange-100 text-[#FF7400]">
+                <ArrowLeftRight size={17} />
+              </div>
+              {isSidebarOpen && (
+                <span className="text-left leading-tight">
+                  <span className="block text-sm font-semibold">
+                    {isSwitchingView ? "Switching…" : userRole === "COACH" ? "Switch to Office View" : "Switch to Coach View"}
+                  </span>
+                  {userRole === "COACH" && (
+                    <span className="block text-[11px] text-slate-400 capitalize">{officeRole.replace(/_/g, " ").toLowerCase()}</span>
+                  )}
+                </span>
+              )}
+            </button>
+          )}
           <Link
             href="/dashboard/settings"
             onClick={() => { if (window.innerWidth < 768) setIsSidebarOpen(false); }}
