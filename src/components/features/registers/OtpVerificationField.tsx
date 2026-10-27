@@ -23,12 +23,12 @@ const CHANNELS = {
     maxLength: 10,
     pattern: /^[6-9][0-9]{9}$/,
     invalidMessage: "Please enter a valid 10-digit mobile number.",
-    sentText: (value: string) => <>An OTP has been sent on WhatsApp to <strong>+91 {value}</strong>.</>,
+    sentText: (value: string) => <>An OTP has been sent to <strong>+91 {value}</strong>.</>,
     changeLabel: "Change number",
   },
 };
 
-// Verifies an email address or mobile number (WhatsApp) with a 6-digit OTP. The form keeps
+// Verifies an email address or mobile number (SMS via Twilio Verify) with a 6-digit OTP. The form keeps
 // this state so it can block submit and send verificationToken with the registration.
 export function useOtpVerification(channel: Channel) {
   const [status, setStatus] = useState<Status>('idle');

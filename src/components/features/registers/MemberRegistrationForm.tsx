@@ -275,7 +275,6 @@ const MemberRegistrationForm = () => {
 
   const aadhaar = useAadhaarDigilocker();
   const emailOtp = useOtpVerification('email');
-  const mobileOtp = useOtpVerification('mobile');
   
   const [districts, setDistricts] = useState<{id: string, name: string}[]>([]);
   const [taluks, setTaluks] = useState<{id: string, name: string}[]>([]);
@@ -420,8 +419,8 @@ const MemberRegistrationForm = () => {
       setError("Please verify your Email Address before submitting.");
       return;
     }
-    if (!mobileOtp.verified) {
-      setError("Please verify your Mobile Number before submitting.");
+    if (!/^[6-9][0-9]{9}$/.test(formData.mobileNumber)) {
+      setError("Please enter a valid 10-digit mobile number.");
       return;
     }
 
@@ -442,8 +441,7 @@ const MemberRegistrationForm = () => {
           ...formData,
           dob: apiDob,
           aadhaarVerificationToken: aadhaar.verificationToken,
-          emailVerificationToken: emailOtp.verificationToken,
-          mobileVerificationToken: mobileOtp.verificationToken
+          emailVerificationToken: emailOtp.verificationToken
         }),
       });
 
@@ -633,13 +631,14 @@ const MemberRegistrationForm = () => {
                 </div>
 
                 <div className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <OtpVerificationField
+                  <InputField
                     label="Mobile Number"
                     name="mobileNumber"
                     placeholder="Enter Your Mobile"
                     value={formData.mobileNumber}
                     onChange={handleInputChange}
-                    otp={mobileOtp}
+                    required
+                    maxLength={10}
                   />
                   <InputField 
                     label="Alternate Mobile" 
