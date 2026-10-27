@@ -498,8 +498,16 @@ function ApprovalsContent() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="bg-white rounded-[2px] shadow-sm border border-slate-100 py-5 px-8 flex items-center hover:shadow-md transition-all"
+                      className="relative overflow-hidden bg-white rounded-[2px] shadow-sm border border-slate-100 py-5 px-8 flex items-center hover:shadow-md transition-all"
                     >
+                      {activeTab === "STUDENT" && item.rawData?.isBPL && (
+                        <div
+                          className="absolute top-3 -left-8 w-28 -rotate-45 bg-gradient-to-r from-sky-600 to-sky-500 text-white text-center text-[10px] font-black uppercase tracking-[0.2em] py-0.5 shadow-md pointer-events-none"
+                          title="Below Poverty Line applicant"
+                        >
+                          BPL
+                        </div>
+                      )}
                       <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] gap-4 w-full items-center">
                         {/* Applicant */}
                         <div className="flex items-center gap-3 min-w-0">
@@ -515,11 +523,8 @@ function ApprovalsContent() {
                             </div>
                           )}
                           <div className="flex flex-col justify-center min-w-0">
-                            <p className="font-bold text-slate-800 text-[15px] flex items-center gap-1.5 min-w-0" title={item.name}>
-                              <span className="truncate">{item.name}</span>
-                              {activeTab === "STUDENT" && item.rawData?.isBPL && (
-                                <span className="shrink-0 text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-sm">BPL</span>
-                              )}
+                            <p className="font-bold text-slate-800 text-[15px] truncate" title={item.name}>
+                              {item.name}
                             </p>
                             {item.subtitle && item.subtitle !== "No Club" && item.subtitle !== "Administrative Member" && item.subtitle !== "Coach" && (
                               <p className="text-[11px] text-slate-400 mt-0.5 truncate">{item.subtitle}</p>
