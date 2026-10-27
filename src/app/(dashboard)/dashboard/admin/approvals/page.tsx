@@ -102,8 +102,26 @@ function resolveApplication(raw: any, type: ApprovalType): Application {
   };
 }
 
+type PaymentStage = "PAYMENT_PENDING" | "AWAITING_ID" | "PAID" | "BPL_ACTIVE";
+
+// Same rule as the /track page: approval issues a temp ID, payment issues the permanent ID.
+// BPL players with proof skip the fee.
+function getPaymentStage(item: Application, type: ApprovalType): PaymentStage {
+  const raw = item.rawData || {};
+  const bplExempt = type === "STUDENT" && !!raw.isBPL && !!raw.bplProof;
+  if (raw.permanentId) return bplExempt ? "BPL_ACTIVE" : "PAID";
+  return bplExempt ? "AWAITING_ID" : "PAYMENT_PENDING";
+}
+
+const paymentStageConfig: Record<PaymentStage, { label: string; dot: string; text: string }> = {
+  PAYMENT_PENDING: { label: "PAYMENT PENDING", dot: "bg-amber-500", text: "text-amber-600" },
+  AWAITING_ID: { label: "AWAITING ID", dot: "bg-sky-500", text: "text-sky-600" },
+  PAID: { label: "PAID", dot: "bg-emerald-500", text: "text-emerald-600" },
+  BPL_ACTIVE: { label: "BPL · ACTIVE", dot: "bg-emerald-500", text: "text-emerald-600" },
+};
+
 function ApprovalsContent() {
-  type StatusType = "PENDING" | "APPROVED" | "REJECTED" | "REPLAY" | "BPL_REJECTED";
+  type StatusType = "PENDING" | "APPROVED" | "REJECTED" | "REPLAY" | "BPL_APPROVED" | "BPL_REJECTED";
   type RejectMode = "REJECTED" | "BPL_REJECTED";
 
   const searchParams = useSearchParams();
@@ -122,6 +140,7 @@ function ApprovalsContent() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [districts, setDistricts] = useState<{ id: string; name: string }[]>([]);
   const [districtFilter, setDistrictFilter] = useState<string>("ALL");
+  const [paymentFilter, setPaymentFilter] = useState<"ALL" | "UNPAID" | "PAID">("ALL");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -138,7 +157,12 @@ function ApprovalsContent() {
     { id: "APPROVED", label: "Approved" },
     { id: "REJECTED", label: "Denied" },
     { id: "REPLAY", label: "Replay" },
-    ...(activeTab === "STUDENT" ? [{ id: "BPL_REJECTED" as StatusType, label: "BPL Rejected" }] : []),
+    ...(activeTab === "STUDENT"
+      ? [
+          { id: "BPL_APPROVED" as StatusType, label: "BPL Approved" },
+          { id: "BPL_REJECTED" as StatusType, label: "BPL Rejected" },
+        ]
+      : []),
   ];
 
   const showToast = (msg: string, type: "success" | "error") => {
@@ -150,11 +174,15 @@ function ApprovalsContent() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/applications/pending?type=${activeTab}&status=${activeStatus}`, {
+      // BPL Approved is not a backend status: it is the approved players who claimed BPL.
+      const bplApproved = activeStatus === "BPL_APPROVED";
+      const apiStatus = bplApproved ? "APPROVED" : activeStatus;
+      const res = await fetch(`${API_BASE}/applications/pending?type=${activeTab}&status=${apiStatus}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
-      const raw: any[] = json.data || [];
+      let raw: any[] = json.data || [];
+      if (bplApproved) raw = raw.filter((r) => r.isBPL);
       setApplications(raw.map((r) => resolveApplication(r, activeTab)));
     } catch {
       showToast("Failed to load applications. Is the backend running?", "error");
@@ -176,12 +204,21 @@ function ApprovalsContent() {
 
   // District filter is applied client-side on the already-loaded list.
   const selectedDistrict = districts.find((d) => d.id === districtFilter);
-  const visibleApplications = selectedDistrict
+  const districtApplications = selectedDistrict
     ? applications.filter((a) => {
         const d = a.rawData?.district;
         return (d?.id ?? a.rawData?.districtId) === selectedDistrict.id || d?.name === selectedDistrict.name;
       })
     : applications;
+
+  // Approved people still go through payment; split them by whether the permanent ID exists yet.
+  const showPaymentFilter = activeStatus === "APPROVED" || activeStatus === "BPL_APPROVED";
+  const paidCount = districtApplications.filter((a) => !!a.rawData?.permanentId).length;
+  const unpaidCount = districtApplications.length - paidCount;
+  const visibleApplications =
+    showPaymentFilter && paymentFilter !== "ALL"
+      ? districtApplications.filter((a) => !!a.rawData?.permanentId === (paymentFilter === "PAID"))
+      : districtApplications;
   const autoOpened = React.useRef(false);
   useEffect(() => {
     const id = searchParams?.get("id");
@@ -326,8 +363,8 @@ function ApprovalsContent() {
                 key={tab.id}
                 onClick={() => {
                   setActiveTab(tab.id);
-                  // The BPL Rejected tab only exists for players.
-                  if (tab.id !== "STUDENT" && activeStatus === "BPL_REJECTED") setActiveStatus("PENDING");
+                  // The BPL tabs only exist for players.
+                  if (tab.id !== "STUDENT" && (activeStatus === "BPL_APPROVED" || activeStatus === "BPL_REJECTED")) setActiveStatus("PENDING");
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-sm transition-all text-left ${
                   isActive
@@ -352,7 +389,10 @@ function ApprovalsContent() {
                 return (
                   <button
                     key={st.id}
-                    onClick={() => setActiveStatus(st.id)}
+                    onClick={() => {
+                      setActiveStatus(st.id);
+                      setPaymentFilter("ALL");
+                    }}
                     className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
                       isActive
                         ? "bg-[#FF7400] text-white shadow-md shadow-[#FF7400]/20"
@@ -391,8 +431,37 @@ function ApprovalsContent() {
             </div>
           </div>
 
+          {showPaymentFilter && (
+            <div className="flex flex-wrap items-center gap-2 mb-5">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Payment</span>
+              {([
+                { id: "ALL", label: "All", count: districtApplications.length },
+                { id: "UNPAID", label: "Pending (Temp ID)", count: unpaidCount },
+                { id: "PAID", label: "Completed (Permanent ID)", count: paidCount },
+              ] as const).map((pf) => {
+                const isActive = paymentFilter === pf.id;
+                return (
+                  <button
+                    key={pf.id}
+                    onClick={() => setPaymentFilter(pf.id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+                      isActive
+                        ? "bg-orange-50 border-[#FF7400] text-[#FF7400]"
+                        : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {pf.label}
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? "bg-[#FF7400] text-white" : "bg-slate-100 text-slate-500"}`}>
+                      {pf.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* List Headers */}
-          <div className="grid grid-cols-[1.5fr_2fr_1fr_1fr_2fr] gap-4 px-8 text-[#FF7400] font-black text-[15px] mb-4">
+          <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] gap-4 px-8 text-[#FF7400] font-black text-[15px] mb-4">
             <div>Applicant</div>
             <div>Contact</div>
             <div>Location</div>
@@ -422,6 +491,7 @@ function ApprovalsContent() {
               <AnimatePresence mode="popLayout">
                 {visibleApplications.map((item) => {
                   const sc = statusConfig[item.status] || statusConfig["PENDING"];
+                  const ps = item.status === "APPROVED" ? paymentStageConfig[getPaymentStage(item, activeTab)] : null;
                   return (
                     <motion.div
                       key={item.id}
@@ -430,9 +500,9 @@ function ApprovalsContent() {
                       exit={{ opacity: 0 }}
                       className="bg-white rounded-[2px] shadow-sm border border-slate-100 py-5 px-8 flex items-center hover:shadow-md transition-all"
                     >
-                      <div className="grid grid-cols-[1.5fr_2fr_1fr_1fr_2fr] gap-4 w-full items-center">
+                      <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] gap-4 w-full items-center">
                         {/* Applicant */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                           {item.avatar ? (
                             <img
                               src={item.avatar}
@@ -444,9 +514,9 @@ function ApprovalsContent() {
                               {item.name.charAt(0)}
                             </div>
                           )}
-                          <div className="flex flex-col justify-center">
-                            <p className="font-bold text-slate-800 text-[15px] truncate flex items-center gap-1.5">
-                              {item.name}
+                          <div className="flex flex-col justify-center min-w-0">
+                            <p className="font-bold text-slate-800 text-[15px] flex items-center gap-1.5 min-w-0" title={item.name}>
+                              <span className="truncate">{item.name}</span>
                               {activeTab === "STUDENT" && item.rawData?.isBPL && (
                                 <span className="shrink-0 text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-sm">BPL</span>
                               )}
@@ -463,7 +533,7 @@ function ApprovalsContent() {
                         </div>
                         
                         {/* Contact */}
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1.5 min-w-0">
                           {item.phone && item.phone !== "—" && (
                             <div className="flex items-center gap-3 text-[13px] text-slate-600">
                               <Phone size={16} className="text-[#FF7400] shrink-0" /> <span className="truncate">{item.phone}</span>
@@ -485,9 +555,9 @@ function ApprovalsContent() {
                         </div>
 
                         {/* Status */}
-                        <div className="flex items-center gap-2">
-                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                          <span className={`${sc.text} font-black uppercase text-[13px] tracking-widest truncate`}>{sc.label}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(ps ?? sc).dot}`} />
+                          <span className={`${(ps ?? sc).text} font-black uppercase text-[13px] tracking-widest truncate`}>{(ps ?? sc).label}</span>
                         </div>
 
                         {/* Actions */}
@@ -543,6 +613,15 @@ function ApprovalsContent() {
                                 </button>
                               </div>
                             </>
+                          ) : item.status === "APPROVED" ? (
+                            <div className="px-5 py-1 flex flex-col min-w-0">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                {item.rawData?.permanentId ? "Permanent ID" : "Temp ID"}
+                              </span>
+                              <span className={`text-sm font-bold font-mono truncate ${item.rawData?.permanentId ? "text-emerald-600" : "text-slate-700"}`}>
+                                {item.rawData?.permanentId || item.rawData?.tempId || "—"}
+                              </span>
+                            </div>
                           ) : (
                             <div className="px-5 py-2 flex items-center gap-1.5">
                                <span className={`text-sm font-bold ${sc.text}`}>{sc.label}</span>
