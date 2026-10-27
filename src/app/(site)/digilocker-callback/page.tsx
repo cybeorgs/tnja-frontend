@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect } from 'react';
+import { DIGILOCKER_CHANNEL } from '@/components/features/registers/useAadhaarDigilocker';
 
 // DigiLocker redirects here after the user allows (or denies) access to their Aadhaar.
-// The registration form polls the backend for the result, so this popup just closes itself.
+// Tell the registration form to check the result now, then close this popup.
 export default function DigilockerCallbackPage() {
   useEffect(() => {
+    try {
+      const channel = new BroadcastChannel(DIGILOCKER_CHANNEL);
+      channel.postMessage('done');
+      channel.close();
+    } catch {
+      // Older browser: the form's slow poll still picks up the result.
+    }
     if (window.opener) window.close();
   }, []);
 

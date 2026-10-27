@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const POLL_INTERVAL_MS = 3000;
-const MAX_WAIT_MS = 15 * 60 * 1000;
+// Every check costs a Sandbox status call, so poll slowly and back off. The callback
+// page announces when DigiLocker is done, which triggers an immediate check instead.
+const FIRST_POLL_MS = 5000;
+const MAX_POLL_MS = 30000;
+const POLL_BACKOFF = 1.5;
+const MAX_WAIT_MS = 10 * 60 * 1000;
+export const DIGILOCKER_CHANNEL = 'tnja-digilocker';
 
 type Status = 'idle' | 'starting' | 'waiting' | 'verified';
 
@@ -58,10 +63,21 @@ export function useAadhaarDigilocker() {
 
   useEffect(() => {
     if (status !== 'waiting') return;
+    let cancelled = false;
     let checking = false;
-    const timer = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = FIRST_POLL_MS;
+
+    const schedule = () => {
+      if (cancelled) return;
+      clearTimeout(timer);
+      timer = setTimeout(check, delay);
+      delay = Math.min(delay * POLL_BACKOFF, MAX_POLL_MS);
+    };
+
+    const check = async () => {
       const current = session.current;
-      if (!current || checking) return;
+      if (cancelled || !current || checking) return;
       if (Date.now() - current.startedAt > MAX_WAIT_MS) return stop("Verification timed out. Please click Verify again.");
       checking = true;
       try {
@@ -71,20 +87,41 @@ export function useAadhaarDigilocker() {
           body: JSON.stringify({ aadhaarNumber: current.aadhaarNumber, digilockerSessionToken: current.token })
         });
         const data = await res.json();
-        if (session.current !== current) return;
+        if (cancelled || session.current !== current) return;
         if (!res.ok) return stop(data.error || "Failed to verify Aadhaar.");
         if (data.status === 'verified') {
           stop(null);
           setVerificationToken(data.aadhaarVerificationToken);
           setStatus('verified');
+          return;
         }
       } catch {
         // Network blip: keep polling.
       } finally {
         checking = false;
       }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
+      schedule();
+    };
+
+    // The callback page posts here when DigiLocker redirects back: check right away.
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(DIGILOCKER_CHANNEL);
+      channel.onmessage = () => {
+        if (checking) return;
+        clearTimeout(timer);
+        check();
+      };
+    } catch {
+      // No BroadcastChannel: the slow poll still picks up the result.
+    }
+
+    schedule();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      channel?.close();
+    };
   }, [status, apiUrl, stop]);
 
   return {
