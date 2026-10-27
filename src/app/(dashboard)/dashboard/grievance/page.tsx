@@ -584,7 +584,7 @@ export default function GrievancePage() {
                           </button>
                         </div>
                       )}
-                      {confirmError?.id === g.id && <p className="text-xs font-medium text-red-600">{confirmError.text}</p>}
+                      {confirmError && confirmError.id === g.id && <p className="text-xs font-medium text-red-600">{confirmError.text}</p>}
                     </div>
                   )}
 
