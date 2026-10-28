@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Button from '@/components/common/Button';
 import { Asterisk, Check, Mail, Smartphone } from 'lucide-react';
 
@@ -28,6 +28,9 @@ const CHANNELS = {
   },
 };
 
+// Matches the backend's per-target OTP cooldown, so Resend is never clicked into a 429.
+const RESEND_COOLDOWN_S = 30;
+
 // Verifies an email address or mobile number (SMS via Twilio Verify) with a 6-digit OTP. The form keeps
 // this state so it can block submit and send verificationToken with the registration.
 export function useOtpVerification(channel: Channel) {
@@ -36,14 +39,25 @@ export function useOtpVerification(channel: Channel) {
   const [otpValue, setOtpValue] = useState("");
   const [otpToken, setOtpToken] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  // Every send is a paid SMS/email: block a second request while one is in flight (double clicks).
+  const inFlight = useRef(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
 
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
   const send = async (target: string) => {
+    if (inFlight.current || resendIn > 0) return;
     if (!CHANNELS[channel].pattern.test(target)) {
       setError(CHANNELS[channel].invalidMessage);
       return;
     }
+    inFlight.current = true;
     const statusOnError: Status = otpToken ? 'sent' : 'idle';
     setStatus('sending');
     setError(null);
@@ -58,21 +72,28 @@ export function useOtpVerification(channel: Channel) {
         setOtpToken(data.otpToken);
         setOtpValue("");
         setStatus('sent');
+        setResendIn(RESEND_COOLDOWN_S);
       } else {
         setError(data.error || "Failed to send OTP.");
         setStatus(statusOnError);
+        const retryAfter = Number(res.headers.get('Retry-After'));
+        if (res.status === 429 && retryAfter > 0 && retryAfter <= 3600) setResendIn(retryAfter);
       }
     } catch {
       setError("Failed to connect to server.");
       setStatus(statusOnError);
+    } finally {
+      inFlight.current = false;
     }
   };
 
   const verify = async (target: string) => {
+    if (inFlight.current) return;
     if (otpValue.length !== 6) {
       setError("Please enter the 6-digit OTP.");
       return;
     }
+    inFlight.current = true;
     setStatus('verifying');
     setError(null);
     try {
@@ -92,6 +113,8 @@ export function useOtpVerification(channel: Channel) {
     } catch {
       setError("Failed to connect to server.");
       setStatus('sent');
+    } finally {
+      inFlight.current = false;
     }
   };
 
@@ -101,6 +124,7 @@ export function useOtpVerification(channel: Channel) {
     setOtpValue("");
     setOtpToken("");
     setVerificationToken("");
+    setResendIn(0); // the server cooldown is per number/email, so a changed value can be sent now
   };
 
   return {
@@ -112,6 +136,7 @@ export function useOtpVerification(channel: Channel) {
     otpValue,
     setOtpValue: (value: string) => setOtpValue(value.replace(/\D/g, '').slice(0, 6)),
     verificationToken,
+    resendIn,
     send,
     verify,
     reset,
@@ -162,10 +187,14 @@ export default function OtpVerificationField({ label, name, placeholder, value, 
             type="button"
             variant="primary"
             onClick={() => otp.send(value)}
-            disabled={status === 'sending' || status === 'verifying' || !value}
+            disabled={status === 'sending' || status === 'verifying' || !value || otp.resendIn > 0}
             className="whitespace-nowrap px-6"
           >
-            {status === 'sending' ? 'Sending...' : status === 'idle' ? 'Verify' : 'Resend OTP'}
+            {status === 'sending'
+              ? 'Sending...'
+              : otp.resendIn > 0
+                ? `${status === 'idle' ? 'Verify' : 'Resend'} in ${otp.resendIn}s`
+                : status === 'idle' ? 'Verify' : 'Resend OTP'}
           </Button>
         )}
       </div>

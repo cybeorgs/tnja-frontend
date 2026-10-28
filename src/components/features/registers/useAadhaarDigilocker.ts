@@ -22,6 +22,7 @@ export function useAadhaarDigilocker() {
   const [verificationToken, setVerificationToken] = useState("");
   const session = useRef<{ aadhaarNumber: string; token: string; startedAt: number } | null>(null);
   const popup = useRef<Window | null>(null);
+  const inFlight = useRef(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
 
@@ -35,11 +36,14 @@ export function useAadhaarDigilocker() {
   }, []);
 
   const start = async (aadhaarNumber: string, email?: string) => {
+    // Each start is a paid Sandbox session: ignore double clicks and clicks while one is open.
+    if (inFlight.current || session.current) return;
     if (!aadhaarNumber || aadhaarNumber.length !== 12) {
       setError("Please enter a valid 12-digit Aadhaar Number.");
       return;
     }
     // Open the popup synchronously in the click handler so browsers don't block it.
+    inFlight.current = true;
     popup.current = window.open('', 'digilocker', 'width=520,height=720');
     setStatus('starting');
     setError(null);
@@ -58,6 +62,8 @@ export function useAadhaarDigilocker() {
       setStatus('waiting');
     } catch {
       stop("Failed to connect to server.");
+    } finally {
+      inFlight.current = false;
     }
   };
 
