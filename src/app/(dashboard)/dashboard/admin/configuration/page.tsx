@@ -223,16 +223,28 @@ interface District {
   id: string;
   name: string;
   code: string | null;
-  playerIdSeq: number;
+  /** IDs issued so far under the current code, per type code. */
+  idSeq?: Partial<Record<IdType, number>>;
   zoneName: string | null;
 }
 
-/** Next player ID a district will issue: CBE-A-001 … CBE-A-999, then CBE-B-001. */
-function nextPlayerId(code: string, issued: number) {
+type IdType = "STU" | "MEM" | "CLB" | "COH";
+
+const ID_TYPES: { type: IdType; label: string }[] = [
+  { type: "STU", label: "Players" },
+  { type: "MEM", label: "Members" },
+  { type: "CLB", label: "Clubs" },
+  { type: "COH", label: "Coaches" },
+];
+
+/** Next ID a district will issue for a type: CBE-STU-A001 … CBE-STU-A999, then CBE-STU-B001. */
+function nextPermanentId(code: string, type: IdType, issued: number) {
   const seq = issued + 1;
   const series = String.fromCharCode(65 + Math.floor((seq - 1) / 999));
-  return `${code || "???"}-${series}-${String(((seq - 1) % 999) + 1).padStart(3, "0")}`;
+  return `${code || "???"}-${type}-${series}${String(((seq - 1) % 999) + 1).padStart(3, "0")}`;
 }
+
+const totalIssued = (d: District) => ID_TYPES.reduce((sum, { type }) => sum + (d.idSeq?.[type] ?? 0), 0);
 
 function DistrictCodes() {
   const [districts, setDistricts] = useState<District[]>([]);
@@ -285,7 +297,7 @@ function DistrictCodes() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-slate-800">District Codes</h2>
-            <p className="text-slate-500 text-sm">Prefix for Player IDs, e.g. CBE-A-001. Only Super Admin and CEO can change codes.</p>
+            <p className="text-slate-500 text-sm">Prefix for permanent IDs: CBE-STU-A001 (player), CBE-MEM-A001 (member), CBE-CLB-A001 (club), CBE-COH-A001 (coach). Only Super Admin and CEO can change codes.</p>
           </div>
         </div>
         <input
@@ -319,9 +331,16 @@ function DistrictCodes() {
               <div key={d.id} className="py-3 flex flex-wrap items-center gap-3">
                 <div className="flex-1 min-w-[140px]">
                   <p className="font-bold text-slate-800">{d.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {d.playerIdSeq} issued · next <span className="font-mono">{nextPlayerId(d.code || "", d.playerIdSeq)}</span>
-                  </p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400">
+                    {ID_TYPES.map(({ type, label }) => {
+                      const issued = d.idSeq?.[type] ?? 0;
+                      return (
+                        <span key={type} title={`${issued} ${label} IDs issued`}>
+                          next <span className="font-mono text-slate-500">{nextPermanentId(d.code || "", type, issued)}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
                 <input
                   value={draft}
@@ -332,7 +351,7 @@ function DistrictCodes() {
                 />
                 <button
                   onClick={() => {
-                    if (d.playerIdSeq > 0 && !confirm(`${d.name} has already issued ${d.playerIdSeq} Player IDs with code ${d.code}. New IDs will use ${draft}. Continue?`)) return;
+                    if (totalIssued(d) > 0 && !confirm(`${d.name} has already issued ${totalIssued(d)} IDs with code ${d.code}. Those IDs stay as they are; new IDs will use ${draft}. Continue?`)) return;
                     saveCode(d);
                   }}
                   disabled={!changed || draft.length < 2 || savingId === d.id}

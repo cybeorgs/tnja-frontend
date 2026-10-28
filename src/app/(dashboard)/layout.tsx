@@ -28,6 +28,9 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
+/** Roles held by member accounts; their dashboard follows promotions via /auth/refresh-session. */
+const MEMBER_ACCOUNT_ROLES = ["MEMBER", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"];
+
 /** "just now", "5 min ago", "3 h ago", "2 days ago", then the date. */
 function timeAgo(iso: string): string {
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -117,6 +120,25 @@ export default function DashboardLayout({
     }
   };
 
+  // Members: a promotion or demotion only reaches their token through a refresh.
+  const refreshMemberSession = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh-session`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      localStorage.setItem("token", data.token);
+      if (data.role === localStorage.getItem("userRole")) return;
+      localStorage.setItem("userRole", data.role);
+      // Full reload so every page, and the notifications socket, picks up the new role.
+      window.location.assign(data.role === "MEMBER" ? "/dashboard/member" : "/dashboard/admin");
+    } catch {
+      // Keep the current session; the next dashboard load tries again.
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     const token = localStorage.getItem("token");
@@ -151,6 +173,8 @@ export default function DashboardLayout({
           }
         })
         .catch(() => {});
+    } else if (role && MEMBER_ACCOUNT_ROLES.includes(role)) {
+      refreshMemberSession();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -185,6 +209,7 @@ export default function DashboardLayout({
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        if (data.type === "ROLE_CHANGED") refreshMemberSession();
         if (data.message) {
           showToast(data.message, "success");
           const newNotif = {

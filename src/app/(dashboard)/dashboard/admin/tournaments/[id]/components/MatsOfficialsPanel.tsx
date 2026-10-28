@@ -248,7 +248,7 @@ export function MatsOfficialsPanel({
                       type="text"
                       value={refSearchQuery}
                       onChange={(e) => setRefSearchQuery(e.target.value)}
-                      placeholder="Filter by name or ID... e.g. Priya or COA-20"
+                      placeholder="Filter by name or ID... e.g. Priya or CBE-COH-A001"
                       autoComplete="off"
                       className="w-full pl-11 pr-5 py-3.5 bg-white border border-slate-200 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 focus:border-[#FF7400]/40 text-slate-800"
                     />
