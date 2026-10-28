@@ -30,6 +30,8 @@ const InputField = ({ label, name, placeholder, required = false, type = "text",
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        // Browser autofill can fill a field without a change event; re-read it on blur.
+        onBlur={onChange}
         maxLength={maxLength}
         min={min}
         disabled={disabled}
@@ -721,6 +723,7 @@ const PlayerRegistrationForm = () => {
                           {aadhaar.authorizationUrl && (
                             <a href={aadhaar.authorizationUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">Open DigiLocker</a>
                           )}
+                          <button type="button" onClick={aadhaar.checkNow} className="text-blue-700 underline">I have finished, check now</button>
                           <button type="button" onClick={aadhaar.cancel} className="text-gray-500 underline">Cancel</button>
                         </div>
                       </div>

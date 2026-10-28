@@ -30,6 +30,8 @@ const InputField = ({ label, name, placeholder, required = false, type = "text",
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        // Browser autofill can fill a field without a change event; re-read it on blur.
+        onBlur={onChange}
         maxLength={maxLength}
         disabled={disabled}
         className={`w-full ${Icon ? 'pl-10' : 'px-4'} py-3 bg-white border border-[#DEE2E6] rounded text-sm text-gray-900 focus:outline-none focus:border-[#FF7400] focus:ring-1 focus:ring-[#FF7400]/20 transition-all placeholder:text-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
@@ -700,6 +702,7 @@ const CoachRegistrationForm = () => {
                           {aadhaar.authorizationUrl && (
                             <a href={aadhaar.authorizationUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">Open DigiLocker</a>
                           )}
+                          <button type="button" onClick={aadhaar.checkNow} className="text-blue-700 underline">I have finished, check now</button>
                           <button type="button" onClick={aadhaar.cancel} className="text-gray-500 underline">Cancel</button>
                         </div>
                       </div>

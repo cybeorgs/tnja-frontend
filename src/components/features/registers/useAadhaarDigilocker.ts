@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// Every check costs a Sandbox status call, so poll slowly and back off. The callback
-// page announces when DigiLocker is done, which triggers an immediate check instead.
-const FIRST_POLL_MS = 5000;
-const MAX_POLL_MS = 30000;
-const POLL_BACKOFF = 1.5;
+// Every check costs a Sandbox status call. The callback page announces when DigiLocker is
+// done, which triggers the one check that matters; the timer is only a slow safety net for
+// browsers where that message can't arrive. Worst case (user abandons): ~13 checks.
+const SAFETY_POLL_MS = 45 * 1000;
 const MAX_WAIT_MS = 10 * 60 * 1000;
+// "Check now" clicks closer together than this reuse the last answer instead of calling again.
+const MANUAL_CHECK_GAP_MS = 10 * 1000;
 export const DIGILOCKER_CHANNEL = 'tnja-digilocker';
 
 type Status = 'idle' | 'starting' | 'waiting' | 'verified';
@@ -23,6 +24,7 @@ export function useAadhaarDigilocker() {
   const session = useRef<{ aadhaarNumber: string; token: string; startedAt: number } | null>(null);
   const popup = useRef<Window | null>(null);
   const inFlight = useRef(false);
+  const checkNowRef = useRef<() => void>(() => {});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
 
@@ -71,14 +73,13 @@ export function useAadhaarDigilocker() {
     if (status !== 'waiting') return;
     let cancelled = false;
     let checking = false;
+    let lastCheckAt = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let delay = FIRST_POLL_MS;
 
     const schedule = () => {
       if (cancelled) return;
       clearTimeout(timer);
-      timer = setTimeout(check, delay);
-      delay = Math.min(delay * POLL_BACKOFF, MAX_POLL_MS);
+      timer = setTimeout(check, SAFETY_POLL_MS);
     };
 
     const check = async () => {
@@ -86,6 +87,7 @@ export function useAadhaarDigilocker() {
       if (cancelled || !current || checking) return;
       if (Date.now() - current.startedAt > MAX_WAIT_MS) return stop("Verification timed out. Please click Verify again.");
       checking = true;
+      lastCheckAt = Date.now();
       try {
         const res = await fetch(`${apiUrl}/auth/aadhaar/digilocker/check`, {
           method: 'POST',
@@ -122,11 +124,18 @@ export function useAadhaarDigilocker() {
       // No BroadcastChannel: the slow poll still picks up the result.
     }
 
+    checkNowRef.current = () => {
+      if (checking || Date.now() - lastCheckAt < MANUAL_CHECK_GAP_MS) return;
+      clearTimeout(timer);
+      check();
+    };
+
     schedule();
     return () => {
       cancelled = true;
       clearTimeout(timer);
       channel?.close();
+      checkNowRef.current = () => {};
     };
   }, [status, apiUrl, stop]);
 
@@ -138,6 +147,8 @@ export function useAadhaarDigilocker() {
     authorizationUrl,
     verificationToken,
     start,
+    /** For "I've finished in DigiLocker": checks once now (rate limited) instead of waiting for the timer. */
+    checkNow: () => checkNowRef.current(),
     cancel: () => stop(null),
   };
 }
