@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Every check costs a Sandbox status call. The callback page announces when DigiLocker is
-// done, which triggers the one check that matters; the timer is only a slow safety net for
-// browsers where that message can't arrive. Worst case (user abandons): ~13 checks.
-const SAFETY_POLL_MS = 45 * 1000;
+// done, which triggers the one check that matters; the timer is only a safety net for
+// browsers where that message can't arrive, so it stays quiet while a normal sign-in takes
+// place. Worst case (user abandons): at most 8 checks, from minute 3 to minute 10.
+const FIRST_SAFETY_CHECK_MS = 3 * 60 * 1000;
+const SAFETY_POLL_MS = 60 * 1000;
 const MAX_WAIT_MS = 10 * 60 * 1000;
+// A callback that lands during a check gets one follow-up check this long after it ends
+// (longer than the backend's 4 s per-session throttle, which would otherwise answer "pending").
+const FOLLOW_UP_CHECK_MS = 5 * 1000;
 // "Check now" clicks closer together than this reuse the last answer instead of calling again.
 const MANUAL_CHECK_GAP_MS = 10 * 1000;
 export const DIGILOCKER_CHANNEL = 'tnja-digilocker';
@@ -73,13 +78,14 @@ export function useAadhaarDigilocker() {
     if (status !== 'waiting') return;
     let cancelled = false;
     let checking = false;
+    let followUp = false;
     let lastCheckAt = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
-    const schedule = () => {
+    const schedule = (delay: number) => {
       if (cancelled) return;
       clearTimeout(timer);
-      timer = setTimeout(check, SAFETY_POLL_MS);
+      timer = setTimeout(check, delay);
     };
 
     const check = async () => {
@@ -108,15 +114,22 @@ export function useAadhaarDigilocker() {
       } finally {
         checking = false;
       }
-      schedule();
+      // The answer above may predate the callback, so check once more shortly; otherwise wait for the safety net.
+      const delay = followUp ? FOLLOW_UP_CHECK_MS : SAFETY_POLL_MS;
+      followUp = false;
+      schedule(delay);
     };
 
-    // The callback page posts here when DigiLocker redirects back: check right away.
+    // The callback page posts here when DigiLocker redirects back: check right away, or once
+    // more after the check already in progress (never two at the same time).
     let channel: BroadcastChannel | null = null;
     try {
       channel = new BroadcastChannel(DIGILOCKER_CHANNEL);
       channel.onmessage = () => {
-        if (checking) return;
+        if (checking) {
+          followUp = true;
+          return;
+        }
         clearTimeout(timer);
         check();
       };
@@ -130,7 +143,7 @@ export function useAadhaarDigilocker() {
       check();
     };
 
-    schedule();
+    schedule(FIRST_SAFETY_CHECK_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);

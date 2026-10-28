@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:digilocker": "node tests/digilocker-hook.e2e.mjs"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.0",
