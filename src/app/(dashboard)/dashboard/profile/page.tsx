@@ -17,12 +17,15 @@ import {
   Building2,
   CheckCircle2,
   AlertCircle,
+  Landmark,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const MEMBER_ROLES = ["MEMBER", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"];
+const DISTRICT_OFFICES = ["DISTRICT_PRESIDENT", "DISTRICT_SECRETARY"];
+const ZONE_OFFICES = ["ZONE_PRESIDENT", "ZONE_SECRETARY"];
 
 /** Fields each role may change here. Name, gender, mobile and email are verified at registration and stay locked. */
 const EDITABLE: Record<string, { key: string; label: string; type?: "blood" }[]> = {
@@ -123,7 +126,14 @@ export default function ProfilePage() {
   const isPlayer = role === "PLAYER";
   const isClub = role === "CLUB";
   const name = profile.fullName || profile.name || "—";
-  const district = profile.assignedDistrict?.name || profile.district?.name;
+  // Where they live, from registration; never replaced by the office they hold.
+  const district = profile.district?.name;
+  // The office a member was promoted to (their role), or one a coach holds alongside coaching.
+  const office: string | null = profile.officeRole || (MEMBER_ROLES.includes(role) && role !== "MEMBER" ? role : null);
+  // District and zone officers act for their assigned district; without one they act for their home district.
+  const officeDistrict = profile.assignedDistrict || profile.district;
+  const isDistrictOffice = !!office && DISTRICT_OFFICES.includes(office);
+  const isZoneOffice = !!office && ZONE_OFFICES.includes(office);
   const address = [profile.address || profile.address1 || profile.addressLine1, profile.address2 || profile.addressLine2, profile.city, profile.state]
     .filter(Boolean).join(", ");
   const pincode = profile.addressPincode || profile.pincode;
@@ -149,7 +159,13 @@ export default function ProfilePage() {
           <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-sm text-slate-500">
             {profile.email && <span className="inline-flex items-center gap-1.5"><Mail size={14} />{profile.email}</span>}
             {profile.mobileNumber && <span className="inline-flex items-center gap-1.5"><Phone size={14} />{profile.mobileNumber}</span>}
-            {(district || isSuperAdmin) && <span className="inline-flex items-center gap-1.5"><MapPin size={14} />{district || "Tamil Nadu"}</span>}
+            {(district || isSuperAdmin) && <span className="inline-flex items-center gap-1.5" title="Residential district"><MapPin size={14} />{district || "Tamil Nadu"}</span>}
+            {isDistrictOffice && officeDistrict?.name && (
+              <span className="inline-flex items-center gap-1.5" title="Office district"><Landmark size={14} />Office: {officeDistrict.name}</span>
+            )}
+            {isZoneOffice && officeDistrict?.zoneName && (
+              <span className="inline-flex items-center gap-1.5" title="Office zone"><Landmark size={14} />Office: {officeDistrict.zoneName}</span>
+            )}
           </div>
         </div>
         {editable.length > 0 && !editing && (
@@ -223,6 +239,17 @@ export default function ProfilePage() {
             <Field label="Approved on" value={fmtDate(profile.approvedAt)} />
           </Card>
 
+          {office && (
+            <Card title="Office" icon={<Landmark size={16} />}>
+              <Field label="Office" value={roleLabel(office)} />
+              {isDistrictOffice && <Field label="Office district" value={officeDistrict?.name} />}
+              {isZoneOffice && <Field label="Office zone" value={officeDistrict?.zoneName} />}
+              {isZoneOffice && <Field label="Office based in" value={officeDistrict?.name} />}
+              {!isDistrictOffice && !isZoneOffice && <Field label="Jurisdiction" value="Tamil Nadu (state)" />}
+              <Field label="Residential district" value={district} />
+            </Card>
+          )}
+
           <Card title={isClub ? "Club details" : "Personal details"} icon={isClub ? <Building2 size={16} /> : <User size={16} />}>
             {isClub ? (
               <>
@@ -246,7 +273,7 @@ export default function ProfilePage() {
           <Card title="Address" icon={<MapPin size={16} />}>
             <Field label="Address" value={address} wide />
             <Field label="Pincode" value={pincode} />
-            <Field label="District" value={district} />
+            <Field label="Residential district" value={district} />
             <Field label="Taluk" value={profile.taluk?.name} />
           </Card>
 
