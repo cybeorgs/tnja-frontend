@@ -28,7 +28,8 @@ import GrievanceChat from "@/components/features/GrievanceChat";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
-const ADMIN_ROLES = ["SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO", "DISTRICT_PRESIDENT", "DISTRICT_SECRETARY", "ZONE_PRESIDENT", "ZONE_SECRETARY"];
+/** Only state-level offices handle grievances; district and zone officers do not see them. */
+const ADMIN_ROLES = ["SUPER_ADMIN", "STATE_PRESIDENT", "STATE_SECRETARY", "CEO"];
 
 /**
  * A grievance as responders receive it: confidential, so there is no complainant

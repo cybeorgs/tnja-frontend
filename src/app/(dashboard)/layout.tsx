@@ -299,8 +299,16 @@ export default function DashboardLayout({
 
   // Zone officers approve only zonal events and tournaments (on those pages), so no Approvals entry.
   const isZoneOfficer = userRole === "ZONE_PRESIDENT" || userRole === "ZONE_SECRETARY";
+  // Only state officers handle grievances; district and zone officers can still raise their own.
+  const isStateOfficer = userRole === "STATE_PRESIDENT" || userRole === "STATE_SECRETARY";
   const officerNavItems = (items: typeof presidentNavItems) =>
-    isZoneOfficer ? items.filter((item) => item.href !== "/dashboard/admin/approvals") : items;
+    items
+      .filter((item) => !(isZoneOfficer && item.href === "/dashboard/admin/approvals"))
+      .map((item) =>
+        item.href === "/dashboard/admin/grievances" && !isStateOfficer
+          ? { ...item, name: "My Grievances", href: "/dashboard/grievance" }
+          : item
+      );
 
   const navItems = isPresident
     ? officerNavItems(presidentNavItems)
