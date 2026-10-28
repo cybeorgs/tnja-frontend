@@ -1,493 +1,299 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  GraduationCap,
-  CreditCard,
-  CheckCircle2,
   Loader2,
   AlertCircle,
-  BadgeCheck,
-  ShieldCheck,
-  ArrowRight,
-  Trophy,
+  CheckCircle2,
+  Clock,
   XCircle,
-  Scale,
-  Contact,
-  Award,
-  Calendar,
+  ShieldCheck,
+  ShieldAlert,
+  CreditCard,
+  Gauge,
+  ArrowUp,
+  ArrowDown,
+  MinusCircle,
+  CalendarDays,
+  MapPin,
   Swords,
-  Hash,
-  UserCheck,
-  Download,
-  Bell,
-  Users,
+  Pencil,
+  X,
+  Save,
+  Medal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { exportMatchToPDF } from "@/utils/pdfExport";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
-const Field = ({
-  label,
-  value,
-  readOnly = false,
-  onChange,
-  type = "text",
-}: {
-  label: string;
-  value: string | number;
-  readOnly?: boolean;
-  onChange?: (v: string) => void;
-  type?: string;
-}) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-xs font-semibold text-slate-500">{label}</label>
-    <input
-      type={type}
-      value={value}
-      readOnly={readOnly}
-      onChange={(e) => onChange?.(e.target.value)}
-      className={`w-full px-3 py-2.5 border rounded-lg text-sm font-medium text-slate-700 focus:outline-none transition-all ${
-        readOnly
-          ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
-          : "bg-white border-slate-200 focus:border-[#FF7400] focus:ring-2 focus:ring-[#FF7400]/10"
-      }`}
-    />
-  </div>
+type ActivityStatus = "APPROVED" | "PENDING" | "REJECTED";
+type MembershipState = "ACTIVE" | "EXPIRED" | "PAYMENT_DUE" | "AWAITING_ID" | "UNDER_REVIEW";
+
+/** Response of GET /players/me/dashboard. */
+interface Dashboard {
+  player: {
+    id: string;
+    fullName: string;
+    profilePhoto: string | null;
+    status: string;
+    playerId: string;
+    isPermanentId: boolean;
+    validUntil: string | null;
+    category: string | null;
+    hasCoach: boolean;
+  };
+  membership: { state: MembershipState; fee: number; isBPL: boolean };
+  stats: { matches: number; wins: number; losses: number; draws: number };
+  points: { season: number; points: number; breakdown: Record<PointSource, number>; rank: number | null; rankedPlayers: number };
+  recentActivity: { title: string; detail: string; status: ActivityStatus; date: string }[];
+  upcoming: {
+    tournamentId: string;
+    title: string;
+    category: string;
+    date: string;
+    dateTo: string | null;
+    location: string;
+    status: ActivityStatus;
+    nextMatch: { round: number; matNumber: number | null; matchNumber: number | null; opponent: string | null } | null;
+  } | null;
+}
+
+type EditRequest = { id: string; status: "PENDING" | "APPROVED" | "REJECTED" } | null;
+
+type PointSource = "PLACEMENT" | "SPORTSMANSHIP" | "VOLUNTEER" | "ATTENDANCE" | "DISCIPLINE";
+
+const POINT_SOURCES: { id: PointSource; label: string }[] = [
+  { id: "PLACEMENT", label: "Tournaments" },
+  { id: "SPORTSMANSHIP", label: "Sportsmanship" },
+  { id: "VOLUNTEER", label: "Volunteering" },
+  { id: "ATTENDANCE", label: "Attendance" },
+  { id: "DISCIPLINE", label: "Discipline" },
+];
+
+const PLACEMENT_LABEL: Record<string, string> = { FIRST: "Gold", SECOND: "Silver", THIRD: "Bronze", PARTICIPATION: "Participant" };
+
+interface PointHistoryEntry {
+  source: PointSource;
+  points: number;
+  reason: string | null;
+  month: string | null;
+  updatedAt: string;
+  tournament: { title: string; level: string; date: string } | null;
+}
+
+/** Fields a player may change once their coach approves an edit request. */
+const EDIT_FIELDS: { key: string; label: string; type?: string; readOnly?: boolean }[] = [
+  { key: "fullName", label: "Full Name" },
+  { key: "fatherName", label: "Father's Name" },
+  { key: "bloodGroup", label: "Blood Group" },
+  { key: "gender", label: "Gender" },
+  { key: "height", label: "Height (cm)", type: "number" },
+  { key: "weight", label: "Weight (kg)", type: "number" },
+  { key: "mobileNumber", label: "Mobile Number" },
+  { key: "dob", label: "Date of Birth", type: "date", readOnly: true },
+  { key: "email", label: "Email Address", readOnly: true },
+  { key: "address", label: "Address" },
+  { key: "city", label: "City" },
+  { key: "state", label: "State" },
+  { key: "addressPincode", label: "Pincode" },
+];
+
+const fmtDate = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
+
+const authHeaders = (): Record<string, string> => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
+
+const STATUS_PILL: Record<ActivityStatus, { label: string; className: string }> = {
+  APPROVED: { label: "Approved", className: "bg-emerald-50 text-emerald-600" },
+  PENDING: { label: "Pending", className: "bg-orange-50 text-[#FF7400]" },
+  REJECTED: { label: "Rejected", className: "bg-red-50 text-red-600" },
+};
+
+const STATUS_ICON: Record<ActivityStatus, React.ReactNode> = {
+  APPROVED: <CheckCircle2 size={18} className="text-emerald-500" />,
+  PENDING: <Clock size={18} className="text-[#FF7400]" />,
+  REJECTED: <XCircle size={18} className="text-red-500" />,
+};
+
+const StatusPill = ({ status }: { status: ActivityStatus }) => (
+  <span className={`shrink-0 px-2.5 py-1 rounded-md text-xs font-bold ${STATUS_PILL[status].className}`}>{STATUS_PILL[status].label}</span>
 );
 
+const Card = ({ className = "", children }: { className?: string; children: React.ReactNode }) => (
+  <motion.section
+    initial={{ opacity: 0, y: 12 }}
+    animate={{ opacity: 1, y: 0 }}
+    className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-6 ${className}`}
+  >
+    {children}
+  </motion.section>
+);
+
+async function fetchDashboard(): Promise<{ dashboard: Dashboard; editRequest: EditRequest }> {
+  const [dashRes, editRes] = await Promise.all([
+    fetch(`${API_BASE}/players/me/dashboard`, { headers: authHeaders() }),
+    fetch(`${API_BASE}/profile-edit-requests/my`, { headers: authHeaders() }),
+  ]);
+  const dashboard = await dashRes.json();
+  if (!dashRes.ok) throw new Error(dashboard.error || "Could not load your dashboard");
+  const req = editRes.ok ? await editRes.json() : null;
+  return { dashboard, editRequest: req?.id ? { id: req.id, status: req.status } : null };
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 export default function PlayerDashboard() {
-  const [playerData, setPlayerData] = useState<any>(null);
-  const [settings, setSettings] = useState<any>(null);
+  const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [paying, setPaying] = useState(false);
-  const [playerNotifications, setPlayerNotifications] = useState<any[]>([]);
-  const [upcomingMatches, setUpcomingMatches] = useState<any[]>([]);
-  const [completedMatches, setCompletedMatches] = useState<any[]>([]);
-  const [registeredCategories, setRegisteredCategories] = useState<{ tournamentId: string; tournamentName: string; category: string; status: string; ageGroup: string; gender: string; weightCategory: string; }[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<any>(null);
-  const [categoryParticipants, setCategoryParticipants] = useState<any[]>([]);
-  const [loadingParticipants, setLoadingParticipants] = useState(false);
-  const [tournamentWins, setTournamentWins] = useState<{ tournamentId: string; tournamentName: string; category: string }[]>([]);
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<any>({});
-  const [saving, setSaving] = useState(false);
-  const [editRequest, setEditRequest] = useState<{ id: string; status: string } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const [editRequest, setEditRequest] = useState<EditRequest>(null);
   const [requestingEdit, setRequestingEdit] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState<PointHistoryEntry[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  const buildForm = (u: any) => {
-    return {
-      fullName: u?.fullName || "",
-      fatherName: u?.fatherName || "",
-      bloodGroup: u?.bloodGroup || "",
-      gender: u?.gender || "",
-      height: u?.height || "",
-      weight: u?.weight || "",
-      mobileNumber: u?.mobileNumber || "",
-      address: u?.address || "",
-      city: u?.city || "",
-      state: u?.state || "",
-      addressPincode: u?.addressPincode || "",
-      dob: u?.dob ? new Date(u.dob).toISOString().split('T')[0] : "",
-      email: u?.email || "",
-      tempId: u?.tempId || "",
-    };
-  };
-
-  const handleSaveProfile = async () => {
-    setSaving(true);
+  const openHistory = async () => {
+    setHistoryOpen(true);
+    if (history) return;
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/auth/profile`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPlayerData(data.user);
-        setFormData(buildForm(data.user));
-        setIsEditing(false);
-        setEditRequest(null);
-        alert("Profile updated successfully!");
-      } else {
-        const err = await res.json();
-        alert(err.error || "Failed to update profile");
-      }
+      const res = await fetch(`${API_BASE}/players/me/points`, { headers: authHeaders() });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Could not load your points");
+      setHistory(body.entries);
     } catch (err) {
-      console.error(err);
-      alert("Error updating profile");
-    } finally {
-      setSaving(false);
+      setHistoryOpen(false);
+      setNotice({ text: (err as Error).message, type: "error" });
     }
   };
 
-  const handleRequestEdit = async () => {
-    setRequestingEdit(true);
+  const load = useCallback(
+    () =>
+      fetchDashboard()
+        .then(({ dashboard, editRequest }) => {
+          setData(dashboard);
+          setEditRequest(editRequest);
+        })
+        .catch((err: Error) => setError(err.message))
+        .finally(() => setLoading(false)),
+    []
+  );
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handlePayment = async () => {
+    if (!data) return;
+    setPaying(true);
+    setNotice(null);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/profile-edit-requests`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+      if (!(await loadRazorpayScript())) throw new Error("Razorpay SDK failed to load.");
+      // The backend derives the applicant from the token and the fee from settings.
+      const orderRes = await fetch(`${API_BASE}/application/create-order`, { method: "POST", headers: authHeaders() });
+      const order = await orderRes.json();
+      if (!orderRes.ok) throw new Error(order.error || "Failed to create order");
+
+      const checkout = new (window as unknown as { Razorpay: new (o: object) => { open: () => void } }).Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "Tamil Nadu Judo Association",
+        description: "Membership Registration Fee",
+        order_id: order.orderId,
+        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+          try {
+            const verifyRes = await fetch(`${API_BASE}/application/verify-payment`, {
+              method: "POST",
+              headers: { ...authHeaders(), "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+            const verify = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verify.error || "Verification failed");
+            if (verify.status === "PENDING") {
+              setNotice({ text: "Payment received and awaiting confirmation from the bank. Your Player ID will be issued and emailed to you shortly.", type: "success" });
+              load();
+              return;
+            }
+            alert("Payment successful! Your Player ID has been issued. You will now be logged out. Log in with your new Player ID to change your password.");
+            localStorage.clear();
+            window.location.href = "/login";
+          } catch (err) {
+            setNotice({ text: `Payment verification failed: ${(err as Error).message}`, type: "error" });
+          }
         },
+        theme: { color: "#FF7400" },
       });
-      const data = await res.json();
-      if (res.ok) {
-        setEditRequest({ id: data.id, status: "PENDING" });
-        alert("Edit request sent to your coach. You will be notified when it is approved.");
-      } else {
-        alert(data.error || "Failed to send request");
-      }
+      checkout.open();
     } catch (err) {
-      console.error(err);
-      alert("Error sending request");
+      setNotice({ text: (err as Error).message || "Payment initialization failed", type: "error" });
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const requestEdit = async () => {
+    setRequestingEdit(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`${API_BASE}/profile-edit-requests`, { method: "POST", headers: authHeaders() });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed to send request");
+      setEditRequest({ id: body.id, status: "PENDING" });
+      setNotice({ text: "Edit request sent to your coach. You can edit your profile once they approve it.", type: "success" });
+    } catch (err) {
+      setNotice({ text: (err as Error).message, type: "error" });
     } finally {
       setRequestingEdit(false);
     }
   };
 
-  const setF = (key: string) => (v: string) =>
-    setFormData((p: any) => ({ ...p, [key]: v }));
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
-    const loadNotifs = () => {
-      const saved = localStorage.getItem("tnja_notifications");
-      if (saved) {
-        try {
-          setPlayerNotifications(JSON.parse(saved));
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    };
-    loadNotifs();
-
-    window.addEventListener("tnja_notifications_updated", loadNotifs);
-    return () => {
-      window.removeEventListener("tnja_notifications_updated", loadNotifs);
-    };
-  }, []);
-
-  const handleCategoryClick = async (cat: any) => {
-    setSelectedCategory(cat);
-    setLoadingParticipants(true);
+  const openEditor = async () => {
+    setNotice(null);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/tournaments/player/category-participants?tournamentId=${cat.tournamentId}&ageGroup=${cat.ageGroup}&gender=${cat.gender}&weightCategory=${cat.weightCategory}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCategoryParticipants(data);
-      }
+      const res = await fetch(`${API_BASE}/auth/profile`, { headers: authHeaders() });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Could not load your profile");
+      const u = body.user ?? {};
+      setForm(Object.fromEntries(EDIT_FIELDS.map((f) => [f.key, f.key === "dob" && u.dob ? String(u.dob).split("T")[0] : String(u[f.key] ?? "")])));
+      setEditOpen(true);
     } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingParticipants(false);
+      setNotice({ text: (err as Error).message, type: "error" });
     }
   };
 
-  const fetchData = async () => {
+  const saveProfile = async () => {
+    setSaving(true);
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setError("No authentication token found. Please login again.");
-        setLoading(false);
-        return;
-      }
-
-      // Fetch profile and settings in parallel
-      const [profileRes, settingsRes, editReqRes] = await Promise.all([
-        fetch(`${API_BASE}/auth/profile`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        }),
-        fetch(`${API_BASE}/settings/global`),
-        fetch(`${API_BASE}/profile-edit-requests/my`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        }),
-      ]);
-
-      const profileData = await profileRes.json();
-      const settingsData = await settingsRes.json();
-
-      if (!profileRes.ok) throw new Error(profileData.error || "Failed to fetch profile");
-      if (!settingsRes.ok) throw new Error(settingsData.error || "Failed to fetch settings");
-
-      setPlayerData(profileData.user);
-      setFormData(buildForm(profileData.user));
-      setSettings(settingsData);
-
-      if (editReqRes.ok) {
-        const editReqData = await editReqRes.json();
-        if (editReqData && editReqData.id) {
-          setEditRequest({ id: editReqData.id, status: editReqData.status });
-        }
-      }
-
-      // Fetch tournaments & draws for upcoming matches
-      try {
-        const trnRes = await fetch(`${API_BASE}/tournaments/player`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        const pubRes = await fetch(`${API_BASE}/tournaments/player/matches`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        
-        let tournaments: any[] = [];
-        
-        if (trnRes.ok) {
-          const clubTournaments = await trnRes.json();
-          tournaments = [...tournaments, ...clubTournaments];
-        }
-        
-        if (pubRes.ok) {
-          const pubData = await pubRes.json();
-          tournaments = [
-            ...tournaments,
-            ...(pubData.district || []),
-            ...(pubData.zonal || []),
-            ...(pubData.stateAndNational || [])
-          ];
-        }
-
-        const matches: any[] = [];
-        const completed: any[] = [];
-        const cats: { tournamentId: string; tournamentName: string; category: string; status: string; ageGroup: string; gender: string; weightCategory: string; }[] = [];
-
-          for (const trn of tournaments) {
-            if (trn.myRegistrations && trn.myRegistrations.length > 0) {
-              trn.myRegistrations.forEach((reg: any) => {
-                cats.push({
-                  tournamentId: trn.id,
-                  tournamentName: trn.title,
-                  category: `${reg.ageGroup} ${reg.gender} - ${reg.weightCategory}kg`,
-                  status: reg.status,
-                  ageGroup: reg.ageGroup,
-                  gender: reg.gender,
-                  weightCategory: reg.weightCategory
-                });
-              });
-            } else if (trn.myRegistration) {
-              cats.push({
-                tournamentId: trn.id,
-                tournamentName: trn.title,
-                category: `${trn.myRegistration.ageGroup} ${trn.myRegistration.gender} - ${trn.myRegistration.weightCategory}kg`,
-                status: trn.myRegistration.status,
-                ageGroup: trn.myRegistration.ageGroup,
-                gender: trn.myRegistration.gender,
-                weightCategory: trn.myRegistration.weightCategory
-              });
-            }
-
-            if (trn.myRegistration && (trn.myRegistration.status === "APPROVED" || trn.myRegistration.status === "PENDING")) {
-              const drawRes = await fetch(`${API_BASE}/tournaments/${trn.id}/draws`, {
-                headers: { "Authorization": `Bearer ${token}` }
-              });
-              if (drawRes.ok) {
-                const draws = await drawRes.json();
-                for (const draw of draws) {
-                  if (draw.rounds) {
-                    let roundsArr = draw.rounds;
-                    if (typeof roundsArr === "string") {
-                      try { roundsArr = JSON.parse(roundsArr); } catch { continue; }
-                    }
-                    if (!Array.isArray(roundsArr)) continue;
-
-                    for (let rIdx = 0; rIdx < roundsArr.length; rIdx++) {
-                      const round = roundsArr[rIdx];
-                      if (!Array.isArray(round)) continue;
-                      for (const match of round) {
-                        const isPlayerInvolved = match.slotA?.playerId === profileData.user.id || match.slotB?.playerId === profileData.user.id;
-                        if (!isPlayerInvolved) continue;
-
-                        const opponent = match.slotA.playerId === profileData.user.id ? match.slotB : match.slotA;
-                        const matchInfo = {
-                          tournamentId: trn.id,
-                          tournamentName: trn.title,
-                          tournamentDate: trn.date,
-                          tournamentLocation: trn.location,
-                          tournamentLevel: trn.level || "CLUB",
-                          opponent,
-                          roundNum: rIdx + 1,
-                          matNumber: match.matNumber,
-                          matchNumber: match.matchNumber,
-                          refereeName: match.referee?.fullName || match.refereeName || null,
-                          refereeId: match.refereeId || match.referee?.id || null,
-                          rawMatch: match,
-                          winnerSlot: match.winnerId === match.slotA.playerId ? match.slotA : match.slotB,
-                          loserSlot: match.winnerId === match.slotA.playerId ? match.slotB : match.slotA,
-                          nextMatchInfo: null, // simple stub
-                          weightCategory: draw.weightCategory,
-                          ageGroup: draw.ageGroup,
-                          gender: draw.gender
-                        };
-
-                        if (match.status !== "COMPLETED") {
-                          const existingMatchForTrn = matches.find(m => m.tournamentId === trn.id);
-                          if (!existingMatchForTrn || existingMatchForTrn.roundNum > (rIdx + 1)) {
-                            if (existingMatchForTrn) {
-                              const index = matches.indexOf(existingMatchForTrn);
-                              matches[index] = matchInfo;
-                            } else {
-                              matches.push(matchInfo);
-                            }
-                          }
-                        } else {
-                          completed.push(matchInfo);
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-          setUpcomingMatches(matches);
-          setCompletedMatches(completed.sort((a, b) => new Date(b.tournamentDate).getTime() - new Date(a.tournamentDate).getTime()));
-          setRegisteredCategories(cats);
-
-          // Detect tournament wins (player won the final round)
-          const wins: { tournamentId: string; tournamentName: string; category: string }[] = [];
-          for (const trn of tournaments) {
-            if (trn.myRegistration?.status !== "APPROVED") continue;
-            const drawRes2 = await fetch(`${API_BASE}/tournaments/${trn.id}/draws`, {
-              headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (!drawRes2.ok) continue;
-            const draws2 = await drawRes2.json();
-            for (const draw of draws2) {
-              let roundsArr = draw.rounds;
-              if (typeof roundsArr === "string") {
-                try { roundsArr = JSON.parse(roundsArr); } catch { continue; }
-              }
-              if (!Array.isArray(roundsArr) || roundsArr.length === 0) continue;
-              
-              const finalRound = roundsArr[roundsArr.length - 1];
-              if (!Array.isArray(finalRound)) continue;
-
-              for (const match of finalRound) {
-                if (match?.status === "COMPLETED" && match?.winnerId === profileData.user.id) {
-                  wins.push({
-                    tournamentId: trn.id,
-                    tournamentName: trn.title,
-                    category: `${draw.ageGroup} ${draw.gender} ${draw.weightCategory}kg`,
-                  });
-                }
-              }
-            }
-          }
-          setTournamentWins(wins);
-      } catch (err) {
-        console.error("Error fetching upcoming matches:", err);
-      }
-
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
-  const handlePayment = async () => {
-    setPaying(true);
-    try {
-      const token = localStorage.getItem("token");
-      const resScript = await loadRazorpayScript();
-      if (!resScript) throw new Error("Razorpay SDK failed to load.");
-
-      // The backend derives the applicant from the token and the fee from settings.
-      const orderRes = await fetch(`${API_BASE}/application/create-order`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+      const res = await fetch(`${API_BASE}/auth/profile`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(form),
       });
-
-      const orderData = await orderRes.json();
-      if (!orderRes.ok) throw new Error(orderData.error || "Failed to create order");
-
-      // 3. Open Razorpay Checkout
-      const options = {
-        key: orderData.keyId,
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: "Tamil Nadu Judo Association",
-        description: "Membership Registration Fee",
-        order_id: orderData.orderId,
-        handler: async function (response: any) {
-          // 4. Verify Payment on Backend
-          try {
-            const verifyRes = await fetch(`${API_BASE}/application/verify-payment`, {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature
-              }),
-            });
-
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) throw new Error(verifyData.error || "Verification failed");
-
-            if (verifyData.status === "PENDING") {
-              alert("Payment received and awaiting confirmation from the bank. Your Player ID will be issued automatically and emailed to you shortly.");
-              return;
-            }
-
-            // Success!
-            alert("Payment successful! Your Player ID has been issued. You will now be logged out. Please log in using your new Player ID to change your password and secure your account.");
-            localStorage.clear();
-            window.location.href = "/login";
-          } catch (err: any) {
-            alert("Payment verification failed: " + err.message);
-          }
-        },
-        prefill: {
-          name: playerData.fullName,
-          email: playerData.email,
-          contact: playerData.mobileNumber,
-        },
-        theme: {
-          color: "#FF7400",
-        },
-      };
-
-      const paymentObject = new (window as any).Razorpay(options);
-      paymentObject.open();
-
-    } catch (err: any) {
-      alert(err.message || "Payment initialization failed");
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed to update profile");
+      setEditOpen(false);
+      setEditRequest(null);
+      setNotice({ text: "Profile updated successfully.", type: "success" });
+      load();
+    } catch (err) {
+      setNotice({ text: (err as Error).message, type: "error" });
     } finally {
-      setPaying(false);
+      setSaving(false);
     }
   };
 
@@ -495,776 +301,323 @@ export default function PlayerDashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Loader2 className="w-10 h-10 text-[#FF7400] animate-spin" />
-        <p className="text-gray-500 font-medium">Loading your dashboard...</p>
+        <p className="text-slate-500 font-medium">Loading your dashboard...</p>
       </div>
     );
   }
 
-  if (error || !playerData) {
+  if (error || !data) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-md mx-auto text-center gap-4">
-        <div className="p-4 bg-red-50 text-red-600 rounded-full">
-          <AlertCircle size={32} />
-        </div>
-        <h2 className="text-xl font-bold text-gray-800">Unable to load dashboard</h2>
-        <p className="text-gray-500">{error}</p>
-        <button onClick={() => window.location.reload()} className="mt-2 px-6 py-2 bg-[#FF7400] text-white rounded-full font-bold">
-          Try Again
-        </button>
+        <div className="p-4 bg-red-50 text-red-600 rounded-full"><AlertCircle size={32} /></div>
+        <h2 className="text-xl font-bold text-slate-800">Unable to load dashboard</h2>
+        <p className="text-slate-500">{error}</p>
+        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-[#FF7400] text-white rounded-lg font-bold">Try Again</button>
       </div>
     );
   }
 
-  // Check if payment is required
-  const needsPayment = !playerData.isBPL && !playerData.isPaid;
+  const { player, membership, stats, points, recentActivity, upcoming } = data;
+  const firstName = player.fullName.split(" ")[0];
+  const pct = (n: number) => (stats.matches ? `${Math.round((n / stats.matches) * 100)}%` : "—");
 
-  const infoGroups = [
-    {
-      title: "Basic Information",
-      icon: User,
-      items: [
-        { label: "Name", value: playerData.fullName, icon: User },
-        { label: "Father's Name", value: playerData.fatherName, icon: User },
-        { label: "Date of Birth", value: playerData.dob ? new Date(playerData.dob).toLocaleDateString() : "N/A", icon: Calendar },
-        { label: "Blood Group", value: playerData.bloodGroup, icon: ShieldCheck },
-      ]
-    },
-    {
-      title: "Contact & Address",
-      icon: MapPin,
-      items: [
-        { label: "Email", value: playerData.email, icon: Mail },
-        { label: "Mobile Number", value: playerData.mobileNumber, icon: Phone },
-        { label: "Address", value: playerData.address, icon: MapPin },
-        { label: "City", value: playerData.city, icon: MapPin },
-      ]
-    },
-    {
-      title: "Physical Attributes",
-      icon: Trophy,
-      items: [
-        { label: "Height (cm)", value: playerData.height, icon: Award },
-        { label: "Weight (kg)", value: playerData.weight, icon: Scale },
-        { label: "Gender", value: playerData.gender, icon: User },
-      ]
-    }
+  const statTiles = [
+    { label: "Matches", value: stats.matches, side: <Gauge size={20} className="text-slate-500" />, labelClass: "text-slate-500" },
+    { label: "Wins", value: stats.wins, side: <span className="flex flex-col items-end gap-2 text-emerald-600"><ArrowUp size={20} /><span className="text-sm font-bold">{pct(stats.wins)}</span></span>, labelClass: "text-emerald-600" },
+    { label: "Losses", value: stats.losses, side: <span className="flex flex-col items-end gap-2 text-red-500"><ArrowDown size={20} /><span className="text-sm font-bold">{pct(stats.losses)}</span></span>, labelClass: "text-red-500" },
+    { label: "Draws", value: stats.draws, side: <span className="flex flex-col items-end gap-2 text-slate-500"><MinusCircle size={20} /><span className="text-sm font-bold">{pct(stats.draws)}</span></span>, labelClass: "text-slate-500" },
   ];
 
   return (
-    <>
-      <div className="max-w-6xl mx-auto space-y-8 pb-12">
+    <div className="max-w-6xl space-y-6 pb-12">
+      <header>
+        <h1 className="text-3xl font-black text-slate-900">Player Dashboard</h1>
+        <p className="text-slate-500 mt-1">Welcome back, {firstName}!</p>
+      </header>
 
-      <div className="space-y-8">
-        {/* Header Card */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col md:flex-row items-center md:items-start gap-8"
-        >
-        <div className="relative">
-          <div className="w-32 h-32 bg-gradient-to-br from-[#FF7400] to-[#FF9100] rounded-2xl flex items-center justify-center text-white text-5xl font-bold shadow-xl shadow-[#FF7400]/20 overflow-hidden">
-            {playerData.profilePhoto ? (
-              <img 
-                src={playerData.profilePhoto} 
-                alt={playerData.fullName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              playerData.fullName.charAt(0)
-            )}
-          </div>
-          {playerData.permanentId && (
-            <div className="absolute -bottom-2 -right-2 bg-green-500 text-white p-1.5 rounded-full border-4 border-white">
-              <BadgeCheck size={20} />
-            </div>
-          )}
+      {notice && (
+        <div className={`flex items-start gap-2 p-3 rounded-lg border text-sm font-semibold ${notice.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-600"}`}>
+          {notice.type === "success" ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <AlertCircle size={16} className="mt-0.5 shrink-0" />}
+          <span className="flex-1">{notice.text}</span>
+          <button onClick={() => setNotice(null)} aria-label="Dismiss"><X size={16} /></button>
         </div>
+      )}
 
-        <div className="flex-grow text-center md:text-left">
-          <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-            <h1 className="text-3xl font-bold text-[#1A1A1A]">{playerData.fullName}</h1>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider w-fit mx-auto md:mx-0 ${
-              playerData.permanentId ? "bg-green-100 text-green-600" : "bg-orange-100 text-[#FF7400]"
-            }`}>
-              {playerData.permanentId ? "Active Administrative Member" : "Application Approved"}
-            </span>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Player card */}
+        <Card className="lg:col-span-7 flex flex-col sm:flex-row gap-6">
+          <div className="w-28 h-28 shrink-0 rounded-2xl bg-orange-50 text-[#FF7400] flex items-center justify-center text-5xl font-black overflow-hidden">
+            {player.profilePhoto
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={player.profilePhoto} alt="" className="w-full h-full object-cover" />
+              : player.fullName.charAt(0).toUpperCase()}
           </div>
-          <p className="text-gray-500 font-medium">
-            {playerData.permanentId ? `Player ID: ${playerData.permanentId}` : `Temporary Player ID: ${playerData.tempId}`}
-          </p>
-          {playerData.validUntil && (
-            <div className="mt-3 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-sm font-semibold">
-                <Calendar size={14} /> Valid until: {new Date(playerData.validUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-black text-slate-900 truncate">{player.fullName}</h2>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${player.status === "APPROVED" ? "bg-emerald-50 text-emerald-600" : "bg-orange-50 text-[#FF7400]"}`}>
+                {player.status.replace(/_/g, " ")}
               </span>
             </div>
-          )}
-        </div>
-        
-        <div className="md:ml-auto flex flex-col items-end gap-2">
-          {isEditing ? (
-            <button
-              onClick={() => {
-                setIsEditing(false);
-                setFormData(buildForm(playerData));
-              }}
-              className="px-6 py-2.5 bg-white border border-slate-300 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-all"
-            >
-              Cancel Editing
-            </button>
-          ) : editRequest?.status === "APPROVED" ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="px-6 py-2.5 bg-white border border-[#FF7400] text-[#FF7400] rounded-xl font-bold hover:bg-orange-50 transition-all flex items-center gap-2"
-            >
-              Edit Profile
-            </button>
-          ) : editRequest?.status === "PENDING" ? (
-            <div className="px-6 py-2.5 bg-amber-50 border border-amber-300 text-amber-700 rounded-xl font-bold text-sm flex items-center gap-2">
-              <Loader2 size={16} className="animate-spin" />
-              Edit Request Pending Coach Approval
+            {player.category && <p className="text-slate-600">{player.category}</p>}
+            <p className="text-slate-600">
+              <span className="font-bold text-slate-800">{player.isPermanentId ? "Player ID" : "Temporary ID"}:</span>{" "}
+              <span className="font-mono">{player.playerId}</span>
+            </p>
+            {player.validUntil && <p className="text-slate-600">TNJA Membership Valid Till: {fmtDate(player.validUntil)}</p>}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <Link href="/dashboard/profile" className="px-4 py-2 rounded-lg border border-orange-200 text-[#FF7400] text-sm font-bold hover:bg-orange-50 transition-colors">
+                View Profile
+              </Link>
+              {editRequest?.status === "APPROVED" ? (
+                <button onClick={openEditor} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#FF7400] text-white text-sm font-bold hover:bg-[#E56900]">
+                  <Pencil size={14} /> Edit Profile
+                </button>
+              ) : editRequest?.status === "PENDING" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-bold">
+                  <Clock size={14} /> Edit request awaiting coach approval
+                </span>
+              ) : player.hasCoach ? (
+                <button onClick={requestEdit} disabled={requestingEdit} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 disabled:opacity-60">
+                  {requestingEdit ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />} Request Edit
+                </button>
+              ) : null}
             </div>
-          ) : !playerData.coach ? (
-            <div className="px-6 py-2.5 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl font-bold text-sm">
-              No Coach Assigned — Cannot Request Edit
-            </div>
-          ) : (
-            <button
-              onClick={handleRequestEdit}
-              disabled={requestingEdit}
-              className="px-6 py-2.5 bg-white border border-[#FF7400] text-[#FF7400] rounded-xl font-bold hover:bg-orange-50 transition-all flex items-center gap-2 disabled:opacity-60"
-            >
-              {requestingEdit ? <Loader2 size={16} className="animate-spin" /> : null}
-              {requestingEdit ? "Sending Request..." : "Request Profile Edit"}
-            </button>
-          )}
-          {editRequest?.status === "REJECTED" && (
-            <p className="text-xs text-red-500 font-semibold">Your last request was rejected. You may send a new request.</p>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Main Content Area */}
-      <div className="space-y-8">
-          {needsPayment ? (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-gradient-to-br from-white to-gray-50 rounded-3xl p-8 border-2 border-[#FF7400]/20 shadow-xl"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-[#FF7400]/10 text-[#FF7400] rounded-2xl">
-                  <CreditCard size={32} />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-[#1A1A1A]">Payment Required</h3>
-                  <p className="text-gray-500">Complete your membership to receive your Player ID</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-8">
-                <div className="flex justify-between items-center mb-4 pb-4 border-b">
-                  <span className="text-gray-500 font-medium">Membership Fee</span>
-                  <span className="text-3xl font-bold text-[#FF7400]">₹ {settings?.playerFee || 1}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">Processing Fee</span>
-                  <span className="text-gray-400">Included</span>
-                </div>
-              </div>
-
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle2 size={18} className="text-green-500" />
-                  Instant issue of Player ID
-                </li>
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle2 size={18} className="text-green-500" />
-                  Access to all TNJA State Events
-                </li>
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle2 size={18} className="text-green-500" />
-                  Downloadable Membership Card
-                </li>
-              </ul>
-
-              <button 
-                onClick={handlePayment}
-                disabled={paying}
-                className="w-full py-4 bg-[#FF7400] text-white rounded-2xl font-bold text-lg shadow-lg shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-70"
-              >
-                {paying ? (
-                  <>
-                    <Loader2 size={24} className="animate-spin" />
-                    Processing Secure Payment...
-                  </>
-                ) : (
-                  <>
-                    Pay Membership Fee
-                    <ArrowRight size={24} />
-                  </>
-                )}
-              </button>
-            </motion.div>
-          ) : (
-            <div className="space-y-8">
-              {/* Profile Information / Edit Form */}
-              {isEditing ? (
-                <div className="bg-white rounded-3xl border border-slate-200 p-8 space-y-6 shadow-sm">
-                  <h3 className="text-xl font-bold text-[#FF7400] flex items-center gap-2">
-                    <User size={24} />
-                    Edit Personal Information
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Field label="Full Name" value={formData.fullName} onChange={setF("fullName")} />
-                    <Field label="Father's Name" value={formData.fatherName} onChange={setF("fatherName")} />
-                    <Field label="Blood Group" value={formData.bloodGroup} onChange={setF("bloodGroup")} />
-                    <Field label="Gender" value={formData.gender} onChange={setF("gender")} />
-                    <Field label="Height (cm)" type="number" value={formData.height} onChange={setF("height")} />
-                    <Field label="Weight (kg)" type="number" value={formData.weight} onChange={setF("weight")} />
-                    <Field label="Mobile Number" value={formData.mobileNumber} onChange={setF("mobileNumber")} />
-                    <Field label="Date of Birth" type="date" value={formData.dob} readOnly />
-                    <Field label="Email Address" value={formData.email} readOnly />
-                    <Field label="Student ID (Temporary)" value={formData.tempId} readOnly />
-                  </div>
-                  
-                  <h3 className="text-xl font-bold text-[#FF7400] flex items-center gap-2 mt-8 border-t pt-8">
-                    <MapPin size={24} />
-                    Address Details
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Field label="Address" value={formData.address} onChange={setF("address")} />
-                    <Field label="City" value={formData.city} onChange={setF("city")} />
-                    <Field label="State" value={formData.state} onChange={setF("state")} />
-                    <Field label="Pincode" value={formData.addressPincode} onChange={setF("addressPincode")} />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-100">
-                    <button
-                      onClick={() => {
-                        setIsEditing(false);
-                        setFormData(buildForm(playerData));
-                      }}
-                      className="px-6 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-all"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSaveProfile}
-                      disabled={saving}
-                      className="px-6 py-3 bg-[#FF7400] text-white rounded-xl font-bold hover:bg-[#E56900] transition-all disabled:opacity-60 shadow-lg shadow-orange-200 flex items-center gap-2"
-                    >
-                      {saving && <Loader2 size={18} className="animate-spin" />}
-                      {saving ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {infoGroups.map((group, groupIdx) => (
-                    <motion.div 
-                      key={group.title}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: groupIdx * 0.1 }}
-                      className={`bg-white rounded-3xl p-6 shadow-sm border border-slate-200 ${groupIdx === 2 ? "md:col-span-2" : ""}`}
-                    >
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-orange-50 text-[#FF7400] rounded-lg">
-                          <group.icon size={20} />
-                        </div>
-                        <h2 className="text-xl font-bold text-slate-800">{group.title}</h2>
-                      </div>
-
-                      <div className={`grid gap-6 ${groupIdx === 2 ? "md:grid-cols-3" : "grid-cols-1"}`}>
-                        {group.items.map((item) => (
-                          <div key={item.label} className="space-y-1">
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{item.label}</p>
-                            <div className="flex items-center gap-2 text-slate-700">
-                              <item.icon size={16} className="text-slate-300" />
-                              <p className="font-medium">{item.value || "N/A"}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-
-              {/* Tournament Champion Banner */}
-              {tournamentWins.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-3xl overflow-hidden shadow-2xl shadow-yellow-500/20"
-                >
-                  <div className="bg-gradient-to-r from-yellow-400 via-[#FF7400] to-yellow-500 px-8 py-5 flex items-center gap-4">
-                    <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
-                      <Trophy size={28} className="text-white" />
-                    </div>
-                    <div>
-                      <p className="text-white/80 text-xs font-black uppercase tracking-widest">Congratulations</p>
-                      <h2 className="text-2xl font-black text-white leading-tight">Tournament Champion!</h2>
-                    </div>
-                  </div>
-                  <div className="bg-white border border-yellow-200 divide-y divide-yellow-100">
-                    {tournamentWins.map((win, idx) => (
-                      <div key={idx} className="flex items-center justify-between px-8 py-4">
-                        <div>
-                          <p className="font-black text-slate-800">{win.tournamentName}</p>
-                          <p className="text-xs font-semibold text-slate-400 mt-0.5">{win.category}</p>
-                        </div>
-                        <span className="flex items-center gap-1.5 px-4 py-1.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-black">
-                          <Trophy size={13} /> 1st Place
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Match Statistics Card Grid */}
-              {(() => {
-                let totalWins = 0;
-                let totalLosses = 0;
-                let totalDraws = 0;
-                
-                if (playerData?.id) {
-                  completedMatches.forEach(match => {
-                    const isWin = match.rawMatch?.winnerId === playerData.id;
-                    const isDraw = !match.rawMatch?.winnerId; // Depending on how draws are handled
-                    
-                    if (isDraw) totalDraws++;
-                    else if (isWin) totalWins++;
-                    else totalLosses++;
-                  });
-                }
-                
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Wins Card */}
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-3xl p-6 shadow-sm flex items-center justify-between"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-emerald-600/80 uppercase tracking-wider">Total Wins</p>
-                    <h3 className="text-4xl font-black text-emerald-700">{totalWins}</h3>
-                  </div>
-                  <div className="p-4 bg-emerald-500/10 text-emerald-600 rounded-2xl">
-                    <Trophy size={28} />
-                  </div>
-                </motion.div>
-
-                {/* Losses Card */}
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  className="bg-gradient-to-br from-rose-50 to-white border border-rose-100 rounded-3xl p-6 shadow-sm flex items-center justify-between"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-rose-600/80 uppercase tracking-wider">Total Losses</p>
-                    <h3 className="text-4xl font-black text-rose-700">{totalLosses}</h3>
-                  </div>
-                  <div className="p-4 bg-rose-500/10 text-rose-600 rounded-2xl">
-                    <XCircle size={28} />
-                  </div>
-                </motion.div>
-
-                {/* Draws Card */}
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  className="bg-gradient-to-br from-slate-50 to-white border border-slate-200/60 rounded-3xl p-6 shadow-sm flex items-center justify-between"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Draws</p>
-                    <h3 className="text-4xl font-black text-slate-700">{totalDraws}</h3>
-                  </div>
-                  <div className="p-4 bg-slate-500/10 text-slate-600 rounded-2xl">
-                    <Scale size={28} />
-                  </div>
-                </motion.div>
-              </div>
-              );
-            })()}
-
-              {/* Upcoming Matches Card */}
-              {upcomingMatches.length > 0 && (
-                <div className="bg-white rounded-3xl p-8 border border-[#FF7400]/20 shadow-lg shadow-orange-500/5 space-y-6 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-orange-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
-                  
-                  <div className="flex items-center gap-3 border-b border-slate-100 pb-4 relative z-10">
-                    <div className="p-2.5 bg-orange-100 text-[#FF7400] rounded-xl">
-                      <Swords size={20} />
-                    </div>
-                    <h3 className="text-xl font-black text-[#1A1A1A]">Upcoming Matches</h3>
-                  </div>
-
-                  <div className="space-y-4 relative z-10">
-                    {upcomingMatches.map((match, idx) => (
-                      <div key={idx} className="p-5 bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-md transition-all">
-                        
-                        <div className="flex-1 space-y-3">
-                          <div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Tournament</span>
-                            <h4 className="font-bold text-slate-800 text-lg leading-tight">{match.tournamentName}</h4>
-                          </div>
-                          
-                          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-                            {match.ageGroup && match.weightCategory && (
-                              <div className="flex items-center gap-1.5 bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm font-black">
-                                <Scale size={14} /> {match.ageGroup} {match.gender} - {match.weightCategory}kg
-                              </div>
-                            )}
-                            {match.rawMatch?.status === "LIVE" && (
-                              <div className="flex items-center gap-1.5 bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 text-red-700 font-black shadow-sm">
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></span> LIVE
-                              </div>
-                            )}
-                            {match.rawMatch?.status === "PENDING" && (
-                              <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-bold shadow-sm">
-                                PENDING
-                              </div>
-                            )}
-                            <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm">
-                              <Calendar size={14} className="text-[#FF7400]" />
-                              {new Date(match.tournamentDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                            </div>
-                            <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm">
-                              <MapPin size={14} className="text-[#FF7400]" />
-                              {match.tournamentLocation}
-                            </div>
-                            <div className="flex items-center gap-1.5 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm text-orange-700 font-black">
-                              Mat {match.matNumber}
-                            </div>
-                            <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
-                              <Hash size={13} className="text-[#FF7400]" />
-                              Match {match.matchNumber}
-                            </div>
-                          </div>
-
-                          {/* Referee */}
-                          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold w-fit ${
-                            match.refereeName
-                              ? "bg-blue-50 border border-blue-100 text-blue-700"
-                              : "bg-slate-50 border border-slate-100 text-slate-400"
-                          }`}>
-                            <UserCheck size={14} className={match.refereeName ? "text-blue-500" : "text-slate-300"} />
-                            <span>
-                              <span className="font-black uppercase tracking-wider text-[10px] mr-1">Referee:</span>
-                              {match.refereeName || "Not yet assigned"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex-1 md:text-right p-4 bg-orange-50/50 rounded-xl border border-orange-100">
-                          <span className="text-[10px] font-black text-orange-500 uppercase tracking-wider block mb-1">
-                            Opponent — Round {match.roundNum}
-                          </span>
-                          {match.opponent?.playerId ? (
-                            <div>
-                              <p className="font-extrabold text-slate-800 text-lg">{match.opponent.playerName}</p>
-                              <p className="text-xs font-bold text-slate-500">{match.opponent.club || "No Club"}</p>
-                            </div>
-                          ) : match.opponent?.isBye ? (
-                            <p className="font-extrabold text-emerald-600 text-lg">BYE (Auto-Advance)</p>
-                          ) : (
-                            <p className="font-extrabold text-slate-400 text-lg">To Be Decided</p>
-                          )}
-                        </div>
-
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Completed Matches Card */}
-              {completedMatches.length > 0 && (
-                <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm space-y-6 relative overflow-hidden">
-                  <div className="flex items-center gap-3 border-b border-slate-100 pb-4 relative z-10">
-                    <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl">
-                      <CheckCircle2 size={20} />
-                    </div>
-                    <h3 className="text-xl font-black text-[#1A1A1A]">Completed Matches & Reports</h3>
-                  </div>
-
-                  <div className="space-y-4 relative z-10">
-                    {completedMatches.map((match, idx) => {
-                      const isWin = match.rawMatch.winnerId === playerData.id;
-                      return (
-                        <div key={idx} className="p-5 bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-md transition-all">
-                          
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center gap-3 mb-1">
-                              {isWin ? (
-                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wider">WIN</span>
-                              ) : (
-                                <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wider">LOSS</span>
-                              )}
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tournament</span>
-                            </div>
-                            <h4 className="font-bold text-slate-800 text-lg leading-tight">{match.tournamentName}</h4>
-                            
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-                              {match.ageGroup && match.weightCategory && (
-                                <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-100 shadow-sm font-black">
-                                  <Scale size={14} /> {match.ageGroup} {match.gender} - {match.weightCategory}kg
-                                </span>
-                              )}
-                              <span className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm"><Calendar size={14} className="text-[#FF7400]"/> {new Date(match.tournamentDate).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}</span>
-                              <span className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm"><MapPin size={14} className="text-[#FF7400]" /> {match.tournamentLocation}</span>
-                              <span className="flex items-center gap-1.5 text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md"><Hash size={14} /> Round {match.roundNum}</span>
-                            </div>
-                          </div>
-
-                          <div className="hidden md:block w-px h-16 bg-slate-200" />
-
-                          <div className="flex-1 md:text-right space-y-3 flex flex-col items-start md:items-end">
-                            <div>
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Opponent</span>
-                              <span className="font-bold text-slate-800 text-lg">{match.opponent?.playerName || "Unknown"}</span>
-                            </div>
-                            
-                            <button
-                              onClick={() => {
-                                exportMatchToPDF(
-                                  match.rawMatch,
-                                  match.winnerSlot,
-                                  match.loserSlot,
-                                  { title: match.tournamentName, date: match.tournamentDate, level: match.tournamentLevel, location: match.tournamentLocation },
-                                  match.roundNum - 1,
-                                  match.nextMatchInfo
-                                );
-                              }}
-                              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-[#FF7400] text-slate-600 hover:text-white rounded-xl text-xs font-bold transition-all md:ml-auto w-full md:w-fit"
-                            >
-                              <Download size={15} /> Download Match Report
-                            </button>
-                          </div>
-
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Coach Assignment Card */}
-              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b pb-4">
-                  <div className="p-2.5 bg-orange-100 text-[#FF7400] rounded-xl">
-                    <Contact size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-[#1A1A1A]">Assigned Coach</h3>
-                </div>
-
-                {playerData.coach ? (
-                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 p-6 bg-slate-50/70 border border-slate-100 rounded-2xl">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 bg-[#FF7400] text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg shadow-orange-500/10">
-                        {playerData.coach.fullName.charAt(0)}
-                      </div>
-                      <div>
-                        <h4 className="font-extrabold text-slate-800 text-lg leading-tight">{playerData.coach.fullName}</h4>
-                        <div className="flex items-center gap-1.5 mt-1 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-                          <Award size={14} className="text-[#FF7400]" />
-                          <span>{playerData.coach.presentGradeInJudo || "Certified Judo Coach"}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 text-sm text-slate-500 font-medium">
-                      <div className="flex items-center gap-2">
-                        <Mail size={14} className="text-black" />
-                        <span>{playerData.coach.email}</span>
-                      </div>
-                      {playerData.coach.mobileNumber && (
-                        <div className="flex items-center gap-2">
-                          <Phone size={14} className="text-black" />
-                          <span>{playerData.coach.mobileNumber}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-10 px-4 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl space-y-3">
-                    <p className="text-slate-400 font-semibold text-sm">No Coach Assigned</p>
-                    <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
-                      Please contact your district administrator or club secretary to assign a certified coach to your profile.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        {/* Additional Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
-          {/* Registered Categories Card */}
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm md:col-span-2">
-            <h4 className="font-bold text-[#1A1A1A] mb-4 flex items-center gap-2">
-              <Scale size={20} className="text-[#FF7400]" /> 
-              Registered Weight Categories
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {registeredCategories.length > 0 ? (
-                registeredCategories.map((cat, idx) => (
-                  <div key={idx} onClick={() => handleCategoryClick(cat)} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:border-[#FF7400] hover:shadow-md transition-all group">
-                    <p className="text-sm font-bold text-slate-800 mb-1">{cat.tournamentName}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs font-semibold px-2 py-1 bg-orange-100 text-orange-700 rounded-md whitespace-nowrap">
-                        {cat.category}
-                      </span>
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider whitespace-nowrap ${
-                        cat.status === "APPROVED" ? "bg-green-100 text-green-700" :
-                        cat.status === "REJECTED" ? "bg-red-100 text-red-700" :
-                        "bg-amber-100 text-amber-700"
-                      }`}>
-                        {cat.status}
-                      </span>
-                    </div>
-                    <div className="mt-3 text-xs font-bold text-[#FF7400] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Users size={14} /> View Participants
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="col-span-full text-center py-6">
-                  <p className="text-sm text-gray-500">No categories registered yet.</p>
-                </div>
-              )}
-            </div>
+            {editRequest?.status === "REJECTED" && <p className="text-xs font-semibold text-red-500">Your last edit request was rejected. You may send a new one.</p>}
           </div>
+        </Card>
 
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <h4 className="font-bold text-[#1A1A1A] mb-4">Membership Status</h4>
-            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl mb-4">
-              <div className={`p-2 rounded-xl ${playerData.permanentId ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"}`}>
-                {playerData.permanentId ? <ShieldCheck size={20} /> : <Loader2 size={20} className="animate-spin" />}
+        {/* Membership */}
+        <Card className="lg:col-span-5 flex flex-col">
+          <h3 className="font-bold text-slate-800 mb-4">Membership Status</h3>
+          {membership.state === "ACTIVE" && (
+            <MembershipLine icon={<ShieldCheck size={24} />} tone="emerald" title="Active Membership"
+              text={player.validUntil ? `Your membership is active until ${fmtDate(player.validUntil)}. You can take part in all TNJA sanctioned events.` : "Your membership is active. You can take part in all TNJA sanctioned events."} />
+          )}
+          {membership.state === "EXPIRED" && (
+            <MembershipLine icon={<ShieldAlert size={24} />} tone="red" title="Membership Expired"
+              text={`Your membership ended on ${fmtDate(player.validUntil)}. Contact the TNJA office to renew it.`} />
+          )}
+          {membership.state === "UNDER_REVIEW" && (
+            <MembershipLine icon={<Clock size={24} />} tone="orange" title="Application Under Review"
+              text="Your application is being reviewed. You can pay the membership fee once it is approved." />
+          )}
+          {membership.state === "AWAITING_ID" && (
+            <MembershipLine icon={<Clock size={24} />} tone="orange" title={membership.isBPL ? "Fee Exempt (BPL)" : "Payment Received"}
+              text="Your Player ID is being issued and will be emailed to you." />
+          )}
+          {membership.state === "PAYMENT_DUE" && (
+            <>
+              <MembershipLine icon={<Clock size={24} />} tone="orange" title="Verification Pending"
+                text="Complete your payment to activate your permanent membership." />
+              <button onClick={handlePayment} disabled={paying}
+                className="mt-auto w-full py-3.5 bg-[#FF7400] hover:bg-[#E56900] text-white rounded-xl font-bold shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 disabled:opacity-70 transition-colors">
+                {paying ? <><Loader2 size={20} className="animate-spin" /> Processing…</> : <><CreditCard size={20} /> Pay Membership Fee · ₹{membership.fee}</>}
+              </button>
+            </>
+          )}
+        </Card>
+      </div>
+
+      {/* Performance */}
+      <Card>
+        <h3 className="font-bold text-slate-800 mb-4">Performance Overview</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {statTiles.map((t) => (
+            <div key={t.label} className="flex items-start justify-between p-5 rounded-xl border border-slate-200">
+              <div>
+                <p className={`text-xs font-bold uppercase tracking-wide ${t.labelClass}`}>{t.label}</p>
+                <p className="text-3xl font-black text-slate-900 mt-3">{t.value}</p>
               </div>
-              <p className="text-sm font-bold text-gray-700">
-                {playerData.permanentId ? "Verified Administrative Member" : "Verification Pending"}
-              </p>
+              {t.side}
             </div>
-            <p className="text-[13px] text-gray-500 leading-relaxed">
-              {playerData.permanentId 
-                ? "Your membership is active. You can now participate in all TNJA sanctioned events."
-                : "Your application has been approved. Complete your payment to activate your permanent membership."}
+          ))}
+        </div>
+        {stats.matches === 0 && <p className="text-sm text-slate-400 mt-4">Your record fills in as you compete in tournament matches.</p>}
+      </Card>
+
+      {/* Ranking points */}
+      <Card className="flex flex-col md:flex-row md:items-center gap-6">
+        <div className="flex items-center gap-4 md:pr-6 md:border-r border-slate-100">
+          <span className="w-14 h-14 rounded-2xl bg-orange-50 text-[#FF7400] flex items-center justify-center"><Medal size={28} /></span>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Ranking Points · {points.season}</p>
+            <p className="text-3xl font-black text-slate-900">{points.points}</p>
+            <p className="text-sm font-semibold text-slate-500">
+              {points.rank ? <>Rank <span className="text-[#FF7400]">#{points.rank}</span> of {points.rankedPlayers}</> : "Not ranked yet"}
             </p>
           </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <h4 className="font-bold text-[#1A1A1A] mb-4">Recent Notifications</h4>
-            <div className="space-y-4">
-              {playerNotifications && playerNotifications.length > 0 ? (
-                playerNotifications.slice(0, 3).map((notif: any) => (
-                  <div key={notif.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                    <div className="p-2 bg-white rounded-lg text-[#FF7400] shadow-sm shrink-0">
-                      <Bell size={16} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#1A1A1A]">{notif.message}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(notif.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-6">
-                  <div className="inline-flex p-3 bg-gray-50 rounded-full text-gray-400 mb-3">
-                    <Bell size={24} />
-                  </div>
-                  <p className="text-sm text-gray-500">No recent notifications</p>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
-      </div>
-      </div>
-      </div>
+        <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {POINT_SOURCES.map((s) => (
+            <div key={s.id} className="rounded-xl bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{s.label}</p>
+              <p className="text-lg font-black text-slate-800 tabular-nums">{points.breakdown[s.id] ?? 0}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex md:flex-col gap-2 shrink-0">
+          <button onClick={openHistory} className="px-4 py-2 rounded-lg border border-orange-200 text-[#FF7400] text-sm font-bold hover:bg-orange-50">Points History</button>
+          <Link href="/dashboard/rankings" className="px-4 py-2 rounded-lg text-center text-slate-600 text-sm font-bold hover:bg-slate-50">Rankings</Link>
+        </div>
+      </Card>
 
-      <AnimatePresence>
-        {selectedCategory && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden"
-            >
-              <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50">
-                <div>
-                  <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                    <Users size={24} className="text-[#FF7400]" />
-                    Participants List
-                  </h3>
-                  <p className="text-sm font-bold text-slate-500 mt-1">{selectedCategory.tournamentName}</p>
-                  <span className="inline-block mt-2 px-3 py-1 bg-orange-100 text-[#FF7400] text-xs font-black rounded-lg uppercase tracking-wider">
-                    {selectedCategory.category}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className="p-2 hover:bg-slate-200 text-slate-500 rounded-xl transition-colors"
-                >
-                  <XCircle size={24} />
-                </button>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Recent activity */}
+        <Card className="lg:col-span-7">
+          <h3 className="font-bold text-slate-800 mb-4">Recent Activity</h3>
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-slate-400 py-6 text-center">No activity yet.</p>
+          ) : (
+            <ul className="border border-slate-100 rounded-xl divide-y divide-slate-100">
+              {recentActivity.map((a, i) => (
+                <li key={i} className="flex items-center gap-3 p-3">
+                  <span className="w-9 h-9 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center">{STATUS_ICON[a.status]}</span>
+                  <div className="flex-1 min-w-0 grid sm:grid-cols-2 gap-x-4">
+                    <p className="text-sm font-semibold text-slate-700 truncate">{a.title}</p>
+                    <p className="text-sm text-slate-500 truncate" title={a.detail}>{a.detail}</p>
+                  </div>
+                  <StatusPill status={a.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* Upcoming tournament */}
+        <Card className="lg:col-span-5 flex flex-col">
+          <h3 className="font-bold text-slate-800 mb-4">Upcoming Event</h3>
+          {upcoming ? (
+            <div className="flex flex-col flex-1 gap-3">
+              <h4 className="text-lg font-black text-slate-900">{upcoming.title}</h4>
+              <p className="text-slate-600">{upcoming.category}</p>
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays size={16} className="text-[#FF7400]" />
+                  {fmtDate(upcoming.date)}{upcoming.dateTo && upcoming.dateTo !== upcoming.date ? ` – ${fmtDate(upcoming.dateTo)}` : ""}
+                </span>
+                <span className="inline-flex items-center gap-1.5"><MapPin size={16} className="text-[#FF7400]" />{upcoming.location}</span>
               </div>
+              {upcoming.nextMatch && (
+                <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700 bg-slate-50 rounded-lg px-3 py-2 w-fit">
+                  <Swords size={15} className="text-[#FF7400]" />
+                  Round {upcoming.nextMatch.round}
+                  {upcoming.nextMatch.matNumber ? ` · Mat ${upcoming.nextMatch.matNumber}` : ""}
+                  {upcoming.nextMatch.matchNumber ? ` · Match ${upcoming.nextMatch.matchNumber}` : ""}
+                  {` · vs ${upcoming.nextMatch.opponent || "TBD"}`}
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3 mt-auto pt-2">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold ${STATUS_PILL[upcoming.status].className}`}>
+                  {STATUS_ICON[upcoming.status]} {STATUS_PILL[upcoming.status].label}
+                </span>
+                <Link href="/dashboard/player/tournaments" className="px-4 py-2 rounded-lg border border-orange-200 text-[#FF7400] text-sm font-bold hover:bg-orange-50">
+                  View Details
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center flex-1 text-center gap-3 py-6">
+              <CalendarDays size={32} className="text-slate-300" />
+              <p className="text-sm text-slate-500">You are not registered for any upcoming tournament.</p>
+              <Link href="/dashboard/player/tournaments" className="px-4 py-2 rounded-lg border border-orange-200 text-[#FF7400] text-sm font-bold hover:bg-orange-50">
+                Browse Tournaments
+              </Link>
+            </div>
+          )}
+        </Card>
+      </div>
 
-              <div className="p-6 overflow-y-auto bg-white flex-1">
-                {loadingParticipants ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-400">
-                    <Loader2 size={32} className="animate-spin text-[#FF7400]" />
-                    <p className="text-sm font-bold">Loading participants...</p>
-                  </div>
-                ) : categoryParticipants.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-400">
-                    <Users size={48} className="opacity-20" />
-                    <p className="font-bold text-lg text-slate-500">No participants yet</p>
-                    <p className="text-sm text-slate-400 text-center max-w-sm">No one else has registered for this weight category yet.</p>
-                  </div>
+      {/* Points history */}
+      <AnimatePresence>
+        {historyOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setHistoryOpen(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                <h3 className="text-lg font-black text-slate-800">Points History · {points.season}</h3>
+                <button onClick={() => setHistoryOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Close"><X size={20} /></button>
+              </div>
+              <div className="overflow-y-auto">
+                {!history ? (
+                  <div className="py-12 flex justify-center"><Loader2 className="w-7 h-7 text-[#FF7400] animate-spin" /></div>
+                ) : history.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-slate-400">No points yet this season.</p>
                 ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between px-2 mb-2">
-                      <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Player Info</span>
-                      <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{categoryParticipants.length} Participants</span>
-                    </div>
-                    {categoryParticipants.map((p, idx) => (
-                      <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-100 hover:border-[#FF7400]/30 hover:bg-orange-50/10 transition-all">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 font-bold flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-slate-800">{p.name}</h4>
-                            <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 mt-1">
-                              <MapPin size={12} /> {p.district} • {p.club}
-                            </p>
-                          </div>
+                  <ul className="divide-y divide-slate-100">
+                    {history.map((e, i) => (
+                      <li key={i} className="flex items-start gap-3 px-5 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-800">
+                            {POINT_SOURCES.find((s) => s.id === e.source)?.label}
+                            {e.source === "PLACEMENT" && e.reason ? ` · ${PLACEMENT_LABEL[e.reason] ?? e.reason}` : ""}
+                          </p>
+                          <p className="text-xs text-slate-500 truncate">
+                            {e.tournament ? `${e.tournament.title} · ${fmtDate(e.tournament.date)}` : e.month ? new Date(`${e.month}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : ""}
+                          </p>
+                          {e.source !== "PLACEMENT" && e.reason && <p className="text-xs text-amber-600 mt-0.5">{e.reason}</p>}
                         </div>
-                        {p.name === playerData.fullName && (
-                          <span className="px-3 py-1 bg-[#FF7400]/10 text-[#FF7400] text-xs font-bold rounded-lg border border-[#FF7400]/20 self-start sm:self-auto">
-                            You
-                          </span>
-                        )}
-                      </div>
+                        <span className="font-black text-[#FF7400] tabular-nums">+{e.points}</span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+
+      {/* Edit profile (after the coach approves an edit request) */}
+      <AnimatePresence>
+        {editOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                <h3 className="text-lg font-black text-slate-800">Edit Profile</h3>
+                <button onClick={() => setEditOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Close"><X size={20} /></button>
+              </div>
+              <div className="p-5 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {EDIT_FIELDS.map((f) => (
+                  <label key={f.key} className="block">
+                    <span className="text-xs font-semibold text-slate-500">{f.label}</span>
+                    <input type={f.type || "text"} value={form[f.key] ?? ""} readOnly={f.readOnly}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      className={`mt-1 w-full px-3 py-2.5 border rounded-lg text-sm font-medium focus:outline-none ${f.readOnly ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed" : "bg-white border-slate-200 text-slate-700 focus:border-[#FF7400]"}`} />
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end gap-3 p-5 border-t border-slate-100">
+                <button onClick={() => setEditOpen(false)} disabled={saving} className="px-5 py-2.5 border border-slate-200 rounded-lg font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button onClick={saveProfile} disabled={saving} className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FF7400] text-white rounded-lg font-bold hover:bg-[#E56900] disabled:opacity-60">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const TONES = {
+  emerald: "bg-emerald-50 text-emerald-600",
+  orange: "bg-orange-50 text-[#FF7400]",
+  red: "bg-red-50 text-red-600",
+};
+
+function MembershipLine({ icon, tone, title, text }: { icon: React.ReactNode; tone: keyof typeof TONES; title: string; text: string }) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-center gap-4 mb-3">
+        <span className={`w-12 h-12 rounded-xl flex items-center justify-center ${TONES[tone]}`}>{icon}</span>
+        <p className="font-bold text-slate-800">{title}</p>
+      </div>
+      <p className="text-sm text-slate-600 leading-relaxed">{text}</p>
+    </div>
   );
 }

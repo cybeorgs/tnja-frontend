@@ -42,6 +42,9 @@ interface Application {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
+const DISTRICT_OFFICER_ROLES = ["DISTRICT_PRESIDENT", "DISTRICT_SECRETARY"];
+const ZONE_OFFICER_ROLES = ["ZONE_PRESIDENT", "ZONE_SECRETARY"];
+
 const TYPE_MAP: Record<ApprovalType, string> = {
   CLUB: "club",
   STUDENT: "student",
@@ -138,7 +141,7 @@ function ApprovalsContent() {
   const [selectedItem, setSelectedItem] = useState<Application | null>(null);
   const [remark, setRemark] = useState("");
   const [applications, setApplications] = useState<Application[]>([]);
-  const [districts, setDistricts] = useState<{ id: string; name: string }[]>([]);
+  const [districts, setDistricts] = useState<{ id: string; name: string; zoneName?: string | null }[]>([]);
   const [districtFilter, setDistrictFilter] = useState<string>("ALL");
   const [paymentFilter, setPaymentFilter] = useState<"ALL" | "UNPAID" | "PAID">("ALL");
   const [loading, setLoading] = useState(false);
@@ -195,10 +198,25 @@ function ApprovalsContent() {
     fetchApplications();
   }, [fetchApplications]);
 
+  // The district filter offers only districts the user oversees: all for state level, their zone's
+  // districts for zone officers, and none for district officers (the server already limits them to
+  // their office district).
   useEffect(() => {
-    fetch(`${API_BASE}/districts`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setDistricts(Array.isArray(data) ? data : []))
+    const role = localStorage.getItem("userRole") || "";
+    if (DISTRICT_OFFICER_ROLES.includes(role)) return;
+    const token = localStorage.getItem("token");
+    Promise.all([
+      fetch(`${API_BASE}/districts`).then((res) => (res.ok ? res.json() : [])),
+      ZONE_OFFICER_ROLES.includes(role)
+        ? fetch(`${API_BASE}/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => (res.ok ? res.json() : null))
+        : null,
+    ])
+      .then(([data, profile]) => {
+        const all = Array.isArray(data) ? data : [];
+        if (!ZONE_OFFICER_ROLES.includes(role)) return setDistricts(all);
+        const ownZone = (profile?.user?.assignedDistrict ?? profile?.user?.district)?.zoneName;
+        setDistricts(ownZone ? all.filter((d) => d.zoneName === ownZone) : []);
+      })
       .catch(() => setDistricts([]));
   }, []);
 
@@ -405,6 +423,7 @@ function ApprovalsContent() {
               })}
             </div>
             <div className="flex items-center gap-2">
+              {districts.length > 1 && (
               <div className="relative">
                 <select
                   value={districtFilter}
@@ -421,6 +440,7 @@ function ApprovalsContent() {
                 </select>
                 <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
+              )}
               <button
                 onClick={fetchApplications}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm shadow-sm"

@@ -16,15 +16,18 @@ import {
   Map as MapIcon,
   Pencil,
   X,
+  Trophy,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { RankingPointsConfig } from "./RankingPointsConfig";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
-type ConfigTab = "fees" | "codes" | "zones";
+type ConfigTab = "fees" | "points" | "codes" | "zones";
 
 const CONFIG_TABS: { id: ConfigTab; label: string; icon: typeof CreditCard }[] = [
   { id: "fees", label: "Registration Fees", icon: CreditCard },
+  { id: "points", label: "Ranking Points", icon: Trophy },
   { id: "codes", label: "District Codes", icon: MapPin },
   { id: "zones", label: "Zone Names", icon: MapIcon },
 ];
@@ -123,6 +126,7 @@ export default function ConfigurationPage() {
         ))}
       </div>
 
+      {tab === "points" && <RankingPointsConfig />}
       {tab === "codes" && <DistrictCodes />}
       {tab === "zones" && <ZoneNames />}
 

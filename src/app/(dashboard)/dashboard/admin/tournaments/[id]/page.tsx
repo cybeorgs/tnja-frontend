@@ -24,6 +24,7 @@ import { BracketView, RoundRobinLeaderboard } from "./components/BracketView";
 import { ImportPlayersWizard } from "./components/ImportPlayersWizard";
 import { AddPlayerModal } from "./components/AddPlayerModal";
 import { DisqualifyTab } from "./components/DisqualifyTab";
+import { PointsTab } from "./components/PointsTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel } from "./components/MatsOfficialsPanel";
 
@@ -1445,7 +1446,7 @@ export default function TournamentDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl w-fit flex-wrap">
-        {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "disqualify"] as Tab[]).map((tab) => {
+        {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "points", "disqualify"] as Tab[]).map((tab) => {
           // Results tab is ALWAYS accessible — even for expired/CLOSED tournaments
           // Draws and matches are locked once the tournament date has passed
           const lockedByExpiry = expired && (tab === "draws" || tab === "matches");
@@ -3871,6 +3872,9 @@ export default function TournamentDetailPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* ══ POINTS (sportsmanship + volunteers) ═════════════════════════════════ */}
+      {activeTab === "points" && <PointsTab tournamentId={tournamentId} />}
 
       {/* ══ DISQUALIFY ═════════════════════════════════════════════════════════ */}
       {activeTab === "disqualify" && !expired && (

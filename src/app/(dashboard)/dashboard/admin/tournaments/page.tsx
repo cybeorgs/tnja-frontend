@@ -584,8 +584,10 @@ export default function AdminTournamentsPage() {
 
   const approvalQueue = allTournaments.filter(t => inApprovalQueue(t, userRole));
 
-  // Zone / district filters. `zones` is already limited to the user's own zone below state level.
-  const districtOptions = districts
+  // Zone / district filters. `zones` is already limited to the user's own zone below state level;
+  // district officers work in their office district only, so they get no district filter.
+  const isDistrictOfficer = userRole === "DISTRICT_PRESIDENT" || userRole === "DISTRICT_SECRETARY";
+  const districtOptions = isDistrictOfficer ? [] : districts
     .filter(d => d.zoneName && zones.includes(d.zoneName) && (zoneFilter === "ALL" || d.zoneName === zoneFilter))
     .sort((a, b) => a.name.localeCompare(b.name));
   const matchesPlace = (t: Tournament) => {

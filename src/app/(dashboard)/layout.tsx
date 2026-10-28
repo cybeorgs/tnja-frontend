@@ -24,6 +24,8 @@ import {
   FileCheck2,
   ChevronDown,
   ArrowLeftRight,
+  Medal,
+  CalendarCheck,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
@@ -329,6 +331,7 @@ export default function DashboardLayout({
         { name: "Dashboard", href: "/dashboard/member", icon: LayoutDashboard },
         { name: "My Students", href: "/dashboard/coach/students", icon: Users },
         { name: "My Mats", href: "/dashboard/coach/mats", icon: Trophy },
+        { name: "Monthly Update", href: "/dashboard/coach/monthly", icon: CalendarCheck },
         { name: "Events", href: "/dashboard/member/events", icon: Calendar },
         { name: "Grievances", href: "/dashboard/grievance", icon: MessageSquare },
       ]
@@ -349,7 +352,8 @@ export default function DashboardLayout({
     { name: "Resubmit Application", href: "/dashboard/resubmit", icon: FileCheck2 },
   ];
 
-  const currentNavItems = userStatus === "REPLAY" ? replayNavItems : navItems;
+  // Everyone can see the rankings (best student, coach, club, district and zone).
+  const currentNavItems = userStatus === "REPLAY" ? replayNavItems : [...navItems, { name: "Rankings", href: "/dashboard/rankings", icon: Medal }];
 
   return (
     <div className="tnja-dashboard min-h-screen bg-slate-50 flex overflow-hidden print:overflow-visible print:bg-white print:min-h-0 print:block">
