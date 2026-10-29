@@ -158,7 +158,8 @@ export default function CoachMonthlyPage() {
             <Info size={16} className="mt-0.5 shrink-0" />
             <p>
               Attendance earns up to <b>{data.settings.attendanceMaxPoints}</b> points (sessions attended ÷ sessions held). Discipline is scored
-              0–<b>{data.settings.disciplineMaxPoints}</b>. A student you don&apos;t update for a finished month automatically gets
+              0–<b>{data.settings.disciplineMaxPoints}</b> separately, so a month is worth up to{" "}
+              <b>{data.settings.attendanceMaxPoints + data.settings.disciplineMaxPoints}</b> points in total. A student you don&apos;t update for a finished month automatically gets
               the minimum of <b>{data.settings.disciplineMinPoints}</b>. You can update the current and previous month.
             </p>
           </div>
@@ -179,13 +180,15 @@ export default function CoachMonthlyPage() {
               <div className="py-14 text-center text-slate-400"><Users size={32} className="mx-auto mb-2 opacity-40" /> You have no approved students yet.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
+                <table className="w-full min-w-[760px] text-sm">
                   <thead className="bg-slate-50 text-xs font-black uppercase tracking-wider text-slate-400">
                     <tr>
                       <th className="py-3 px-5 text-left">Student</th>
                       <th className="py-3 px-3 text-left">Attended</th>
                       <th className="py-3 px-3 text-left">Discipline (0–{data.settings.disciplineMaxPoints})</th>
-                      <th className="py-3 px-5 text-right">Points</th>
+                      <th className="py-3 px-3 text-right">Attendance pts</th>
+                      <th className="py-3 px-3 text-right">Discipline pts</th>
+                      <th className="py-3 px-5 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -214,6 +217,12 @@ export default function CoachMonthlyPage() {
                               <option value="">–</option>
                               {Array.from({ length: data.settings.disciplineMaxPoints + 1 }, (_, i) => <option key={i} value={i}>{i}</option>)}
                             </select>
+                          </td>
+                          <td className="py-3 px-3 text-right tabular-nums text-slate-700">
+                            {att !== null ? <><b>{att}</b><span className="text-slate-400"> / {data.settings.attendanceMaxPoints}</span></> : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="py-3 px-3 text-right tabular-nums text-slate-700">
+                            {dis !== null ? <><b>{dis}</b><span className="text-slate-400"> / {data.settings.disciplineMaxPoints}</span></> : <span className="text-slate-300">—</span>}
                           </td>
                           <td className="py-3 px-5 text-right">
                             {att !== null && dis !== null ? (
