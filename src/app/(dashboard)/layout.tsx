@@ -26,6 +26,8 @@ import {
   ArrowLeftRight,
   Medal,
   CalendarCheck,
+  Inbox,
+  UserCheck,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
@@ -279,6 +281,8 @@ export default function DashboardLayout({
       ],
     } as (typeof adminNavItems)[number]);
     adminNavItems.push({ name: "Configuration", href: "/dashboard/admin/configuration", icon: SlidersHorizontal });
+    // Super Admin / CEO can decide coach/club requests on a coach's or club's behalf.
+    adminNavItems.push({ name: "Student Requests", href: "/dashboard/requests", icon: Inbox });
   }
 
   const presidentNavItems = [
@@ -323,6 +327,7 @@ export default function DashboardLayout({
         { name: "Dashboard", href: "/dashboard/player", icon: LayoutDashboard },
         { name: "Tournaments", href: "/dashboard/player/tournaments", icon: Trophy },
         { name: "Match History", href: "/dashboard/player/match-history", icon: ScrollText },
+        { name: "Coach & Club", href: "/dashboard/player/academy", icon: UserCheck },
         { name: "Events", href: "/dashboard/member/events", icon: Calendar },
         { name: "Grievances", href: "/dashboard/grievance", icon: MessageSquare },
       ]
@@ -330,6 +335,7 @@ export default function DashboardLayout({
     ? [
         { name: "Dashboard", href: "/dashboard/member", icon: LayoutDashboard },
         { name: "My Students", href: "/dashboard/coach/students", icon: Users },
+        { name: "Student Requests", href: "/dashboard/requests", icon: Inbox },
         { name: "My Mats", href: "/dashboard/coach/mats", icon: Trophy },
         { name: "Monthly Update", href: "/dashboard/coach/monthly", icon: CalendarCheck },
         { name: "Events", href: "/dashboard/member/events", icon: Calendar },
@@ -338,6 +344,7 @@ export default function DashboardLayout({
     : userRole === "CLUB"
     ? [
         { name: "My Profile", href: "/dashboard/member", icon: User },
+        { name: "Student Requests", href: "/dashboard/requests", icon: Inbox },
         { name: "Tournaments", href: "/dashboard/club/tournaments", icon: Trophy },
         { name: "Events", href: "/dashboard/member/events", icon: Calendar },
         { name: "Grievances", href: "/dashboard/grievance", icon: MessageSquare },
