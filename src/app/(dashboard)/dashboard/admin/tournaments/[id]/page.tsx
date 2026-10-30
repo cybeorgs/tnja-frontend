@@ -414,20 +414,34 @@ export default function TournamentDetailPage() {
     }
   };
 
-  const handleDownloadCertificate = async (player: RegisteredPlayer) => {
-    if (!player.regId) return;
+  const handleDownloadCertificate = async (player: RegisteredPlayer, mode: "download" | "view" = "download") => {
+    if (!player.regId) {
+      showToast("This player has no registration record, so no certificate can be generated", false);
+      return;
+    }
+    // Opened synchronously so the popup blocker treats it as part of the click
+    const viewWindow = mode === "view" ? window.open("", "_blank") : null;
     try {
       showToast("Generating certificate...");
-      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/certificate?regId=${player.regId}`, {
+      const params = new URLSearchParams({ regId: player.regId });
+      // Before the category is concluded, use the placement currently picked on screen
+      if (placements[player.id]) params.set("placement", placements[player.id]);
+      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/certificate?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
+        viewWindow?.close();
         const data = await res.json().catch(() => ({}));
         showToast(data.error || "Failed to generate certificate", false);
         return;
       }
-      const blob = await res.blob();
+      const blob = new Blob([await res.blob()], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
+      if (viewWindow) {
+        viewWindow.location.href = url;
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
+      }
       const a = document.createElement("a");
       a.href = url;
       a.download = `${player.name.replace(/\s+/g, "_")}_certificate.pdf`;
@@ -438,6 +452,7 @@ export default function TournamentDetailPage() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       console.error(err);
+      viewWindow?.close();
       showToast("Error downloading certificate", false);
     }
   };
@@ -3242,10 +3257,16 @@ export default function TournamentDetailPage() {
                             </AnimatePresence>
                           </div>
                           <button
+                            onClick={() => handleDownloadCertificate(player, "view")}
+                            title="View certificate"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-xl text-xs font-bold shrink-0 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
                             onClick={() => handleDownloadCertificate(player)}
-                            disabled={!(currentDraw?.isConcluded || tournament?.status === "CLOSED")}
-                            title={(currentDraw?.isConcluded || tournament?.status === "CLOSED") ? "Download certificate" : "Available after this category is concluded"}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-xl text-xs font-bold shrink-0 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-200 disabled:hover:text-slate-500"
+                            title="Download certificate"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-xl text-xs font-bold shrink-0 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
                           >
                             <Download size={14} />
                           </button>
