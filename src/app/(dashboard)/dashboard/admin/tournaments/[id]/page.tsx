@@ -433,8 +433,9 @@ export default function TournamentDetailPage() {
       a.download = `${player.name.replace(/\s+/g, "_")}_certificate.pdf`;
       document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      // Revoking synchronously can cancel the download before the browser picks up the blob
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       console.error(err);
       showToast("Error downloading certificate", false);

@@ -8,55 +8,46 @@ import { motion, AnimatePresence } from 'framer-motion';
 const players = [
   {
     name: "BHARATHNWA J",
-    role: "SENIOR MASTERS",
     quote: "SGFI National Judo Championship held at Delhi. Silver (81 Kg Category) – Bronze Medal.",
     image: "/talentplayer1.png"
   },
   {
     name: "VENKATESH PERUMAL M",
-    role: "SENIOR MASTERS",
     quote: "SGFI National Judo Championship held at Delhi. Under 66 Kg Category (M) – Bronze Medal.",
     image: "/talentplayer2.png"
   },
   {
     name: "DHARANI PRIYA S",
-    role: "SENIOR MASTERS",
     quote: "SGFI National Judo Championship held at Delhi. Under 57 Kg Category (W) – Silver Medal.",
     image: "/talentplayer3.png"
   },
   {
     name: "ASHWIN A",
-    role: "SENIOR MASTERS",
     quote: "SGFI National Judo Championship held at Manipur. Under 63 Kg Category – Bronze Medal.",
     image: "/talentplayer4.png"
   },
   {
     name: "SOWMIYA T",
-    role: "SENIOR MASTERS",
     quote: "SGFI National Judo Championship held at Manipur. Under 70 Kg Category – Silver Medal.",
     image: "/talentplayer5.png"
   },
   {
     name: "ABHINAV M",
-    role: "SENIOR MASTERS",
     quote: "38th Junior National Judo Championship held at Panchkula. Under 55Kg – Gold Medal.",
     image: "/talentplayer6.png"
   },
   {
     name: "AAKASH RAJA G",
-    role: "SENIOR MASTERS",
     quote: "Open Merit Inter-University Judo Championship – Gold Medal.",
     image: "/talentplayer7.png"
   },
   {
     name: "PRAVEEN KUMAR",
-    role: "SENIOR MASTERS",
     quote: "Zone 8 Best Inter-University Judo Championship – Bronze Medal.",
     image: "/talentplayer8.png"
   },
   {
     name: "ESWAMOORTHY M",
-    role: "SENIOR MASTERS",
     quote: "South West Inter-University Judo Championship – Silver Medal.",
     image: "/talentplayer9.png"
   },
@@ -263,9 +254,11 @@ const TalentedPlayers = () => {
                       <h4 className="text-[#FF7400] font-black text-lg md:text-xl tracking-wider uppercase mb-1">
                         {players[currentIndex].name}
                       </h4>
-                      <p className="text-gray-500 font-bold text-xs md:text-sm tracking-widest uppercase">
-                        {players[currentIndex].role}
-                      </p>
+                      {players[currentIndex].role && (
+                        <p className="text-gray-500 font-bold text-xs md:text-sm tracking-widest uppercase">
+                          {players[currentIndex].role}
+                        </p>
+                      )}
                     </div>
                   </div>
 
