@@ -168,6 +168,17 @@ const Footer = () => {
 
         </motion.div>
       </div>
+
+      {/* Supported By strip */}
+      <div className="relative z-10 border-t border-neutral-800/60">
+        <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-6 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+          <span className="text-neutral-400 text-xs tracking-wider uppercase">TNJA is supported by</span>
+          {/* The logo has a white background, so it sits on a white badge against the dark footer. */}
+          <div className="rounded-lg bg-white px-3 py-1.5">
+            <Image src="/images/cybeorgs-logo.png" alt="Cybeorgs logo" width={120} height={36} className="h-8 w-auto object-contain" />
+          </div>
+        </div>
+      </div>
     </footer>
   );
 };
