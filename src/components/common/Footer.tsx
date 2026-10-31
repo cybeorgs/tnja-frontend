@@ -140,7 +140,7 @@ const Footer = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="uppercase tracking-wider">Supported by</span>
+            <span className="uppercase tracking-wider">TNJA Powered by</span>
             {/* The logo has a white background, so it sits on a white badge against the dark footer. */}
             <div className="rounded-md bg-white px-2.5 py-1">
               <Image src="/images/cybeorgs-logo.png" alt="Cybeorgs logo" width={120} height={36} className="h-6 w-auto object-contain" />
