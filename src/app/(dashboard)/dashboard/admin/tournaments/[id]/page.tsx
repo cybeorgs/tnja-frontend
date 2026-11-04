@@ -1576,7 +1576,7 @@ export default function TournamentDetailPage() {
                 <div className="absolute top-full left-0 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-10">
                   {players.filter(p => p.status === "APPROVED" && (p.name.toLowerCase().includes(weighInSearch.toLowerCase()) || (p.tnjaId && p.tnjaId.toLowerCase().includes(weighInSearch.toLowerCase())))).map((p) => (
                     <button
-                      key={p.id}
+                      key={p.regId || p.id}
                       onClick={() => { setSelectedWeighInPlayer(p); setWeighInSearch(""); setActualWeight(""); }}
                       className="w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 flex justify-between items-center"
                     >
@@ -1923,7 +1923,7 @@ export default function TournamentDetailPage() {
                       else if (b.includes("orange")) dotColor = "bg-orange-500";
 
                       return (
-                      <React.Fragment key={p.id}>
+                      <React.Fragment key={p.regId || p.id}>
                         <tr className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-5 py-4 text-sm font-semibold text-slate-500">{p.tnjaId || "—"}</td>
                           <td className="px-5 py-4 text-sm font-semibold text-slate-800">{p.name}</td>
@@ -1949,7 +1949,7 @@ export default function TournamentDetailPage() {
                           </td>
                           <td className="px-5 py-4 flex gap-2">
                             <button
-                              onClick={() => setExpandedPlayerId(expandedPlayerId === p.id ? null : p.id)}
+                              onClick={() => setExpandedPlayerId(expandedPlayerId === (p.regId || p.id) ? null : (p.regId || p.id))}
                               className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100 transition-colors" title="View Details"
                             >
                               <Eye size={16} />
@@ -1958,7 +1958,7 @@ export default function TournamentDetailPage() {
                             <button onClick={() => printRegistrationSlip(p, tournament)} className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors" title="Print"><Printer size={16} /></button>
                           </td>
                         </tr>
-                        {expandedPlayerId === p.id && p.regId && (
+                        {expandedPlayerId === (p.regId || p.id) && p.regId && (
                           <tr>
                             <td colSpan={8} className="p-0 border-b border-slate-200 bg-slate-50/80">
                               <div className="p-4 flex flex-col items-center">
