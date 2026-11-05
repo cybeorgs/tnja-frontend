@@ -53,3 +53,20 @@ export const adminMemberSchema = z.object({
   city: z.string().min(1, "City is required"),
   addressPincode: z.string().length(6, "Pincode must be exactly 6 digits"),
 });
+
+export const adminCoachSchema = z.object({
+  fullName: z.string().min(3, "Full name is required (min 3 chars)"),
+  email: z.string().email("Invalid email address"),
+  mobileNumber: z.string().regex(/^[0-9]{10}$/, "Mobile number must be exactly 10 digits"),
+  districtId: z.string().min(1, "District is required"),
+  talukId: z.string().min(1, "Taluk is required"),
+  gender: z.enum(["MALE", "FEMALE", "OTHER"]),
+  dob: z.string().min(1, "Date of Birth is required"),
+  aadhaarNumber: z.string().length(12, "Aadhaar must be exactly 12 digits"),
+  fatherName: z.string().min(3, "Father's name is required"),
+  bloodGroup: z.string().min(1, "Blood Group is required"),
+  addressPincode: z.string().length(6, "Pincode must be exactly 6 digits"),
+  historyInJudo: z.string().min(1, "Highest achievement in Judo is required"),
+  historyInOtherMartial: z.string().min(1, "Highest achievement in other martial arts is required"),
+  presentGradeInJudo: z.string().min(1, "Present grade in Judo is required"),
+});

@@ -24,6 +24,7 @@ import { BracketView, RoundRobinLeaderboard } from "./components/BracketView";
 import { ImportPlayersWizard } from "./components/ImportPlayersWizard";
 import { AddPlayerModal } from "./components/AddPlayerModal";
 import { DisqualifyTab } from "./components/DisqualifyTab";
+import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel } from "./components/MatsOfficialsPanel";
@@ -91,12 +92,6 @@ export default function TournamentDetailPage() {
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; action?: () => void }>({ isOpen: false, title: "", message: "" });
 
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
-
-  // ── Weigh-in State ────────────────────────────────────────────────────────
-  const [weighInSearch, setWeighInSearch] = useState("");
-  const [selectedWeighInPlayer, setSelectedWeighInPlayer] = useState<RegisteredPlayer | null>(null);
-  const [actualWeight, setActualWeight] = useState("");
-  const [isDisqualifying, setIsDisqualifying] = useState(false);
 
   // ── Mats & Referees State ──────────────────────────────────────────────────
   const [tournamentMats, setTournamentMats] = useState<{matNumber: number, refereeId: string, refereeName?: string, refereeCoachId?: string}[]>([]);
@@ -464,6 +459,43 @@ export default function TournamentDetailPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Starting needs the mats and officials confirmed first (Mats tab); it then
+  // closes registration, after which players are weighed in category by category.
+  const handleStartTournament = () => {
+    const totalMats = parseInt(matsCountInput) || 0;
+    const officialsReady = totalMats > 0 && matsConfirmed &&
+      Array.from({ length: totalMats }, (_, i) => i + 1).every(n => tournamentMats.some(m => m.matNumber === n && m.refereeName));
+    if (!officialsReady) {
+      showToast("Set up the mats and confirm an official for every mat first.", false);
+      setActiveTab("mats");
+      return;
+    }
+    setConfirmModal({
+      isOpen: true,
+      title: "Close Registration & Start Tournament",
+      message: "This closes registration — no new players can be entered.\nNext, weigh in every player category by category; a category's draw can be generated once all its players have passed weigh-in.\n\nAre you sure you want to proceed?",
+      action: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/start`, {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            showToast("Tournament started! Registrations closed.", true);
+            fetchTournament();
+            fetchPlayers();
+            setActiveTab("weigh-in");
+          } else {
+            const err = await res.json().catch(() => null);
+            showToast(err?.error || "Failed to start", false);
+          }
+        } catch {
+          showToast("Failed to start", false);
+        }
+      },
+    });
+  };
+
 
   const currentKey = categoryKey(ageFilter, exactAgeFilter, genderFilter, weightFilter);
 
@@ -586,6 +618,8 @@ export default function TournamentDetailPage() {
               registeredAt: r.createdAt,
               rawWeight: r.weight || r.player?.weight || null,
               rawHeight: r.height || r.player?.height || null,
+              weighInWeight: r.weighInWeight ?? null,
+              weighInStatus: r.weighInStatus ?? null,
             };
           }
         );
@@ -613,33 +647,6 @@ export default function TournamentDetailPage() {
     } catch (e) {
       console.error(e);
       showToast("Error updating registration", false);
-    }
-  };
-
-  const handleDisqualifyPlayer = async (regId: string, currentWeight: string) => {
-    if (!window.confirm(`Are you sure you want to disqualify this player due to weight mismatch?`)) return;
-    
-    setIsDisqualifying(true);
-    try {
-      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/registrations/${regId}/disqualify`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ currentWeight })
-      });
-      if (res.ok) {
-        showToast(`Player disqualified successfully`);
-        setSelectedWeighInPlayer(null);
-        setActualWeight("");
-        setWeighInSearch("");
-        fetchPlayers(); // Refresh the players list
-      } else {
-        showToast("Failed to disqualify player", false);
-      }
-    } catch (e) {
-      console.error(e);
-      showToast("Error disqualifying player", false);
-    } finally {
-      setIsDisqualifying(false);
     }
   };
 
@@ -750,6 +757,13 @@ export default function TournamentDetailPage() {
 
     if (activePlayers.length < 1) {
       showToast("Need at least 1 approved player to generate a draw", false);
+      return;
+    }
+
+    // Every player in the category must clear weigh-in before the bracket is drawn
+    const notWeighed = activePlayers.filter(p => p.weighInStatus !== "PASSED");
+    if (notWeighed.length > 0) {
+      showToast(`${notWeighed.length} of ${activePlayers.length} players in this category still need weigh-in. Finish the Weigh-In tab first.`, false);
       return;
     }
 
@@ -939,7 +953,8 @@ export default function TournamentDetailPage() {
           }));
           showToast(isShuffle ? "Bracket re-shuffled and auto-saved! 🏆" : "Draw generated and auto-saved! 🏆");
         } else {
-          showToast("Failed to auto-save draw", false);
+          const err = await res.json().catch(() => null);
+          showToast(err?.error || "Failed to auto-save draw", false);
         }
       } catch { showToast("Error auto-saving draw", false); }
       finally { setSaving(false); }
@@ -1427,7 +1442,7 @@ export default function TournamentDetailPage() {
                   </div>
                   {!tournament.registrationClosed ? (
                     <button
-                      onClick={() => setActiveTab("mats")}
+                      onClick={handleStartTournament}
                       className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded-lg transition-all text-xs"
                     >
                       <PlayCircle size={14} /> Start Tournament (Close Registrations)
@@ -1552,164 +1567,18 @@ export default function TournamentDetailPage() {
           savingMats={savingMats}
           setSavingMats={setSavingMats}
           showToast={showToast}
-          setConfirmModal={setConfirmModal}
-          fetchTournament={fetchTournament}
-          fetchPlayers={fetchPlayers}
           setActiveTab={setActiveTab}
         />
       )}
       {/* ══ WEIGH-IN & DISQUALIFICATION ═════════════════════════════════════════════════ */}
-      {activeTab === "weigh-in" && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">
-            <h3 className="font-black text-slate-800 text-base mb-2">Player Weigh-In</h3>
-            
-            <div className="relative">
-              <input
-                type="text"
-                value={weighInSearch}
-                onChange={(e) => setWeighInSearch(e.target.value)}
-                placeholder="Search approved player by Name or ID..."
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 font-semibold"
-              />
-              {weighInSearch.trim().length >= 2 && !selectedWeighInPlayer && (
-                <div className="absolute top-full left-0 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-10">
-                  {players.filter(p => p.status === "APPROVED" && (p.name.toLowerCase().includes(weighInSearch.toLowerCase()) || (p.tnjaId && p.tnjaId.toLowerCase().includes(weighInSearch.toLowerCase())))).map((p) => (
-                    <button
-                      key={p.regId || p.id}
-                      onClick={() => { setSelectedWeighInPlayer(p); setWeighInSearch(""); setActualWeight(""); }}
-                      className="w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 flex justify-between items-center"
-                    >
-                      <div>
-                        <p className="font-bold text-slate-800">{p.name}</p>
-                        <p className="text-xs text-slate-500 font-semibold">{p.tnjaId} • {p.club}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-bold text-slate-700">{p.ageGroup}</p>
-                        <p className="text-xs font-black text-[#FF7400]">{p.gender} • {p.weightLabel}</p>
-                      </div>
-                    </button>
-                  ))}
-                  {players.filter(p => p.status === "APPROVED" && (p.name.toLowerCase().includes(weighInSearch.toLowerCase()) || (p.tnjaId && p.tnjaId.toLowerCase().includes(weighInSearch.toLowerCase())))).length === 0 && (
-                    <div className="px-4 py-3 text-sm text-slate-500 font-semibold">No approved player found matching "{weighInSearch}"</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {!selectedWeighInPlayer && weighInSearch.trim().length < 2 && (
-              <div className="bg-slate-50 rounded-3xl p-10 border border-slate-200 border-dashed text-center space-y-4">
-                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-300">
-                  <Search size={32} />
-                </div>
-                <h4 className="text-xl font-black text-slate-700">Search to Start Weigh-In</h4>
-                <p className="text-sm font-semibold text-slate-500 max-w-sm mx-auto">
-                  Type a player's name or TNJA ID in the search box above to verify their scale weight and ensure they match their registered category.
-                </p>
-              </div>
-            )}
-
-            {selectedWeighInPlayer && (
-              <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h4 className="text-xl font-black text-slate-800">{selectedWeighInPlayer.name}</h4>
-                    <p className="text-sm font-bold text-slate-500">{selectedWeighInPlayer.tnjaId} • {selectedWeighInPlayer.club}</p>
-                  </div>
-                  <button onClick={() => setSelectedWeighInPlayer(null)} className="p-1 hover:bg-slate-200 rounded-lg text-slate-500">
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] uppercase font-black text-slate-400">Gender</p>
-                    <p className="font-bold text-slate-700">{selectedWeighInPlayer.gender}</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] uppercase font-black text-slate-400">Age Group</p>
-                    <p className="font-bold text-slate-700">{selectedWeighInPlayer.ageGroup}</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] uppercase font-black text-slate-400">Registered Weight</p>
-                    <p className="font-black text-blue-600">{selectedWeighInPlayer.weightLabel}</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] uppercase font-black text-slate-400">Status</p>
-                    <p className="font-bold text-emerald-600">Approved</p>
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                  <label className="block text-sm font-black text-slate-800 mb-2">Enter Actual Scale Weight (kg)</label>
-                  <div className="flex gap-4 items-start">
-                    <div className="flex-1">
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={actualWeight}
-                        onChange={(e) => setActualWeight(e.target.value)}
-                        placeholder="e.g. 66.5"
-                        className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:border-[#FF7400] font-bold text-lg"
-                      />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      {actualWeight ? (
-                        (() => {
-                          const w = Number(actualWeight);
-                          const targetWeight = selectedWeighInPlayer.weightLabel === "Under 50" ? 50 : Number(selectedWeighInPlayer.weightLabel?.split("-")[1] || selectedWeighInPlayer.weightLabel?.replace("kg", "") || 0);
-                          const minWeight = selectedWeighInPlayer.weightLabel === "Under 50" ? 0 : Number(selectedWeighInPlayer.weightLabel?.split("-")[0] || 0) - 0.99;
-                          
-                          const isMatch = w <= targetWeight && w > minWeight;
-                          return isMatch ? (
-                            <div className="flex items-center gap-2 text-emerald-600 font-bold bg-emerald-50 px-4 py-2.5 rounded-xl">
-                              <Check size={18} /> Weight is acceptable
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-red-600 font-bold bg-red-50 px-4 py-2.5 rounded-xl">
-                              <AlertCircle size={18} /> Exceeds category limit!
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <p className="text-sm text-slate-400 font-semibold mt-2 italic">Waiting for input...</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {actualWeight && (
-                    (() => {
-                      const w = Number(actualWeight);
-                      const targetWeight = selectedWeighInPlayer.weightLabel === "Under 50" ? 50 : Number(selectedWeighInPlayer.weightLabel?.split("-")[1] || selectedWeighInPlayer.weightLabel?.replace("kg", "") || 0);
-                      const minWeight = selectedWeighInPlayer.weightLabel === "Under 50" ? 0 : Number(selectedWeighInPlayer.weightLabel?.split("-")[0] || 0) - 0.99;
-                      
-                      const isMatch = w <= targetWeight && w > minWeight;
-                      if (!isMatch) {
-                        return (
-                          <div className="mt-6 pt-6 border-t border-red-100">
-                            <p className="text-sm text-red-600 font-bold mb-3">
-                              Player weight ({w}kg) does not match the registered category ({selectedWeighInPlayer.weightLabel}). 
-                              You may disqualify this player from the tournament.
-                            </p>
-                            <button 
-                              onClick={() => selectedWeighInPlayer.regId && handleDisqualifyPlayer(selectedWeighInPlayer.regId, actualWeight)}
-                              disabled={isDisqualifying}
-                              className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-md transition-colors disabled:opacity-50 flex items-center gap-2"
-                            >
-                              {isDisqualifying ? <Loader2 className="animate-spin" size={16} /> : <X size={16} />}
-                              Disqualify Player
-                            </button>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      {activeTab === "weigh-in" && tournament && (
+        <WeighInTab
+          tournamentId={tournamentId}
+          players={players}
+          registrationClosed={!!tournament.registrationClosed}
+          onChanged={fetchPlayers}
+          showToast={showToast}
+        />
       )}
 
       {/* ══ REGISTRATIONS (PLAYERS) ═══════════════════════════════════════════════════════════ */}
@@ -1782,22 +1651,32 @@ export default function TournamentDetailPage() {
                   })()}
                 </button>
                 <div className="w-px h-8 bg-slate-200 hidden md:block mx-1"></div>
-                <button
-                  type="button"
-                  onClick={() => setIsAddPlayerOpen(true)}
-                  className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all hover:bg-slate-50 active:scale-[0.98]"
-                >
-                  <Users size={16} />
-                  <span className="hidden md:inline">Add Player</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsImportWizardOpen(true)}
-                  className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-[#FF7400] text-white font-bold rounded-xl text-sm transition-all shadow-sm shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <Upload size={16} />
-                  <span className="hidden md:inline">Import</span>
-                </button>
+                {/* Once the tournament has started no new players can be entered */}
+                {tournament?.registrationClosed ? (
+                  <span className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-500 font-bold rounded-xl text-sm">
+                    <Lock size={16} />
+                    <span className="hidden md:inline">Registration closed</span>
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddPlayerOpen(true)}
+                      className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all hover:bg-slate-50 active:scale-[0.98]"
+                    >
+                      <Users size={16} />
+                      <span className="hidden md:inline">Add Player</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsImportWizardOpen(true)}
+                      className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-[#FF7400] text-white font-bold rounded-xl text-sm transition-all shadow-sm shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <Upload size={16} />
+                      <span className="hidden md:inline">Import</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

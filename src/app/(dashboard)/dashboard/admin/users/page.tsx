@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { adminStudentSchema, adminClubSchema, adminMemberSchema } from "@/validation/adminEntitySchema";
+import { adminStudentSchema, adminClubSchema, adminMemberSchema, adminCoachSchema } from "@/validation/adminEntitySchema";
 import { usePincodeLookup, PincodeHint } from "@/components/features/registers/usePincodeLookup";
 import {
-  Search,
+  Search,
   User,
   Shield,
   GraduationCap,
@@ -18,9 +18,9 @@ import {
   Save,
   X,
   CheckCircle2,
-  XCircle,
+  XCircle,
   Eye,
-  EyeOff,
+  EyeOff,
   Plus,
   ChevronDown,
   Trash2,
@@ -273,14 +273,15 @@ export default function UserManagementPage() {
     }
   };
 
-  const [createType, setCreateType] = useState<"STUDENT" | "CLUB" | "MEMBER">("STUDENT");
+  const [createType, setCreateType] = useState<"STUDENT" | "CLUB" | "MEMBER" | "COACH">("STUDENT");
   const [createForm, setCreateForm] = useState({
     fullName: "", name: "", email: "", mobileNumber: "", districtId: "", talukId: "",
     gender: "MALE", dob: "", aadhaarNumber: "", bloodGroup: "", address: "", city: "", state: "",
     addressPincode: "", nationality: "Indian", annualIncome: "", schoolName: "", grade: "",
     areaOfInterest: "", areaOfStudy: "", preferLocation: "", clubId: "",
     address1: "", address2: "", pincode: "", president: "", secretary: "", coach: "",
-    fatherName: "", addressLine1: "", addressLine2: ""
+    fatherName: "", addressLine1: "", addressLine2: "",
+    historyInJudo: "", historyInOtherMartial: "", presentGradeInJudo: ""
   });
   const [taluksList, setTaluksList] = useState<any[]>([]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -542,6 +543,7 @@ export default function UserManagementPage() {
       if (createType === "STUDENT") schema = adminStudentSchema;
       else if (createType === "CLUB") schema = adminClubSchema;
       else if (createType === "MEMBER") schema = adminMemberSchema;
+      else if (createType === "COACH") schema = adminCoachSchema;
 
       if (schema) {
         schema.parse(createForm);
@@ -549,7 +551,8 @@ export default function UserManagementPage() {
     } catch (error: any) {
       if (error.name === "ZodError") {
         const errors: any = {};
-        error.errors.forEach((err: any) => {
+        // Zod 4 lists problems in `issues` (`errors` was removed)
+        (error.issues ?? error.errors ?? []).forEach((err: any) => {
           if (err.path[0]) errors[err.path[0]] = err.message;
         });
         setFormErrors(errors);
@@ -566,6 +569,7 @@ export default function UserManagementPage() {
       if (createType === "STUDENT") endpoint = "/admin/create-student";
       if (createType === "CLUB") endpoint = "/admin/create-club";
       if (createType === "MEMBER") endpoint = "/admin/create-member";
+      if (createType === "COACH") endpoint = "/admin/create-coach";
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
@@ -586,7 +590,8 @@ export default function UserManagementPage() {
         addressPincode: "", nationality: "Indian", annualIncome: "", schoolName: "", grade: "",
         areaOfInterest: "", areaOfStudy: "", preferLocation: "", clubId: "",
         address1: "", address2: "", pincode: "", president: "", secretary: "", coach: "",
-        fatherName: "", addressLine1: "", addressLine2: ""
+        fatherName: "", addressLine1: "", addressLine2: "",
+        historyInJudo: "", historyInOtherMartial: "", presentGradeInJudo: ""
       });
     } catch (err: any) {
       showToast(err.message, "error");
@@ -1231,7 +1236,7 @@ export default function UserManagementPage() {
                   </div>
                   <div>
                     <h3 className="text-xl font-black text-slate-800">Create New Entity</h3>
-                    <p className="text-slate-500 text-sm">Force create an approved Player, Club, or Administrative Member.</p>
+                    <p className="text-slate-500 text-sm">Force create an approved Player, Coach, Club, or Administrative Member.</p>
                   </div>
                 </div>
                 <button onClick={() => { setCreateModalOpen(false); setFormErrors({}); }} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
@@ -1250,6 +1255,7 @@ export default function UserManagementPage() {
                     className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-slate-700"
                   >
                     <option value="STUDENT">Player</option>
+                    <option value="COACH">Coach</option>
                     <option value="CLUB">Club</option>
                     <option value="MEMBER">Administrative Member</option>
                   </select>
@@ -1530,6 +1536,44 @@ export default function UserManagementPage() {
                     </>
                   )}
 
+                  {createType === "COACH" && (
+                    <>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Father's Name</label>
+                        <input type="text" value={createForm.fatherName} onChange={(e) => { setCreateForm({ ...createForm, fatherName: e.target.value }); if (formErrors.fatherName) setFormErrors(prev => ({ ...prev, fatherName: '' })); }} placeholder="Father's Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Blood Group</label>
+                        <select
+                          value={createForm.bloodGroup}
+                          onChange={(e) => { setCreateForm({ ...createForm, bloodGroup: e.target.value }); if (formErrors.bloodGroup) setFormErrors(prev => ({ ...prev, bloodGroup: '' })); }}
+                          className={`w-full px-4 py-3 bg-white border ${formErrors.bloodGroup ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm`}
+                        >
+                          <option value="">Select Blood Group</option>
+                          {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                        {formErrors.bloodGroup && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.bloodGroup}</p>}
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
+                        <input type="text" value={createForm.addressPincode} onChange={(e) => { setCreateForm({ ...createForm, addressPincode: e.target.value.replace(/\D/g, '') }); if (formErrors.addressPincode) setFormErrors(prev => ({ ...prev, addressPincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Highest Achievement in Judo</label>
+                        <input type="text" value={createForm.historyInJudo} onChange={(e) => { setCreateForm({ ...createForm, historyInJudo: e.target.value }); if (formErrors.historyInJudo) setFormErrors(prev => ({ ...prev, historyInJudo: '' })); }} placeholder="e.g. State Champion 2018" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Highest Achievement in Other Martial Arts</label>
+                        <input type="text" value={createForm.historyInOtherMartial} onChange={(e) => { setCreateForm({ ...createForm, historyInOtherMartial: e.target.value }); if (formErrors.historyInOtherMartial) setFormErrors(prev => ({ ...prev, historyInOtherMartial: '' })); }} placeholder="Enter 'None' if not applicable" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Present Grade in Judo</label>
+                        <input type="text" value={createForm.presentGradeInJudo} onChange={(e) => { setCreateForm({ ...createForm, presentGradeInJudo: e.target.value }); if (formErrors.presentGradeInJudo) setFormErrors(prev => ({ ...prev, presentGradeInJudo: '' })); }} placeholder="e.g. Black Belt 1st Dan" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
+                      </div>
+                    </>
+                  )}
+
                 </div>
               </div>
 
@@ -1546,7 +1590,7 @@ export default function UserManagementPage() {
                   className="flex-grow py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {actionLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                  Create {createType === "STUDENT" ? "Player" : createType === "CLUB" ? "Club" : "Administrative Member"}
+                  Create {createType === "STUDENT" ? "Player" : createType === "CLUB" ? "Club" : createType === "COACH" ? "Coach" : "Administrative Member"}
                 </button>
               </div>
             </motion.div>

@@ -47,9 +47,6 @@ export function MatsOfficialsPanel({
   savingMats,
   setSavingMats,
   showToast,
-  setConfirmModal,
-  fetchTournament,
-  fetchPlayers,
   setActiveTab,
 }: {
   tournament: Tournament;
@@ -73,9 +70,6 @@ export function MatsOfficialsPanel({
   savingMats: boolean;
   setSavingMats: (v: boolean) => void;
   showToast: (msg: string, ok?: boolean) => void;
-  setConfirmModal: (v: { isOpen: boolean; title: string; message: string; action?: () => void }) => void;
-  fetchTournament: () => void;
-  fetchPlayers: () => void;
   setActiveTab: (t: Tab) => void;
 }) {
   // Mat currently being re-assigned to a different referee — UI-only, doesn't
@@ -87,6 +81,8 @@ export function MatsOfficialsPanel({
   const matsConfigured = totalMats > 0 && matsConfirmed;
   const officialsAssigned = matsConfigured && tournamentMats.length === totalMats && tournamentMats.every((m) => m.refereeName);
   const readyCount = (matsConfigured ? 1 : 0) + (officialsAssigned ? 1 : 0);
+  const unassignedMats = Array.from({ length: totalMats }, (_, i) => i + 1)
+    .filter((n) => !tournamentMats.some((m) => m.matNumber === n && m.refereeName));
 
   // Referees already assigned to a different mat shouldn't be offered again —
   // one referee can't officiate two mats at once.
@@ -325,7 +321,7 @@ export function MatsOfficialsPanel({
       {/* Stepper — visible once the wizard has started */}
       {wizardStep > 0 && (
         <div className="flex items-center justify-between bg-white rounded-2xl border border-slate-100 shadow-sm px-6 py-4">
-          {([[1, "Mats"], [2, "Officials"], [3, "Review & Start"]] as const).map(([n, label], idx) => {
+          {([[1, "Mats"], [2, "Officials"], [3, "Review & Confirm"]] as const).map(([n, label], idx) => {
             const isDone = wizardStep > n;
             const isActive = wizardStep === n;
             return (
@@ -510,11 +506,11 @@ export function MatsOfficialsPanel({
         </div>
       )}
 
-      {/* Step 3: Review & Start */}
+      {/* Step 3: Review & confirm officials */}
       {wizardStep === 3 && (
         <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
           <div>
-            <h3 className="font-black text-slate-800 text-xl mb-1">Review before you start</h3>
+            <h3 className="font-black text-slate-800 text-xl mb-1">Review &amp; confirm officials</h3>
             <p className="text-slate-500 font-bold text-sm">Double-check mat count and referees — you can still edit anything below.</p>
           </div>
 
@@ -553,47 +549,32 @@ export function MatsOfficialsPanel({
             </table>
           </div>
 
-          <div className="flex gap-3 p-5 bg-amber-50 border border-amber-200 rounded-2xl">
-            <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm font-bold text-amber-800 leading-relaxed">
-              Starting closes registration and locks today&apos;s bracket draw. Players can no longer register, and the draw can&apos;t be regenerated once matches begin.
-            </p>
-          </div>
+          {unassignedMats.length > 0 && (
+            <div className="flex gap-3 p-5 bg-amber-50 border border-amber-200 rounded-2xl">
+              <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm font-bold text-amber-800 leading-relaxed">
+                Assign an official to {unassignedMats.map((n) => `Mat ${n}`).join(", ")} before confirming.
+              </p>
+            </div>
+          )}
 
           <div className="pt-4 flex gap-4">
             <button onClick={() => setWizardStep(2)} className="px-8 py-4 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-colors">Back</button>
             <button
               onClick={() => {
-                setConfirmModal({
-                  isOpen: true,
-                  title: "Close Registration & Start Tournament",
-                  message: "This closes registration and locks today's bracket draw.\nPlayers will no longer be able to register, and the draw can't be regenerated once matches begin.\n\nAre you sure you want to proceed?",
-                  action: async () => {
-                    try {
-                      const token = localStorage.getItem("token");
-                      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/start`, {
-                        method: "PUT",
-                        headers: { Authorization: `Bearer ${token}` },
-                      });
-                      if (res.ok) {
-                        showToast("Tournament started! Registrations closed.", true);
-                        fetchTournament();
-                        fetchPlayers();
-                        setActiveTab("overview");
-                        setWizardStep(0);
-                      } else {
-                        const err = await res.json();
-                        showToast(err.error || "Failed to start", false);
-                      }
-                    } catch {
-                      showToast("Failed to start", false);
-                    }
-                  },
-                });
+                if (unassignedMats.length > 0) {
+                  showToast(`Assign an official to ${unassignedMats.map((n) => `Mat ${n}`).join(", ")} first`, false);
+                  return;
+                }
+                // Mats and officials are saved as they're assigned; this only confirms the
+                // line-up. Starting the tournament is done from the Overview tab.
+                showToast("Mats & officials confirmed", true);
+                setWizardStep(0);
+                setActiveTab("overview");
               }}
               className="flex-1 py-4 bg-[#10B981] hover:bg-[#059669] text-white font-black text-lg rounded-xl shadow-xl shadow-emerald-500/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-2"
             >
-              Start Tournament
+              Confirm Officials
             </button>
           </div>
         </div>

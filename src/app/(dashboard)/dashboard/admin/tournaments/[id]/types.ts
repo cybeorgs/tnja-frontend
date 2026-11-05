@@ -23,6 +23,8 @@ export interface RegisteredPlayer {
   permanentId?: string; tempId?: string; tnjaId?: string;
   clubId?: string | null; coachId?: string | null; isPaid?: boolean; registeredAt?: string;
   rawWeight?: string | null; rawHeight?: string | null;
+  /** Tournament-day weigh-in: scale weight (kg) and PASSED / DISQUALIFIED (null until weighed) */
+  weighInWeight?: string | null; weighInStatus?: string | null;
 }
 
 export interface BracketSlot {
