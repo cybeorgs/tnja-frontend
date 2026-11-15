@@ -30,9 +30,11 @@ import {
 import EventBannerField from "@/components/common/EventBannerField";
 import MapLinkField, { MapLink } from "@/components/common/MapLinkField";
 import { eventDayCount } from "@/components/common/EventScheduleFields";
+import AgeGroupPicker from "@/components/features/AgeGroupPicker";
+import EntryFeeField from "@/components/features/EntryFeeField";
+import { tournamentAgeGroups } from "@/utils/tournamentCategories";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
-const AVAILABLE_CATEGORIES = ["Mini Sub Junior", "Sub Junior", "Cadet", "Junior", "Senior"];
 
 export default function ClubTournamentsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -77,6 +79,7 @@ export default function ClubTournamentsPage() {
     allowBPL: false,
     beltEligibility: "",
     level: "DISTRICT",
+    levelOther: "",
     zoneId: "",
     districtId: "",
     clubId: "",
@@ -99,6 +102,7 @@ export default function ClubTournamentsPage() {
     allowBPL: false,
     beltEligibility: "",
     level: "DISTRICT",
+    levelOther: "",
     zoneId: "",
     districtId: "",
     clubId: "",
@@ -334,12 +338,13 @@ export default function ClubTournamentsPage() {
       numberOfMats: String(tournament.numberOfMats),
       ageFrom: String(tournament.ageFrom || 0),
       ageTo: String(tournament.ageTo || 100),
-      category: tournament.category ? tournament.category.split(',').map((s: string) => s.trim()) : [],
+      category: tournamentAgeGroups(tournament.category),
       gender: tournament.gender || "BOTH",
       allowBPL: tournament.allowBPL || false,
       beltEligibility: tournament.beltEligibility || "",
       bannerImage: tournament.bannerImage || "", mapLink: tournament.mapLink || "",
       level: level,
+      levelOther: tournament.levelOther || "",
       zoneId: tournament.zoneId || "",
       districtId: tournament.districtId || tournament.district?.id || "",
       clubId: tournament.clubId || tournament.club?.id || "",
@@ -361,6 +366,18 @@ export default function ClubTournamentsPage() {
     }
     if (editData.level === "CLUB" && !editData.clubId) {
       showToast("Please select a club for club tournaments.", "error");
+      return;
+    }
+    if (String(editData.entryFee).trim() === "") {
+      showToast("Enter the entry fee, or choose Free.", "error");
+      return;
+    }
+    if (!editData.category.length) {
+      showToast("Pick at least one age group.", "error");
+      return;
+    }
+    if (editData.dateTo && editData.dateTo < editData.dateFrom) {
+      showToast("The end date cannot be before the start date.", "error");
       return;
     }
 
@@ -442,6 +459,18 @@ export default function ClubTournamentsPage() {
       showToast("Please select a club for club tournaments.", "error");
       return;
     }
+    if (String(formData.entryFee).trim() === "") {
+      showToast("Enter the entry fee, or choose Free.", "error");
+      return;
+    }
+    if (!formData.category.length) {
+      showToast("Pick at least one age group.", "error");
+      return;
+    }
+    if (formData.dateTo && formData.dateTo < formData.dateFrom) {
+      showToast("The end date cannot be before the start date.", "error");
+      return;
+    }
 
     setSubmitLoading(true);
     try {
@@ -460,7 +489,7 @@ export default function ClubTournamentsPage() {
       if (!res.ok) throw new Error(json.error || "Failed to create tournament");
       showToast("Tournament created! Your club players will be notified.", "success");
       setIsCreateModalOpen(false);
-      setFormData({ title: "", dateFrom: "", dateTo: "", location: "", description: "", entryFee: "", totalSlots: "", numberOfMats: "1", ageFrom: "0", ageTo: "100", category: [], gender: "BOTH", allowBPL: false, beltEligibility: "", level: "DISTRICT", zoneId: "", districtId: "", clubId: "", bannerImage: "", mapLink: "" });
+      setFormData({ title: "", dateFrom: "", dateTo: "", location: "", description: "", entryFee: "", totalSlots: "", numberOfMats: "1", ageFrom: "0", ageTo: "100", category: [], gender: "BOTH", allowBPL: false, beltEligibility: "", level: "DISTRICT", levelOther: "", zoneId: "", districtId: "", clubId: "", bannerImage: "", mapLink: "" });
       fetchTournaments();
       fetchTournaments();
     } catch (err: any) {
@@ -919,7 +948,7 @@ export default function ClubTournamentsPage() {
                         <Trophy size={32} className="text-white/20" />
                       )}
                       <span className="absolute top-3 left-3 bg-white/20 text-white text-[9px] font-bold px-2.5 py-1 rounded-full">
-                        {t.level}
+                        {t.level === "OTHER" ? (t.levelOther || "OTHER") : t.level}
                       </span>
                       {isExpired(t) ? (
                         <span className="absolute top-3 right-3 bg-slate-500/30 text-slate-300 text-[9px] font-black px-2.5 py-1 rounded-full border border-slate-400/30 flex items-center gap-1">
@@ -1006,9 +1035,21 @@ export default function ClubTournamentsPage() {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level</label>
                     <select value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value, zoneId: "", districtId: "", clubId: "" })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold">
-                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option>
+                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option><option value="OTHER">Other</option>
                     </select>
                   </div>
+
+                  {formData.level === "OTHER" && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level Name *</label>
+                      <input
+                        required type="text" maxLength={60} value={formData.levelOther}
+                        onChange={e => setFormData((prev: any) => ({ ...prev, levelOther: e.target.value }))}
+                        placeholder="e.g. Inter-School, University, Open"
+                        className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
+                      />
+                    </div>
+                  )}
 
                   {formData.level === "ZONE" && (
                     <div>
@@ -1089,42 +1130,13 @@ export default function ClubTournamentsPage() {
                   </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-slate-100 hover:border-[#FF7400]/30 transition-all">
-                        <input 
-                          type="checkbox" 
-                          className="w-5 h-5 accent-[#FF7400]" 
-                          checked={Array.isArray(formData.category) && formData.category.length === AVAILABLE_CATEGORIES.length} 
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData({ ...formData, category: [...AVAILABLE_CATEGORIES] });
-                            } else {
-                              setFormData({ ...formData, category: [] });
-                            }
-                          }} 
-                        />
-                        All
-                      </label>
-                      {AVAILABLE_CATEGORIES.map((cat) => (
-                        <label key={cat} className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-slate-100 hover:border-[#FF7400]/30 transition-all">
-                          <input 
-                            type="checkbox" 
-                            className="w-5 h-5 accent-[#FF7400]" 
-                            checked={Array.isArray(formData.category) && formData.category.includes(cat)} 
-                            onChange={(e) => {
-                              const currentCategories = Array.isArray(formData.category) ? formData.category : [];
-                              if (e.target.checked) {
-                                setFormData({ ...formData, category: [...currentCategories, cat] });
-                              } else {
-                                setFormData({ ...formData, category: currentCategories.filter(c => c !== cat) });
-                              }
-                            }} 
-                          />
-                          {cat}
-                        </label>
-                      ))}
-                    </div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Age Groups *</label>
+                    <AgeGroupPicker
+                      value={formData.category}
+                      onChange={(category) => setFormData((prev: any) => ({ ...prev, category }))}
+                      tournamentDate={formData.dateFrom}
+                      gender={formData.gender}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Venue / Location</label>
@@ -1137,11 +1149,11 @@ export default function ClubTournamentsPage() {
                     <input type="text" value={formData.beltEligibility} onChange={(e) => setFormData({ ...formData, beltEligibility: e.target.value })}
                       placeholder="e.g. Yellow belt and above" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Entry Fee (₹)</label>
-                    <input type="text" maxLength={5} required value={formData.entryFee} onChange={(e) => setFormData({ ...formData, entryFee: e.target.value.replace(/\D/g, '') })}
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
-                  </div>
+                  <EntryFeeField
+                    value={formData.entryFee}
+                    onChange={(entryFee) => setFormData((prev: any) => ({ ...prev, entryFee }))}
+                    inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
+                  />
 
 
                   <div className="md:col-span-2 flex items-center gap-3 mt-4">
@@ -1211,9 +1223,21 @@ export default function ClubTournamentsPage() {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level</label>
                     <select value={editData.level} onChange={(e) => setEditData({ ...editData, level: e.target.value, zoneId: "", districtId: "", clubId: "" })}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold">
-                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option>
+                      <option value="CLUB">Club</option><option value="DISTRICT">District</option><option value="ZONE">Zonal</option><option value="STATE">State</option><option value="OTHER">Other</option>
                     </select>
                   </div>
+
+                  {editData.level === "OTHER" && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Level Name *</label>
+                      <input
+                        required type="text" maxLength={60} value={editData.levelOther}
+                        onChange={e => setEditData((prev: any) => ({ ...prev, levelOther: e.target.value }))}
+                        placeholder="e.g. Inter-School, University, Open"
+                        className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold"
+                      />
+                    </div>
+                  )}
 
                   {editData.level === "ZONE" && (
                     <div>
@@ -1294,42 +1318,13 @@ export default function ClubTournamentsPage() {
                   </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-slate-100 hover:border-[#FF7400]/30 transition-all">
-                        <input 
-                          type="checkbox" 
-                          className="w-5 h-5 accent-[#FF7400]" 
-                          checked={Array.isArray(editData.category) && editData.category.length === AVAILABLE_CATEGORIES.length} 
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEditData({ ...editData, category: [...AVAILABLE_CATEGORIES] });
-                            } else {
-                              setEditData({ ...editData, category: [] });
-                            }
-                          }} 
-                        />
-                        All
-                      </label>
-                      {AVAILABLE_CATEGORIES.map((cat) => (
-                        <label key={cat} className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-slate-100 hover:border-[#FF7400]/30 transition-all">
-                          <input 
-                            type="checkbox" 
-                            className="w-5 h-5 accent-[#FF7400]" 
-                            checked={Array.isArray(editData.category) && editData.category.includes(cat)} 
-                            onChange={(e) => {
-                              const currentCategories = Array.isArray(editData.category) ? editData.category : [];
-                              if (e.target.checked) {
-                                setEditData({ ...editData, category: [...currentCategories, cat] });
-                              } else {
-                                setEditData({ ...editData, category: currentCategories.filter(c => c !== cat) });
-                              }
-                            }} 
-                          />
-                          {cat}
-                        </label>
-                      ))}
-                    </div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Age Groups *</label>
+                    <AgeGroupPicker
+                      value={editData.category}
+                      onChange={(category) => setEditData((prev: any) => ({ ...prev, category }))}
+                      tournamentDate={editData.dateFrom}
+                      gender={editData.gender}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Venue / Location</label>
@@ -1342,11 +1337,11 @@ export default function ClubTournamentsPage() {
                     <input type="text" value={editData.beltEligibility} onChange={(e) => setEditData({ ...editData, beltEligibility: e.target.value })}
                       placeholder="e.g. Yellow belt and above" className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Entry Fee (₹)</label>
-                    <input type="text" maxLength={5} required value={editData.entryFee} onChange={(e) => setEditData({ ...editData, entryFee: e.target.value.replace(/\D/g, '') })}
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all" />
-                  </div>
+                  <EntryFeeField
+                    value={editData.entryFee}
+                    onChange={(entryFee) => setEditData((prev: any) => ({ ...prev, entryFee }))}
+                    inputClassName="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all"
+                  />
 
                   <div className="md:col-span-2 flex items-center gap-3 mt-4">
                     <input type="checkbox" id="allowBpl_edit" checked={editData.allowBPL} onChange={(e) => setEditData({ ...editData, allowBPL: e.target.checked })}

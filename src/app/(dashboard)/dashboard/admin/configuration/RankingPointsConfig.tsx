@@ -5,7 +5,7 @@ import { Loader2, Save, RefreshCw, CheckCircle2, AlertCircle, HeartHandshake, Ca
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
-const LEVELS = ["CLUB", "DISTRICT", "ZONE", "STATE", "NATIONAL"] as const;
+const LEVELS = ["CLUB", "DISTRICT", "ZONE", "STATE", "NATIONAL", "OTHER"] as const;
 const PLACEMENTS = [
   { id: "PARTICIPATION", label: "Participant" },
   { id: "THIRD", label: "Bronze" },

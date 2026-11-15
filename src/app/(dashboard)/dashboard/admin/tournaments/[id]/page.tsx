@@ -10,7 +10,7 @@ import {
   AlertCircle, Clock, Download, BarChart3,
   PlayCircle, Lock, Search, XCircle, Printer,
   ChevronLeft, ChevronRight, ChevronDown, Eye, FilterX,
-  LayoutList, Upload,
+  LayoutList, Upload, AlertTriangle, Scale,
 } from "lucide-react";
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, Tab, Tournament, ViewMode } from "./types";
 import {
@@ -27,7 +27,22 @@ import { DisqualifyTab } from "./components/DisqualifyTab";
 import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
-import { MatsOfficialsPanel } from "./components/MatsOfficialsPanel";
+import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
+import { levelLabel } from "@/utils/tournamentLevel";
+
+type ConfirmModalState = {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  action?: () => void;
+  /** What will happen, shown as a short list */
+  steps?: { icon: React.ReactNode; title: string; text: string }[];
+  /** One-line caution, e.g. that it can't be undone */
+  warning?: string;
+  confirmLabel?: string;
+  tone?: "warning" | "danger";
+};
+const CLOSED_CONFIRM: ConfirmModalState = { isOpen: false, title: "", message: "" };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
@@ -89,7 +104,7 @@ export default function TournamentDetailPage() {
   const [coachOptions, setCoachOptions] = useState<{ id: string; fullName: string }[]>([]);
   const [isConcludeModalOpen, setIsConcludeModalOpen] = useState(false);
   const [concludingCategoryKey, setConcludingCategoryKey] = useState<string | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; title: string; message: string; action?: () => void }>({ isOpen: false, title: "", message: "" });
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState>(CLOSED_CONFIRM);
 
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
 
@@ -98,8 +113,6 @@ export default function TournamentDetailPage() {
   const [savingMats, setSavingMats] = useState(false);
   const [loadingMats, setLoadingMats] = useState(false);
   const [matsCountInput, setMatsCountInput] = useState<string>("");
-  const [matsConfirmed, setMatsConfirmed] = useState(false);
-  const [wizardStep, setWizardStep] = useState<0|1|2|3>(0);
   const [selectedMatForAssignment, setSelectedMatForAssignment] = useState<number | null>(null);
   const [refSearchQuery, setRefSearchQuery] = useState("");
   const [refSearchResults, setRefSearchResults] = useState<{ id: string; refId?: string; name: string; district: string; club: string }[]>([]);
@@ -130,16 +143,8 @@ export default function TournamentDetailPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setTournamentMats(data.mats.map((m: any) => ({
-          matNumber: m.matNumber,
-          refereeId: m.refereeId || "",
-          refereeName: m.referee?.fullName || "",
-          refereeCoachId: m.referee?.permanentId || m.referee?.tempId || ""
-        })));
-        if (data.mats.length > 0) {
-          setMatsCountInput(data.mats.length.toString());
-          setMatsConfirmed(true);
-        }
+        setTournamentMats(data.mats.map(matFromApi));
+        if (data.mats.length > 0) setMatsCountInput(data.mats.length.toString());
       }
     } catch (error) {
       console.error("Error fetching mats:", error);
@@ -172,15 +177,6 @@ export default function TournamentDetailPage() {
       if (refSearchDebounceRef.current) clearTimeout(refSearchDebounceRef.current);
     };
   }, [refSearchQuery, selectedMatForAssignment, refSearchRefreshKey]);
-
-  const assignRefereeToMat = (matNum: number, ref: { id: string; name: string; refId?: string }) => {
-    setTournamentMats(prev => {
-      const filtered = prev.filter(m => m.matNumber !== matNum);
-      return [...filtered, { matNumber: matNum, refereeId: ref.id, refereeName: ref.name, refereeCoachId: ref.refId || "" }];
-    });
-    setRefSearchQuery("");
-    setRefSearchResults([]);
-  };
 
   // ── Auto-detect placements from draw results ─────────────────────────────────
   // Runs whenever the draws or players change (e.g. when Results tab is opened)
@@ -459,21 +455,20 @@ export default function TournamentDetailPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Starting needs the mats and officials confirmed first (Mats tab); it then
-  // closes registration, after which players are weighed in category by category.
+  // Starting closes registration; players are then weighed in category by category.
+  // Mats and officials don't block it: they can be set up or changed at any time (Mats tab).
   const handleStartTournament = () => {
-    const totalMats = parseInt(matsCountInput) || 0;
-    const officialsReady = totalMats > 0 && matsConfirmed &&
-      Array.from({ length: totalMats }, (_, i) => i + 1).every(n => tournamentMats.some(m => m.matNumber === n && m.refereeName));
-    if (!officialsReady) {
-      showToast("Set up the mats and confirm an official for every mat first.", false);
-      setActiveTab("mats");
-      return;
-    }
     setConfirmModal({
       isOpen: true,
-      title: "Close Registration & Start Tournament",
-      message: "This closes registration — no new players can be entered.\nNext, weigh in every player category by category; a category's draw can be generated once all its players have passed weigh-in.\n\nAre you sure you want to proceed?",
+      title: "Start the tournament?",
+      message: `${tournament?.title ?? "This tournament"} · ${players.length} player${players.length === 1 ? "" : "s"} registered`,
+      steps: [
+        { icon: <Lock size={16} />, title: "Registration closes", text: "No new players can register or be imported." },
+        { icon: <Scale size={16} />, title: "Weigh-in opens", text: "Weigh players in, one category at a time." },
+        { icon: <Swords size={16} />, title: "Draws unlock per category", text: "Once every player in a category passes weigh-in." },
+      ],
+      warning: "Registration can't be reopened after this.",
+      confirmLabel: "Start tournament",
       action: async () => {
         try {
           const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/start`, {
@@ -620,6 +615,9 @@ export default function TournamentDetailPage() {
               rawHeight: r.height || r.player?.height || null,
               weighInWeight: r.weighInWeight ?? null,
               weighInStatus: r.weighInStatus ?? null,
+              representing: r.representing || "",
+              representingDistrict: r.representingDistrict || "",
+              representingUnit: r.representingUnit || "",
             };
           }
         );
@@ -785,8 +783,11 @@ export default function TournamentDetailPage() {
       if (!isConfirmed) {
         setConfirmModal({
           isOpen: true,
-          title: "Re-shuffle Bracket",
-          message: "Are you sure you want to completely re-shuffle this bracket? All unsaved matches will be lost.",
+          title: "Re-shuffle this bracket?",
+          message: "Players will be drawn into new positions.",
+          warning: "All unsaved matches in this bracket will be lost.",
+          confirmLabel: "Re-shuffle",
+          tone: "danger",
           action: () => handleGenerateAndSaveDraw(isShuffle, true, explicitCat, selectedMethod)
         });
         return;
@@ -1389,73 +1390,95 @@ export default function TournamentDetailPage() {
             {toast.msg}
           </motion.div>
         )}
-      </AnimatePresence>      {/* Full-width dark header */}
-      <div className="-mt-6 -mx-6 md:-mt-8 md:-mx-8 mb-6 bg-[#1A202C] text-white shadow-md">
-        <div className="px-6 pt-6 pb-4 md:px-8 md:pt-8 md:pb-5">
-          <div className="flex items-start gap-3 mb-6">
-            <button onClick={() => router.back()}
-              className="mt-1 text-slate-400 hover:text-white transition-colors">
-              <ArrowLeft size={20} />
+      </AnimatePresence>
+
+      {/* Compact header: one row on laptop screens — title + key facts on the left, status / action on the right */}
+      {/* Header + tabs stay pinned while the tab content scrolls underneath */}
+      <div className="sticky top-0 z-30 -mt-8 -mx-8 print:static">
+      <div className="bg-[#1A202C] text-white">
+        <div className="px-6 md:px-8 py-3 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-6">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <button
+              onClick={() => router.back()}
+              aria-label="Back"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+            >
+              <ArrowLeft size={18} />
             </button>
-            <div>
-              <h1 className="text-[28px] font-black text-white leading-none tracking-tight">{tournament?.title || "Tournament"}</h1>
-              <p className="text-[12px] text-slate-400 font-bold mt-1.5 tracking-wide">Tournament Management Hub</p>
+            <div className="min-w-0">
+              <h1 className="text-lg font-black text-white leading-tight truncate">{tournament?.title || "Tournament"}</h1>
+              {tournament && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-0.5 text-xs font-semibold text-slate-400">
+                  {[
+                    { icon: Calendar, value: new Date(tournament.date).toLocaleDateString("en-GB"), label: "Date" },
+                    { icon: MapPin, value: tournament.location, label: "Location" },
+                    { icon: Users, value: `${players.length} players`, label: "Players" },
+                    { icon: Trophy, value: levelLabel(tournament.level, tournament.levelOther), label: "Level" },
+                  ].map(({ icon: Icon, value, label }) => (
+                    <span key={label} title={label} className="inline-flex items-center gap-1.5 min-w-0">
+                      <Icon size={13} className="text-[#FF7400] shrink-0" />
+                      <span className="truncate max-w-[14rem]">{value}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {tournament && (
-            <div>
-              <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-6 px-2">
-                {[
-                  { icon: Calendar, label: "DATE", value: new Date(tournament.date).toLocaleDateString("en-GB") },
-                  { icon: MapPin, label: "LOCATION", value: tournament.location },
-                  { icon: Users, label: "PLAYERS", value: `${players.length}` },
-                  { icon: Trophy, label: "LEVEL", value: tournament.level },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center shrink-0">
-                      <Icon size={16} className="text-[#FF7400]" />
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-slate-400 font-black tracking-widest uppercase mb-0.5">{label}</p>
-                      <p className="text-[13px] font-bold text-white">{value}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {/* CLOSED badge */}
-              {tournament.status === "CLOSED" && (
-                <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-3 px-2">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 border border-emerald-400/30 rounded-xl">
-                    <Check size={15} className="text-emerald-400" />
-                    <span className="text-emerald-300 font-black text-sm">Tournament Concluded — Certificates Available</span>
-                  </div>
-                </div>
-              )}
-              
-              {/* Start Tournament Action */}
-              {tournament.status !== "CLOSED" && (
-                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-3 px-2">
-                  <div className="text-[11px] font-bold text-slate-400">
-                    {tournament.registrationClosed ? "Registrations are currently closed." : "Registrations are open."}
-                  </div>
-                  {!tournament.registrationClosed ? (
-                    <button
-                      onClick={handleStartTournament}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded-lg transition-all text-xs"
-                    >
-                      <PlayCircle size={14} /> Start Tournament (Close Registrations)
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-slate-300 font-bold rounded-lg text-xs">
-                      <Lock size={14} /> Registrations Closed
-                    </div>
-                  )}
-                </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {tournament.status === "CLOSED" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-400/30 rounded-lg text-emerald-300 font-bold text-xs">
+                  <Check size={14} /> Concluded · certificates available
+                </span>
+              ) : tournament.registrationClosed ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-300 font-bold text-xs">
+                  <Lock size={13} /> Registration closed
+                </span>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Registration open
+                  </span>
+                  <button
+                    onClick={handleStartTournament}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded-lg transition-colors text-xs"
+                  >
+                    <PlayCircle size={14} /> Start Tournament
+                  </button>
+                </>
               )}
             </div>
           )}
+        </div>
+      </div>
+
+        <div className="bg-slate-50/95 backdrop-blur border-b border-slate-200 px-8 py-2.5 print:hidden">
+          {/* Tabs */}
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl w-fit max-w-full overflow-x-auto scrollbar-hide">
+            {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "points", "disqualify"] as Tab[]).map((tab) => {
+              // Results tab is ALWAYS accessible — even for expired/CLOSED tournaments
+              // Draws and matches are locked once the tournament date has passed
+              const lockedByExpiry = expired && (tab === "draws" || tab === "matches");
+              return (
+                <button
+                  key={tab}
+                  onClick={() => !lockedByExpiry && setActiveTab(tab)}
+                  title={lockedByExpiry ? "Not available — tournament has expired" : undefined}
+                  className={`px-4 py-1.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    lockedByExpiry
+                      ? "text-slate-300 cursor-not-allowed"
+                      : activeTab === tab
+                      ? "bg-white text-[#FF7400] shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {lockedByExpiry && <span className="text-[10px]">🔒</span>}
+                  {tab === "players" ? `Registrations (${players.length})` : tab === "draws" ? "Draw Generation" : tab === "results" ? "Results & Reports" : tab === "weigh-in" ? "Weigh-In" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -1475,32 +1498,6 @@ export default function TournamentDetailPage() {
       )}
 
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl w-fit flex-wrap">
-        {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "points", "disqualify"] as Tab[]).map((tab) => {
-          // Results tab is ALWAYS accessible — even for expired/CLOSED tournaments
-          // Draws and matches are locked once the tournament date has passed
-          const lockedByExpiry = expired && (tab === "draws" || tab === "matches");
-          return (
-            <button
-              key={tab}
-              onClick={() => !lockedByExpiry && setActiveTab(tab)}
-              title={lockedByExpiry ? "Not available — tournament has expired" : undefined}
-              className={`px-5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${
-                lockedByExpiry
-                  ? "text-slate-300 cursor-not-allowed"
-                  : activeTab === tab
-                  ? "bg-white text-[#FF7400] shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {lockedByExpiry && <span className="text-[10px]">🔒</span>}
-              {tab === "players" ? `Registrations (${players.length})` : tab === "draws" ? "Draw Generation" : tab === "results" ? "Results & Reports" : tab === "weigh-in" ? "Weigh-In" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          );
-        })}
-      </div>
-
       {/* ══ OVERVIEW ══════════════════════════════════════════════════════════ */}
       {activeTab === "overview" && tournament && (() => {
         return (
@@ -1513,7 +1510,7 @@ export default function TournamentDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
                 {[
                   { l: "TITLE", v: tournament.title },
-                  { l: "LEVEL", v: tournament.level },
+                  { l: "LEVEL", v: levelLabel(tournament.level, tournament.levelOther) },
                   { l: "GENDER", v: tournament.gender },
                   { l: "CATEGORY", v: tournament.category || "N/A" },
                   { l: "ENTRY FEE", v: `₹${tournament.entryFee}` },
@@ -1552,10 +1549,6 @@ export default function TournamentDetailPage() {
           setTournamentMats={setTournamentMats}
           matsCountInput={matsCountInput}
           setMatsCountInput={setMatsCountInput}
-          matsConfirmed={matsConfirmed}
-          setMatsConfirmed={setMatsConfirmed}
-          wizardStep={wizardStep}
-          setWizardStep={setWizardStep}
           selectedMatForAssignment={selectedMatForAssignment}
           setSelectedMatForAssignment={setSelectedMatForAssignment}
           refSearchQuery={refSearchQuery}
@@ -1563,11 +1556,9 @@ export default function TournamentDetailPage() {
           refSearchResults={refSearchResults}
           refSearching={refSearching}
           refreshRefSearch={() => setRefSearchRefreshKey((k) => k + 1)}
-          assignRefereeToMat={assignRefereeToMat}
           savingMats={savingMats}
           setSavingMats={setSavingMats}
           showToast={showToast}
-          setActiveTab={setActiveTab}
         />
       )}
       {/* ══ WEIGH-IN & DISQUALIFICATION ═════════════════════════════════════════════════ */}
@@ -3725,53 +3716,79 @@ export default function TournamentDetailPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Custom Confirm Modal ── */}
+      {/* ── Confirm Modal ── */}
       <AnimatePresence>
-        {confirmModal.isOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-slate-100"
-            >
-              <div className="p-6 bg-[#FF7400]/5 border-b border-[#FF7400]/10 flex items-center gap-4 text-[#FF7400]">
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0 text-[#FF7400]">
-                  <AlertCircle size={24} />
+        {confirmModal.isOpen && (() => {
+          const danger = confirmModal.tone === "danger";
+          const close = () => setConfirmModal(CLOSED_CONFIRM);
+          return (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={close}>
+              <motion.div
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="confirm-title"
+                onClick={(e) => e.stopPropagation()}
+                initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 12 }}
+                transition={{ type: "spring", damping: 26, stiffness: 320 }}
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+              >
+                <div className="p-6 sm:p-7">
+                  <div className="flex items-start gap-4">
+                    <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${danger ? "bg-red-50 text-red-600 ring-8 ring-red-50/50" : "bg-amber-50 text-amber-600 ring-8 ring-amber-50/50"}`}>
+                      <AlertTriangle size={20} />
+                    </div>
+                    <div className="min-w-0 pt-0.5">
+                      <h3 id="confirm-title" className="text-lg font-black text-slate-900 leading-tight">{confirmModal.title}</h3>
+                      {confirmModal.message && <p className="mt-1 text-sm font-semibold text-slate-500 whitespace-pre-line">{confirmModal.message}</p>}
+                    </div>
+                  </div>
+
+                  {confirmModal.steps && (
+                    <ol className="mt-6 space-y-3">
+                      {confirmModal.steps.map((step, i) => (
+                        <li key={i} className="flex items-start gap-3">
+                          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">{step.icon}</span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-800">{step.title}</p>
+                            <p className="text-xs font-medium text-slate-500">{step.text}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+
+                  {confirmModal.warning && (
+                    <div className={`mt-6 flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold ${danger ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+                      <AlertCircle size={14} className="shrink-0" />
+                      {confirmModal.warning}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h3 className="text-xl font-black">{confirmModal.title}</h3>
-                  <p className="text-sm font-semibold opacity-80">Please confirm your action</p>
-                </div>
-              </div>
-              
-              <div className="p-6">
-                <p className="text-slate-600 font-medium leading-relaxed whitespace-pre-line">
-                  {confirmModal.message}
-                </p>
-                
-                <div className="pt-8 flex items-center justify-end gap-3">
+
+                <div className="px-6 sm:px-7 py-4 bg-slate-50 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                   <button
-                    onClick={() => setConfirmModal({ isOpen: false, title: "", message: "" })}
-                    className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                    onClick={close}
+                    className="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
+                    autoFocus
                     onClick={() => {
-                      if (confirmModal.action) confirmModal.action();
-                      setConfirmModal({ isOpen: false, title: "", message: "" });
+                      confirmModal.action?.();
+                      close();
                     }}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-[#FF7400] text-white rounded-xl font-black shadow-lg shadow-[#FF7400]/20 hover:bg-orange-600 hover:-translate-y-0.5 active:translate-y-0 transition-all"
+                    className={`px-5 py-2.5 rounded-xl font-black text-white shadow-sm transition-colors ${danger ? "bg-red-600 hover:bg-red-700" : "bg-[#FF7400] hover:bg-orange-600"}`}
                   >
-                    Proceed
+                    {confirmModal.confirmLabel || "Confirm"}
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* ══ POINTS (sportsmanship + volunteers) ═════════════════════════════════ */}

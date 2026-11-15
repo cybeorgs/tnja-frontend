@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Scale, Search, Check, X, ArrowRight, Loader2, AlertCircle, Lock, RotateCcw } from "lucide-react";
 import type { RegisteredPlayer } from "../types";
+import { RepresentingBox } from "./RepresentingBox";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
@@ -74,6 +75,20 @@ export function WeighInTab({
   const [weights, setWeights] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<Record<string, CheckResult>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  // For the Represents box: districts, and unit names entered before (suggestions)
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [units, setUnits] = useState<string[]>([]);
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_BASE}/districts`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => setDistricts((Array.isArray(list) ? list : []).map((x: { name: string }) => x.name)))
+      .catch(() => {});
+    fetch(`${API_BASE}/tournaments/${tournamentId}/representing-units`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : { units: [] }))
+      .then((d) => setUnits(d.units ?? []))
+      .catch(() => {});
+  }, [tournamentId]);
 
   // Approved players take part in weigh-in; disqualified ones stay listed in their category
   const weighable = useMemo(() => players.filter(p => p.status === "APPROVED" || p.status === "DISQUALIFIED"), [players]);
@@ -321,9 +336,23 @@ export function WeighInTab({
                   <div className="flex-1 min-w-0">
                     <p className={`font-black ${disqualified ? "text-slate-400 line-through" : "text-slate-800"}`}>{p.name}</p>
                     <p className="text-xs font-semibold text-slate-500 truncate">
-                      {p.tnjaId}{p.club ? ` • ${p.club}` : ""} • {p.ageGroup} • {genderLabel(p.gender)} • <span className="text-blue-600 font-black">{p.weightLabel || p.weight}</span>
+                      {p.tnjaId}{p.club ? ` • ${p.club}` : ""}{p.district ? ` • Lives in ${p.district}` : ""} • {p.ageGroup} • {genderLabel(p.gender)} • <span className="text-blue-600 font-black">{p.weightLabel || p.weight}</span>
                     </p>
                   </div>
+
+                  <RepresentingBox
+                    key={`${regId}-${p.representing}-${p.representingDistrict}-${p.representingUnit}`}
+                    tournamentId={tournamentId}
+                    player={p}
+                    districts={districts}
+                    units={units}
+                    disabled={disqualified}
+                    showToast={showToast}
+                    onSaved={(unitName) => {
+                      if (unitName) setUnits((u) => (u.includes(unitName) ? u : [...u, unitName].sort()));
+                      onChanged();
+                    }}
+                  />
 
                   {disqualified ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-black text-red-600 bg-red-100 px-3 py-1.5 rounded-lg self-start xl:self-auto">

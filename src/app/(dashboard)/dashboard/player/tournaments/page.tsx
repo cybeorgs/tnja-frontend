@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapLink } from "@/components/common/MapLinkField";
+import { eligibleAgeGroups } from "@/utils/tournamentCategories";
 import {
   Trophy,
   MapPin,
@@ -82,25 +83,9 @@ export default function PlayerTournamentsPage() {
   const [physicalDetails, setPhysicalDetails] = useState({ height: "", weight: "", category: "" });
   const [coaches, setCoaches] = useState<any[]>([]);
 
-  const getEligibleCategoriesByBirthYear = (dobString?: string): string[] => {
-    if (!dobString) return [];
-    const birthYear = new Date(dobString).getFullYear();
-    const eligible: string[] = [];
-    
-    if (birthYear === 2018 || birthYear === 2019) eligible.push("Mini Sub-Junior Age Group 1");
-    if (birthYear === 2016 || birthYear === 2017) eligible.push("Mini Sub-Junior Age Group 2");
-    if (birthYear === 2014 || birthYear === 2015) eligible.push("Mini Sub-Junior Age Group 3");
-    
-    if (birthYear >= 2011 && birthYear <= 2013) eligible.push("Sub-Junior");
-    if (birthYear >= 2008 && birthYear <= 2010) eligible.push("Cadet");
-    if (birthYear >= 2005 && birthYear <= 2010) eligible.push("Junior");
-    if (birthYear <= 2010) eligible.push("Senior");
-    
-    const currentYear = new Date().getFullYear();
-    if (currentYear - birthYear >= 35) eligible.push("Veteran");
-    
-    return eligible;
-  };
+  // Age = tournament year − birth year, limited to the tournament's own age groups (see utils/tournamentCategories).
+  const getEligibleCategories = (tournament: any): string[] =>
+    eligibleAgeGroups(playerData?.dob, tournament?.date, tournament?.category);
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -466,7 +451,7 @@ export default function PlayerTournamentsPage() {
             {currentList.map((tournament) => {
               const myRegs = tournament.myRegistrations || (tournament.myRegistration ? [tournament.myRegistration] : []);
               const myReg = myRegs.length > 0 ? myRegs[0] : null;
-              const eligibleCats = playerData?.dob ? getEligibleCategoriesByBirthYear(playerData.dob) : [];
+              const eligibleCats = getEligibleCategories(tournament);
               const availableCats = eligibleCats.filter(cat => !myRegs.some((r: any) => r.ageGroup === cat));
               const isFullyRegistered = myRegs.length > 0;
 
@@ -500,7 +485,7 @@ export default function PlayerTournamentsPage() {
 
                     {/* Level Badge */}
                     <div className={`absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold ${levelColors[tournament.level] ?? "bg-slate-100 text-slate-600"}`}>
-                      {tournament.level}
+                      {tournament.level === "OTHER" ? (tournament.levelOther || "OTHER") : tournament.level}
                     </div>
 
                     {/* Private badge for club */}
@@ -709,7 +694,7 @@ export default function PlayerTournamentsPage() {
                     Age Group Category
                   </label>
                   <div className="flex flex-wrap gap-2 justify-start">
-                    {(playerData?.dob ? getEligibleCategoriesByBirthYear(playerData.dob) : [])
+                    {getEligibleCategories(registerModal)
                       .filter(cat => !(registerModal?.myRegistrations || (registerModal?.myRegistration ? [registerModal.myRegistration] : [])).some((r: any) => r.ageGroup === cat))
                       .map(cat => (
                         <button
@@ -726,6 +711,13 @@ export default function PlayerTournamentsPage() {
                         </button>
                     ))}
                   </div>
+                  {getEligibleCategories(registerModal).length === 0 && (
+                    <p className="mt-2 text-xs font-semibold text-red-600">
+                      {playerData?.dob
+                        ? `Born ${String(playerData.dob).slice(0, 4)}: none of this tournament's age groups (${registerModal?.category || "—"}) fit you.`
+                        : "Add your date of birth to your profile to see your age groups."}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">

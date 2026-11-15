@@ -5,7 +5,7 @@ export type ViewMode = "list" | "bracket" | "leaderboard";
 
 export interface Tournament {
   id: string; title: string; date: string; dateTo?: string;
-  location: string; level: string; entryFee: number; totalSlots: number;
+  location: string; level: string; levelOther?: string | null; entryFee: number; totalSlots: number;
   ageFrom: number; ageTo: number; category?: string; gender: string; beltEligibility?: string;
   allowBPL: boolean; status: string; rejectionRemark?: string;
   numberOfMats?: number;
@@ -25,6 +25,8 @@ export interface RegisteredPlayer {
   rawWeight?: string | null; rawHeight?: string | null;
   /** Tournament-day weigh-in: scale weight (kg) and PASSED / DISQUALIFIED (null until weighed) */
   weighInWeight?: string | null; weighInStatus?: string | null;
+  /** Who they play for in this tournament: DISTRICT | UNIT ("" until confirmed at weigh-in) */
+  representing?: string; representingDistrict?: string; representingUnit?: string;
 }
 
 export interface BracketSlot {
