@@ -28,6 +28,7 @@ import {
   Upload,
   Ban,
 } from "lucide-react";
+import { EditUserModal } from "./EditUserModal";
 
 type UserRole = "STUDENT" | "COACH" | "MEMBER" | "CLUB" | "DISTRICT_PRESIDENT" | "DISTRICT_SECRETARY" | "ZONE_PRESIDENT" | "ZONE_SECRETARY" | "STATE_PRESIDENT" | "STATE_SECRETARY" | "CEO";
 
@@ -731,7 +732,7 @@ export default function UserManagementPage() {
   const renderActions = (u: TNJAUser) => (
     <>
       <ActionButton icon={<Eye size={16} />} label="View details" onClick={() => handleViewDetails(u)} />
-      <ActionButton icon={<Edit size={16} />} label="Edit ID or password" onClick={() => handleEdit(u)} />
+      <ActionButton icon={<Edit size={16} />} label="Edit user" onClick={() => handleEdit(u)} />
       {isMemberRole(u.role) && <ActionButton icon={<Shield size={16} />} label="Promote" onClick={() => handlePromoteClick(u)} />}
       {u.role === "COACH" && u.status === "APPROVED" && <ActionButton icon={<Shield size={16} />} label={u.officeRole ? "Change office" : "Assign office"} onClick={() => handlePromoteClick(u)} />}
       {u.status !== "BLOCKED" && canBlock && <ActionButton icon={<Ban size={16} />} label="Block" danger onClick={() => handleBlockUser(u)} />}
@@ -982,153 +983,15 @@ export default function UserManagementPage() {
         )}
       </div>
 
-      {/* Edit Modal */}
-      <AnimatePresence>
-        {editModalOpen && selectedUser && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-lg bg-white rounded-3xl p-8 shadow-2xl"
-            >
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-orange-100 text-[#FF7400] rounded-2xl">
-                    <Key size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800">Manage Credentials</h3>
-                    <p className="text-slate-500 text-sm">{selectedUser.fullName}</p>
-                  </div>
-                </div>
-                <button onClick={() => setEditModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
-                  <X size={20} className="text-slate-400" />
-                </button>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                    {selectedUser ? getPermanentIdLabel(selectedUser.role) : "Permanent ID"}
-                  </label>
-                  <div className="relative">
-                    <IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-black" size={18} />
-                    <input
-                      type="text"
-                      value={newPermanentId}
-                      readOnly
-                      placeholder={selectedUser ? `Enter ${getPermanentIdLabel(selectedUser.role)}` : "Enter Permanent ID"}
-                      className="w-full pl-12 pr-4 py-4 text-slate-500 bg-slate-100 border border-slate-200 rounded-2xl cursor-not-allowed focus:outline-none transition-all font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                    Reset Password
-                  </label>
-                  <div className="relative">
-                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-black" size={18} />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password (leave blank to keep current)"
-                      className="w-full pl-12 pr-12 py-4 text-black bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2 ml-1">
-                    Warning: Changing password will lock the user out until they use the new one.
-                  </p>
-                </div>
-
-                {selectedUser.role === "STUDENT" && (
-                  <>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Wins
-                        </label>
-                        <input
-                          type="number"
-                          value={wins}
-                          onChange={(e) => setWins(Number(e.target.value) || 0)}
-                          className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] transition-all font-bold text-slate-700"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Losses
-                        </label>
-                        <input
-                          type="number"
-                          value={losses}
-                          onChange={(e) => setLosses(Number(e.target.value) || 0)}
-                          className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] transition-all font-bold text-slate-700"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Draws
-                        </label>
-                        <input
-                          type="number"
-                          value={draws}
-                          onChange={(e) => setDraws(Number(e.target.value) || 0)}
-                          className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] transition-all font-bold text-slate-700"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                        Assigned Coach
-                      </label>
-                      <select
-                        value={coachId}
-                        onChange={(e) => setCoachId(e.target.value)}
-                        className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#FF7400] transition-all font-bold text-slate-700"
-                      >
-                        <option value="">No Coach Assigned</option>
-                        {coachesList.map((coach: any) => (
-                          <option key={coach.id} value={coach.id}>
-                            {coach.fullName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="flex gap-4 mt-10">
-                <button
-                  onClick={() => setEditModalOpen(false)}
-                  className="flex-grow py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdate}
-                  disabled={actionLoading}
-                  className="flex-grow py-4 bg-[#FF7400] text-white font-bold rounded-2xl shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {actionLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                  Save Changes
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Edit Modal: every profile field, plus login and match record */}
+      {editModalOpen && selectedUser && (
+        <EditUserModal
+          user={selectedUser}
+          onClose={() => setEditModalOpen(false)}
+          onSaved={fetchUsers}
+          showToast={showToast}
+        />
+      )}
 
       {/* Promote Modal */}
       <AnimatePresence>
