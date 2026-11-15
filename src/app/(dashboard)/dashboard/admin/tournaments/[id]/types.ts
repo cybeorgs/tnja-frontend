@@ -46,6 +46,8 @@ export interface DrawCategory {
   ageGroup: string; exactAge?: number; gender: string; weightCategory: string; matNumber?: number;
   rounds: BracketMatch[][]; generated: boolean; saved: boolean;
   isConcluded?: boolean;
+  /** When the organiser started this category (its matches can be played); null = not started */
+  startedAt?: string | null;
 }
 
 export interface Seeds {

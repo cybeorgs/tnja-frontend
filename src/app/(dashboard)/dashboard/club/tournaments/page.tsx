@@ -428,7 +428,7 @@ export default function ClubTournamentsPage() {
   };
 
   const handleStartTournament = async (tournamentId: string) => {
-    if (!confirm("Are you sure you want to start this tournament? This will close all registrations immediately.")) return;
+    if (!confirm("Close registration? No new players can enter after this, and weigh-in opens. You then start each category yourself from the tournament page.")) return;
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/start`, {
@@ -436,8 +436,8 @@ export default function ClubTournamentsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to start tournament");
-      showToast("Tournament started! Registrations are now closed.", "success");
+      if (!res.ok) throw new Error(json.error || "Could not close registration");
+      showToast("Registration closed. Weigh-in is open.", "success");
       fetchTournaments();
     } catch (err: any) {
       showToast(err.message || "Something went wrong", "error");
@@ -668,7 +668,7 @@ export default function ClubTournamentsPage() {
                         onClick={() => handleStartTournament(tournament.id)}
                         className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold rounded-xl transition-all text-sm"
                       >
-                        <PlayCircle size={15} /> Start 
+                        <Lock size={15} /> Close Registration
                       </button>
                     ) : (
                       <button

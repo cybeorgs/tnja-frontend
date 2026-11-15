@@ -28,6 +28,7 @@ import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
+import { CategoryStartBoard } from "./components/CategoryStartBoard";
 import { levelLabel } from "@/utils/tournamentLevel";
 
 type ConfirmModalState = {
@@ -455,20 +456,20 @@ export default function TournamentDetailPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Starting closes registration; players are then weighed in category by category.
-  // Mats and officials don't block it: they can be set up or changed at any time (Mats tab).
-  const handleStartTournament = () => {
+  // Closing registration opens weigh-in. Categories are then started one by one by the organiser
+  // (Draw Generation → Category start board). Mats and officials can be changed at any time.
+  const handleCloseRegistration = () => {
     setConfirmModal({
       isOpen: true,
-      title: "Start the tournament?",
+      title: "Close registration?",
       message: `${tournament?.title ?? "This tournament"} · ${players.length} player${players.length === 1 ? "" : "s"} registered`,
       steps: [
-        { icon: <Lock size={16} />, title: "Registration closes", text: "No new players can register or be imported." },
+        { icon: <Lock size={16} />, title: "No new entries", text: "Players can no longer register or be imported." },
         { icon: <Scale size={16} />, title: "Weigh-in opens", text: "Weigh players in, one category at a time." },
-        { icon: <Swords size={16} />, title: "Draws unlock per category", text: "Once every player in a category passes weigh-in." },
+        { icon: <PlayCircle size={16} />, title: "You start each category", text: "Make its draw after weigh-in, then start it when you are ready." },
       ],
       warning: "Registration can't be reopened after this.",
-      confirmLabel: "Start tournament",
+      confirmLabel: "Close registration",
       action: async () => {
         try {
           const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/start`, {
@@ -476,16 +477,16 @@ export default function TournamentDetailPage() {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (res.ok) {
-            showToast("Tournament started! Registrations closed.", true);
+            showToast("Registration closed. Weigh-in is open.", true);
             fetchTournament();
             fetchPlayers();
             setActiveTab("weigh-in");
           } else {
             const err = await res.json().catch(() => null);
-            showToast(err?.error || "Failed to start", false);
+            showToast(err?.error || "Could not close registration", false);
           }
         } catch {
-          showToast("Failed to start", false);
+          showToast("Could not close registration", false);
         }
       },
     });
@@ -723,6 +724,27 @@ export default function TournamentDetailPage() {
   const drawPlayers = eligiblePlayers;
 
   const currentDraw = draws[currentKey];
+
+  // ── Start / stop one category (the organiser decides which categories run) ──
+  const [startingKey, setStartingKey] = useState<string | null>(null);
+  const toggleCategoryStart = async (key: string, d: DrawCategory, started: boolean) => {
+    setStartingKey(key);
+    try {
+      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws/start`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ageGroup: d.ageGroup, exactAge: d.exactAge ?? 0, gender: d.gender, weightCategory: d.weightCategory, started }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not update the category");
+      setDraws((p) => (p[key] ? { ...p, [key]: { ...p[key], startedAt: data.startedAt ?? null } } : p));
+      showToast(data.message, true);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not update the category", false);
+    } finally {
+      setStartingKey(null);
+    }
+  };
   const isCurrentRoundRobin = !!currentDraw?.rounds[0]?.[0]?.matchId.startsWith("rr_");
   const effectiveViewMode: ViewMode = viewMode === "leaderboard" && !isCurrentRoundRobin ? "bracket" : viewMode;
 
@@ -968,6 +990,11 @@ export default function TournamentDetailPage() {
 
 
   const openScoreboard = (match: BracketMatch) => {
+    const owner = Object.values(draws).find((d) => d.rounds.some((r) => r.some((m) => m.matchId === match.matchId)));
+    if (owner && !owner.startedAt) {
+      showToast(`Start ${owner.ageGroup} ${owner.weightCategory} first (Draw Generation → Category start board).`, false);
+      return;
+    }
     const p = new URLSearchParams({
       matchId: match.matchId,
       fighterAId:   match.slotA.playerId || "",
@@ -1441,10 +1468,10 @@ export default function TournamentDetailPage() {
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Registration open
                   </span>
                   <button
-                    onClick={handleStartTournament}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded-lg transition-colors text-xs"
+                    onClick={handleCloseRegistration}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FF7400] hover:bg-orange-600 text-white font-bold rounded-lg transition-colors text-xs"
                   >
-                    <PlayCircle size={14} /> Start Tournament
+                    <Lock size={14} /> Close Registration
                   </button>
                 </>
               )}
@@ -2008,6 +2035,12 @@ export default function TournamentDetailPage() {
       )}
       {activeTab === "draws" && !expired && (
         <div className="space-y-4">
+          <CategoryStartBoard
+            draws={draws}
+            registrationClosed={!!tournament?.registrationClosed}
+            busyKey={startingKey}
+            onToggle={toggleCategoryStart}
+          />
           <DrawCategoryFilters
                 genderFilter={genderFilter}
                 setGenderFilter={setGenderFilter}
@@ -2580,8 +2613,26 @@ export default function TournamentDetailPage() {
                         MAT {currentDraw.matNumber}
                       </span>
                     )}
+                    {currentDraw.saved && !currentDraw.isConcluded && (
+                      currentDraw.startedAt ? (
+                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-bold bg-orange-100 text-orange-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" /> LIVE
+                        </span>
+                      ) : (
+                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-bold bg-slate-100 text-slate-500">NOT STARTED</span>
+                      )
+                    )}
                   </h3>
                   <div className="flex items-center gap-2">
+                    {currentDraw.saved && !currentDraw.startedAt && !currentDraw.isConcluded && (
+                      <button
+                        onClick={() => toggleCategoryStart(currentKey, currentDraw, true)}
+                        disabled={startingKey === currentKey || !tournament?.registrationClosed}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black disabled:opacity-40"
+                      >
+                        {startingKey === currentKey ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={13} />} Start category
+                      </button>
+                    )}
                     <button 
                       onClick={() => { 
                         const hasActive = currentDraw.rounds.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"));

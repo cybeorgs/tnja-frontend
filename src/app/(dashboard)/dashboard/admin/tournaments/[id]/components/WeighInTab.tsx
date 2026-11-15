@@ -200,7 +200,7 @@ export function WeighInTab({
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
           <Lock size={18} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-sm font-semibold text-amber-800">
-            Weigh-in opens once the tournament is started (registration closed). Use <strong>Close Registration &amp; Start Tournament</strong> first.
+            Weigh-in opens once registration is closed. Use <strong>Close Registration</strong> at the top of the page first.
           </p>
         </div>
       )}
