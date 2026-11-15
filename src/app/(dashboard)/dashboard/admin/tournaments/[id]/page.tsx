@@ -3819,6 +3819,8 @@ export default function TournamentDetailPage() {
       {isAddPlayerOpen && (
         <AddPlayerModal
           tournamentId={tournamentId}
+          tournamentCategory={tournament?.category}
+          tournamentGender={tournament?.gender}
           onClose={() => setIsAddPlayerOpen(false)}
           onSuccess={() => { fetchPlayers(); showToast("Player added to tournament.", true); }}
         />

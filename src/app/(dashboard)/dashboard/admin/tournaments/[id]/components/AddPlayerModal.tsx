@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, Loader2, Search, UserPlus, Users, X } from "lucide-react";
+import { AlertCircle, ChevronDown, Loader2, Search, UserPlus, Users, X } from "lucide-react";
 import type { StudentSearchResult } from "../types";
+import { AGE_GROUP_NAMES, tournamentAgeGroups, weightClasses, weightCategoryFor } from "@/utils/tournamentCategories";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
@@ -17,13 +18,21 @@ const labelCls = "block text-[10.5px] font-black text-slate-400 uppercase tracki
 
 export function AddPlayerModal({
   tournamentId,
+  tournamentCategory,
+  tournamentGender,
   onClose,
   onSuccess,
 }: {
   tournamentId: string;
+  /** Age groups the tournament contests ("Cadet, Junior"); empty = all */
+  tournamentCategory?: string | null;
+  /** MALE | FEMALE | BOTH */
+  tournamentGender?: string;
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const offeredGroups = tournamentAgeGroups(tournamentCategory).length ? tournamentAgeGroups(tournamentCategory) : AGE_GROUP_NAMES;
+  const offeredGenders = tournamentGender === "MALE" ? ["MALE"] : tournamentGender === "FEMALE" ? ["FEMALE"] : ["MALE", "FEMALE"];
   const [mode, setMode] = useState<"search" | "create">("search");
 
   // ── Search-existing-player state ──────────────────────────────────────────
@@ -47,7 +56,10 @@ export function AddPlayerModal({
   const [clubs, setClubs] = useState<ClubOption[]>([]);
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [fullName, setFullName] = useState("");
-  const [gender, setGender] = useState("");
+  const [gender, setGender] = useState(tournamentGender === "MALE" || tournamentGender === "FEMALE" ? tournamentGender : "");
+  const [ageGroup, setAgeGroup] = useState("");
+  const [weightClass, setWeightClass] = useState("");
+  const [showMore, setShowMore] = useState(false);
   const [dob, setDob] = useState("");
   const [aadhaarNumber, setAadhaarNumber] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
@@ -60,12 +72,22 @@ export function AddPlayerModal({
   const [bloodGroup, setBloodGroup] = useState("");
 
   useEffect(() => {
-    if (mode !== "create" || districts.length > 0) return;
+    if (mode !== "create" || !showMore || districts.length > 0) return;
     fetch(`${API_BASE}/districts`)
       .then((res) => (res.ok ? res.json() : []))
       .then(setDistricts)
       .catch(() => setDistricts([]));
-  }, [mode, districts.length]);
+  }, [mode, showMore, districts.length]);
+
+  // Weight classes for the chosen age group + gender; a typed weight picks the class automatically.
+  const classes = ageGroup && gender ? weightClasses(ageGroup, gender as "MALE" | "FEMALE") : [];
+  /** The picked class, if it still belongs to the chosen age group + gender */
+  const activeClass = classes.includes(weightClass) ? weightClass : "";
+  const changeWeight = (v: string) => {
+    setWeight(v);
+    const w = parseFloat(v);
+    if (ageGroup && gender && w > 0) setWeightClass(weightCategoryFor(w, gender as "MALE" | "FEMALE", ageGroup));
+  };
 
   const handleDistrictChange = async (id: string) => {
     setDistrictId(id);
@@ -151,28 +173,30 @@ export function AddPlayerModal({
     submitRegistration({ studentId: selected.id, weight, height, belt });
   };
 
-  const canCreate = fullName.trim() && gender && dob && aadhaarNumber.trim() && mobileNumber.trim() && districtId && talukId;
+  // Quick add: only the name and the category are required; the rest is optional.
+  const canCreate = fullName.trim().length >= 2 && gender && ageGroup && activeClass && (!districtId || talukId);
 
   const handleCreateAndAdd = () => {
     if (!canCreate) {
-      setErrorMsg("Please fill in all required fields (marked *).");
+      setErrorMsg(districtId && !talukId ? "Pick the taluk for the chosen district." : "Enter the name and choose the age group, Boys/Girls and weight class.");
       return;
     }
     submitRegistration({
       newPlayer: {
         fullName: fullName.trim(),
         gender,
-        dob,
-        aadhaarNumber: aadhaarNumber.trim(),
-        mobileNumber: mobileNumber.trim(),
+        dob: dob || undefined,
+        aadhaarNumber: aadhaarNumber.trim() || undefined,
+        mobileNumber: mobileNumber.trim() || undefined,
         email: email.trim() || undefined,
-        districtId,
-        talukId,
+        districtId: districtId || undefined,
+        talukId: talukId || undefined,
         clubId: clubId || undefined,
         coachId: coachId || undefined,
         schoolName: schoolName.trim() || undefined,
         bloodGroup: bloodGroup || undefined,
       },
+      ageGroup, weightCategory: activeClass,
       weight, height, belt,
     });
   };
@@ -290,74 +314,136 @@ export function AddPlayerModal({
             )
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Full Name *</label>
-                  <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g. Arjun Kumar" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Gender *</label>
-                  <select value={gender} onChange={(e) => setGender(e.target.value)} className={inputCls}>
-                    <option value="">Select</option>
-                    <option value="MALE">Male</option>
-                    <option value="FEMALE">Female</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Date of Birth *</label>
-                  <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Aadhaar Number *</label>
-                  <input value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value)} placeholder="12-digit number" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Mobile Number *</label>
-                  <input value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} placeholder="10-digit number" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Email</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="optional" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>District *</label>
-                  <select value={districtId} onChange={(e) => handleDistrictChange(e.target.value)} className={inputCls}>
-                    <option value="">Select district</option>
-                    {districts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Taluk *</label>
-                  <select value={talukId} onChange={(e) => setTalukId(e.target.value)} disabled={!districtId} className={`${inputCls} disabled:opacity-50`}>
-                    <option value="">{districtId ? "Select taluk" : "Select district first"}</option>
-                    {taluks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Club (optional)</label>
-                  <select value={clubId} onChange={(e) => setClubId(e.target.value)} disabled={!districtId} className={`${inputCls} disabled:opacity-50`}>
-                    <option value="">None</option>
-                    {clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Coach (optional)</label>
-                  <select value={coachId} onChange={(e) => setCoachId(e.target.value)} disabled={!districtId} className={`${inputCls} disabled:opacity-50`}>
-                    <option value="">None</option>
-                    {coaches.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>School Name</label>
-                  <input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="optional" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Blood Group</label>
-                  <input value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} placeholder="e.g. O+" className={inputCls} />
-                </div>
+              {/* Required: name + category */}
+              <div>
+                <label className={labelCls}>Full Name *</label>
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g. Arjun Kumar" className={inputCls} autoFocus />
               </div>
-              <div className="pt-1 border-t border-slate-100" />
-              <RegistrationFields weight={weight} setWeight={setWeight} height={height} setHeight={setHeight} belt={belt} setBelt={setBelt} />
+
+              <div className="space-y-3 rounded-2xl border border-slate-200 p-4">
+                <p className={`${labelCls} !mb-0`}>Category *</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {offeredGroups.map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setAgeGroup(g)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-black transition-colors ${ageGroup === g ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"}`}
+                    >
+                      {g.replace("Mini Sub-Junior Age Group ", "Mini Sub-Jr G")}
+                    </button>
+                  ))}
+                </div>
+                <div className="inline-flex bg-slate-100 rounded-lg p-0.5">
+                  {offeredGenders.map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setGender(g)}
+                      className={`px-4 py-1.5 rounded-md text-xs font-black transition-colors ${gender === g ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                    >
+                      {g === "MALE" ? "Boys" : "Girls"}
+                    </button>
+                  ))}
+                </div>
+                {ageGroup && gender ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {classes.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setWeightClass(c)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-black transition-colors ${activeClass === c ? "bg-[#FF7400] border-[#FF7400] text-white" : "bg-white border-slate-200 text-slate-600 hover:border-[#FF7400]/50"}`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                    <input
+                      value={weight}
+                      onChange={(e) => changeWeight(e.target.value.replace(/[^0-9.]/g, ""))}
+                      placeholder="or type kg"
+                      aria-label="Weight in kg"
+                      className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold focus:outline-none focus:border-[#FF7400]"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-slate-400">Pick the age group and Boys / Girls to see the weight classes.</p>
+                )}
+              </div>
+
+              {/* Optional: everything else */}
+              <button
+                type="button"
+                onClick={() => setShowMore((v) => !v)}
+                className="flex items-center justify-between w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-black text-slate-600 hover:bg-slate-100"
+                aria-expanded={showMore}
+              >
+                <span>More details <span className="font-semibold text-slate-400">(optional: date of birth, Aadhaar, mobile, district…)</span></span>
+                <ChevronDown size={16} className={`transition-transform ${showMore ? "rotate-180" : ""}`} />
+              </button>
+
+              {showMore && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Date of Birth</label>
+                      <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Aadhaar Number</label>
+                      <input value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12-digit number" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Mobile Number</label>
+                      <input value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit number" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Email</label>
+                      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>District</label>
+                      <select value={districtId} onChange={(e) => handleDistrictChange(e.target.value)} className={inputCls}>
+                        <option value="">Tournament&apos;s district</option>
+                        {districts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>{districtId ? "Taluk *" : "Taluk"}</label>
+                      <select value={talukId} onChange={(e) => setTalukId(e.target.value)} disabled={!districtId} className={`${inputCls} disabled:opacity-50`}>
+                        <option value="">{districtId ? "Select taluk" : "Select district first"}</option>
+                        {taluks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Club</label>
+                      <select value={clubId} onChange={(e) => setClubId(e.target.value)} disabled={!districtId} className={`${inputCls} disabled:opacity-50`}>
+                        <option value="">None</option>
+                        {clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Coach</label>
+                      <select value={coachId} onChange={(e) => setCoachId(e.target.value)} disabled={!districtId} className={`${inputCls} disabled:opacity-50`}>
+                        <option value="">None</option>
+                        {coaches.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>School Name</label>
+                      <input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="optional" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Blood Group</label>
+                      <input value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} placeholder="e.g. O+" className={inputCls} />
+                    </div>
+                  </div>
+                  <RegistrationFields weight={weight} setWeight={changeWeight} height={height} setHeight={setHeight} belt={belt} setBelt={setBelt} />
+                  <p className="text-xs font-semibold text-slate-400">
+                    Left blank: date of birth is set from the age group, district from the tournament, and Aadhaar / mobile get placeholders. You can correct them on the player&apos;s profile later.
+                  </p>
+                </>
+              )}
             </>
           )}
         </div>
