@@ -40,6 +40,9 @@ export interface BracketMatch {
   slotA: BracketSlot; slotB: BracketSlot;
   winnerId: string | null; status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
   scoreA?: any; scoreB?: any; winMethod?: string; elapsedSeconds?: number;
+  /** Set on the first match of a 3–4 player draw made as a repechage format: such a bracket has no
+   *  quarter-final, so the repechage collapses to the semi-final losers' bronze match. */
+  formatHint?: "single-repechage" | "double-repechage";
 }
 
 export interface DrawCategory {

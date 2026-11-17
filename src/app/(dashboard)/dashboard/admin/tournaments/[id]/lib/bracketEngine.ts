@@ -65,6 +65,18 @@ export function backfillBronzeMatches(rounds: BracketMatch[][]): BracketMatch[][
     }
   });
 
+  // A 3-player bracket has only one semi-final loser; the other bronze side is a BYE (see
+  // tagSmallRepechage), so that loser takes bronze by walkover.
+  if (bronzeMatch.status !== "COMPLETED") {
+    const winner = bronzeMatch.slotA.playerId && bronzeMatch.slotB.isBye ? bronzeMatch.slotA
+      : bronzeMatch.slotB.playerId && bronzeMatch.slotA.isBye ? bronzeMatch.slotB : null;
+    if (winner) {
+      bronzeMatch.status = "COMPLETED";
+      bronzeMatch.winnerId = winner.playerId;
+      changed = true;
+    }
+  }
+
   if (changed) r[finalRoundIdx][1] = bronzeMatch;
   return r;
 }
@@ -380,6 +392,8 @@ export function mainBracketRoundCount(rounds: BracketMatch[][]): number {
 }
 
 export function getEliminationFormatLabel(rounds: BracketMatch[][]): string {
+  const hint = rounds?.[0]?.[0]?.formatHint;
+  if (hint) return hint === "double-repechage" ? "Double Repechage" : "Single Repechage";
   if (!rounds || !hasRepechageRounds(rounds)) {
     return "Straight Elimination";
   }
@@ -472,4 +486,30 @@ export function appendRepechageRounds(main: BracketMatch[][], kind: RepechageKin
     rounds.push([match(`rr_bronze1_${stamp}`, total + 2, 1, "Winner of Rep 1", "Loser of Finals (Runner-up)")]);
   }
   return rounds;
+}
+
+/**
+ * A 3–4 player bracket has no quarter-final, so a repechage format can't add a repechage round.
+ * It is played as the main bracket plus the semi-final losers' bronze match, tagged with the
+ * chosen format so the draw keeps its name (and keeps it when edited).
+ */
+export function tagSmallRepechage(rounds: BracketMatch[][], method: "single-repechage" | "double-repechage"): BracketMatch[][] {
+  if (!rounds[0]?.[0]) return rounds;
+  const copy = rounds.map((r) => [...r]);
+  copy[0][0] = { ...copy[0][0], formatHint: method };
+
+  // Semi-finals that are byes produce no loser: mark that side of the bronze match as a BYE so the
+  // other semi-final's loser takes bronze by walkover instead of waiting on "TBD" forever.
+  const last = copy.length - 1;
+  const bronzeIdx = copy[last].findIndex((m) => m.matchId.startsWith("M_BRONZE_"));
+  if (copy.length === 2 && bronzeIdx >= 0) {
+    const bronze = { ...copy[last][bronzeIdx] };
+    copy[0].forEach((semi, mi) => {
+      if (mi > 1 || !(semi.slotA.isBye || semi.slotB.isBye)) return;
+      const bye: BracketSlot = { playerId: null, playerName: "BYE", club: "", isBye: true, coachName: "" };
+      if (mi === 0) bronze.slotA = bye; else bronze.slotB = bye;
+    });
+    copy[last][bronzeIdx] = bronze;
+  }
+  return copy;
 }

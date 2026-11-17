@@ -17,7 +17,7 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, 
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
-  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf,
+  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage,
 } from "./lib/bracketEngine";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -52,13 +52,15 @@ const CLOSED_CONFIRM: ConfirmModalState = { isOpen: false, title: "", message: "
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
 type DrawMethod = "round-robin" | "straight-elimination" | "single-repechage" | "double-repechage";
-/** Repechage is fed by quarter-final losers, so it needs a bracket with a quarter-final (5+ players). */
-const REPECHAGE_MIN_PLAYERS = 5;
+/** Repechage formats can be chosen from 3 players. With 3–4 there is no quarter-final, so the repechage
+ *  collapses to the semi-final losers' bronze match (see tagSmallRepechage). */
+const REPECHAGE_MIN_PLAYERS = 3;
 const isRepechage = (m: string) => m === "single-repechage" || m === "double-repechage";
 
 /** The format a saved draw was actually made in. */
 const drawMethodOf = (rounds: BracketMatch[][]): DrawMethod => {
   if (rounds[0]?.[0]?.matchId.startsWith("rr_")) return "round-robin";
+  if (rounds[0]?.[0]?.formatHint) return rounds[0][0].formatHint;
   const kind = repechageKindOf(rounds);
   return kind === "double" ? "double-repechage" : kind === "single" ? "single-repechage" : "straight-elimination";
 };
@@ -775,7 +777,8 @@ export default function TournamentDetailPage() {
     const main = bracketFromSlots(slots.map((id) => (id ? byId.get(id) ?? null : "BYE")));
     // A repechage draw keeps its format: rebuild the repechage + bronze rounds after the edited main bracket.
     const kind = repechageKindOf(d.rounds);
-    const rounds = kind ? appendRepechageRounds(main, kind) : main;
+    const hint = d.rounds[0]?.[0]?.formatHint;
+    const rounds = kind ? appendRepechageRounds(main, kind) : hint ? tagSmallRepechage(main, hint) : main;
     const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -920,11 +923,11 @@ export default function TournamentDetailPage() {
       const wantsRepechage = selectedMethod === "single-repechage" || selectedMethod === "double-repechage";
 
       if (wantsRepechage && rounds.length < 3) {
-        // Repechage is fed by quarter-final losers. A bracket of 4 or fewer has no quarter-final
-        // round, so those slots could never fill and the bronze matches would hang forever.
-        // Small categories are played as a round robin instead (as the default method does).
-        rounds = generateRoundRobin(isShuffle ? shuffleArray(activePlayers) : activePlayers);
-        drawNote = `Repechage needs a quarter-final round (5+ players). ${activePlayers.length} players — drawn as Round Robin instead.`;
+        // Repechage is fed by quarter-final losers. A bracket of 4 or fewer has no quarter-final, so
+        // no repechage round is added (its slots could never fill); the semi-final losers' bronze match
+        // stands in for it and the draw is tagged with the chosen format.
+        rounds = tagSmallRepechage(rounds, selectedMethod as "single-repechage" | "double-repechage");
+        drawNote = `${activePlayers.length} players: no quarter-finals, so the repechage is played as a bronze match between the semi-final losers.`;
       } else if (wantsRepechage) {
         // Repechage + bronze rounds come from the shared builder, so an edited draw rebuilds identically.
         rounds = appendRepechageRounds(rounds, selectedMethod === "double-repechage" ? "double" : "single");
@@ -2196,8 +2199,8 @@ export default function TournamentDetailPage() {
                                 >
                                   <option value="round-robin">1.Round Robin</option>
                                   <option value="straight-elimination">2.Straight elimination</option>
-                                  <option value="single-repechage" disabled={catDrawPlayers.length < REPECHAGE_MIN_PLAYERS}>3.Single Repechage{catDrawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
-                                  <option value="double-repechage" disabled={catDrawPlayers.length < REPECHAGE_MIN_PLAYERS}>4.Double Repechage{catDrawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
+                                  <option value="single-repechage" disabled={catDrawPlayers.length < REPECHAGE_MIN_PLAYERS}>3.Single Repechage{catDrawPlayers.length < REPECHAGE_MIN_PLAYERS ? ` (${REPECHAGE_MIN_PLAYERS}+ players)` : ""}</option>
+                                  <option value="double-repechage" disabled={catDrawPlayers.length < REPECHAGE_MIN_PLAYERS}>4.Double Repechage{catDrawPlayers.length < REPECHAGE_MIN_PLAYERS ? ` (${REPECHAGE_MIN_PLAYERS}+ players)` : ""}</option>
                                 </select>
                               )}
                               <button
@@ -2532,8 +2535,8 @@ export default function TournamentDetailPage() {
                             >
                               <option value="round-robin">Round Robin</option>
                               <option value="straight-elimination">Straight Elimination</option>
-                              <option value="single-repechage" disabled={drawPlayers.length < REPECHAGE_MIN_PLAYERS}>Single Repechage{drawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
-                              <option value="double-repechage" disabled={drawPlayers.length < REPECHAGE_MIN_PLAYERS}>Double Repechage{drawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
+                              <option value="single-repechage" disabled={drawPlayers.length < REPECHAGE_MIN_PLAYERS}>Single Repechage{drawPlayers.length < REPECHAGE_MIN_PLAYERS ? ` (${REPECHAGE_MIN_PLAYERS}+ players)` : ""}</option>
+                              <option value="double-repechage" disabled={drawPlayers.length < REPECHAGE_MIN_PLAYERS}>Double Repechage{drawPlayers.length < REPECHAGE_MIN_PLAYERS ? ` (${REPECHAGE_MIN_PLAYERS}+ players)` : ""}</option>
                             </select>
                             <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </span>
