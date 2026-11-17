@@ -47,7 +47,6 @@ export function EditDrawModal({
   const byId = new Map(players.map((p) => [p.id, p]));
   const byes = slots.filter((s) => s === null).length;
   const matchOf = (id: string) => Math.floor(slots.indexOf(id) / 2) + 1;
-  const doubleBye = Array.from({ length: slots.length / 2 }, (_, m) => m).find((m) => slots[m * 2] === null && slots[m * 2 + 1] === null);
   const missing = players.filter((p) => !slots.includes(p.id));
 
   // Put `id` (a player, or null for a BYE) at place i; whoever was there moves to where `id` was.
@@ -65,7 +64,6 @@ export function EditDrawModal({
   };
 
   const save = async () => {
-    if (doubleBye !== undefined) return setError(`Match ${doubleBye + 1} has two BYEs. Every first-round match needs at least one player.`);
     if (missing.length) return setError(`${missing.map((p) => p.name).join(", ")} ${missing.length === 1 ? "is" : "are"} not in the draw.`);
     setSaving(true);
     setError("");
@@ -106,7 +104,8 @@ export function EditDrawModal({
           <div className="grid gap-2 sm:grid-cols-2">
             {Array.from({ length: slots.length / 2 }, (_, m) => {
               const pair = [slots[m * 2]!, slots[m * 2 + 1]!] as const;
-              const bad = pair[0] === null && pair[1] === null;
+              // An empty match is allowed: its BYE carries into round 2.
+              const bad = false;
               const sameClub = pair[0] && pair[1] && byId.get(pair[0])?.club && byId.get(pair[0])?.club === byId.get(pair[1])?.club;
               return (
                 <div key={m} className={`rounded-xl border bg-white p-2.5 ${bad ? "border-red-300" : "border-slate-200"}`}>

@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, Shuffle, Swords, Users, X } from "lucide-react";
+import { AlertCircle, Minus, Plus, Shuffle, Swords, Users, X } from "lucide-react";
 import type { RegisteredPlayer } from "../types";
 import { drawSetupFor } from "../lib/bracketEngine";
 
 export interface DrawSetupChoice {
   /** Players who go straight to round 2, or null to pick them at random. */
   byeIds: string[] | null;
+  /** First-round fights chosen by the organiser (byes = players − 2 × fights). */
+  fights: number;
 }
 
 /**
@@ -30,7 +32,8 @@ export function DrawSetupModal({
   onCancel: () => void;
   onConfirm: (choice: DrawSetupChoice) => void;
 }) {
-  const setup = drawSetupFor(players.length);
+  const [fights, setFights] = useState(() => drawSetupFor(players.length).minFights);
+  const setup = drawSetupFor(players.length, fights);
   const [mode, setMode] = useState<"auto" | "choose">("auto");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
@@ -45,18 +48,33 @@ export function DrawSetupModal({
     });
   };
 
+  const changeFights = (next: number) => {
+    const s = drawSetupFor(players.length, next);
+    setFights(s.firstRoundFights);
+    setError("");
+    setPicked((prev) => (prev.size > s.byes ? new Set([...prev].slice(0, s.byes)) : prev));
+  };
+
   const confirm = () => {
     if (mode === "choose" && setup.byes > 0 && picked.size !== setup.byes) {
       setError(`Choose exactly ${setup.byes} player${setup.byes === 1 ? "" : "s"} for the byes (${picked.size} chosen).`);
       return;
     }
-    onConfirm({ byeIds: mode === "choose" && setup.byes > 0 ? [...picked] : null });
+    onConfirm({ byeIds: mode === "choose" && setup.byes > 0 ? [...picked] : null, fights: setup.firstRoundFights });
   };
 
-  const stat = (icon: React.ReactNode, value: number | string, label: string) => (
-    <div className="flex-1 min-w-[110px] rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+  const stat = (icon: React.ReactNode, value: number | string, label: string, step?: { down: () => void; up: () => void; canDown: boolean; canUp: boolean }) => (
+    <div className={`flex-1 min-w-[130px] rounded-xl border px-4 py-3 ${step ? "border-orange-200 bg-orange-50/40" : "border-slate-200 bg-slate-50/60"}`}>
       <div className="flex items-center gap-1.5 text-slate-400">{icon}<span className="text-[11px] font-bold uppercase tracking-wide">{label}</span></div>
-      <p className="mt-1 text-2xl font-black text-slate-800">{value}</p>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="text-2xl font-black text-slate-800">{value}</p>
+        {step && (
+          <span className="flex items-center gap-1">
+            <button type="button" onClick={step.down} disabled={!step.canDown} aria-label={`Fewer ${label.toLowerCase()}`} className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[#FF7400] hover:text-[#FF7400] disabled:opacity-30 disabled:hover:border-slate-200 disabled:hover:text-slate-600"><Minus size={13} /></button>
+            <button type="button" onClick={step.up} disabled={!step.canUp} aria-label={`More ${label.toLowerCase()}`} className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[#FF7400] hover:text-[#FF7400] disabled:opacity-30 disabled:hover:border-slate-200 disabled:hover:text-slate-600"><Plus size={13} /></button>
+          </span>
+        )}
+      </div>
     </div>
   );
 
@@ -74,13 +92,22 @@ export function DrawSetupModal({
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <div className="flex flex-wrap gap-3">
             {stat(<Users size={13} />, players.length, "Players")}
-            {stat(<Swords size={13} />, setup.firstRoundFights, "1st-round fights")}
-            {stat(<Shuffle size={13} />, setup.byes, "Byes")}
+            {stat(<Swords size={13} />, setup.firstRoundFights, "1st-round fights", {
+              down: () => changeFights(setup.firstRoundFights - 1), up: () => changeFights(setup.firstRoundFights + 1),
+              canDown: setup.firstRoundFights > setup.minFights, canUp: setup.firstRoundFights < setup.maxFights,
+            })}
+            {stat(<Shuffle size={13} />, setup.byes, "Byes", {
+              // Each bye fewer pairs two more players into a fight, so byes move in steps of 2.
+              down: () => changeFights(setup.firstRoundFights + 1), up: () => changeFights(setup.firstRoundFights - 1),
+              canDown: setup.firstRoundFights < setup.maxFights, canUp: setup.firstRoundFights > setup.minFights,
+            })}
           </div>
           <p className="text-xs text-slate-500 -mt-2">
             {setup.size}-place bracket. {setup.byes > 0
               ? `${setup.byes} player${setup.byes === 1 ? " goes" : "s go"} straight to round 2; ${setup.firstRoundFights * 2} player${setup.firstRoundFights === 1 ? "" : "s"} fight in round 1.`
               : "No byes — every player fights in round 1."}
+            {setup.empties > 0 && ` With ${setup.firstRoundFights} fights, round 2 is uneven: ${setup.empties === 1 ? "one player goes" : `${setup.empties} players go`} through it without an opponent.`}
+            {setup.minFights < setup.maxFights && " Use − / + to change the fights and byes."}
           </p>
 
           {setup.byes > 0 && (

@@ -19,6 +19,9 @@ export function processByeMatches(rounds: BracketMatch[][]): BracketMatch[][] {
       let winner: BracketSlot | null = null;
       if (aIsBye && m.slotB.playerId) winner = m.slotB;
       else if (bIsBye && m.slotA.playerId) winner = m.slotA;
+      // An empty match (two explicit BYEs, from a draw with extra first-round fights) passes a BYE on,
+      // so its next-round opponent goes through. Placeholder slots ("Loser of QF 1") never count here.
+      else if (m.slotA.isBye && m.slotB.isBye) winner = { playerId: null, playerName: "BYE", club: "", isBye: true, coachName: "" };
       if (!winner) continue;
       r[ri][mi] = { ...m, winnerId: winner.playerId, status: "COMPLETED" };
       if (ri + 1 < r.length) {
@@ -541,14 +544,23 @@ export function drawNumberOrder(size: number): number[] {
  * How an n-player category is laid out: bracket size, first-round fights and byes. Unused high
  * draw numbers are byes, so the players holding the matching low numbers go straight to round 2.
  */
-export function drawSetupFor(n: number) {
+export function drawSetupFor(n: number, fights?: number) {
   const size = bracketSizeFor(n);
   const half = size / 2;
-  const byes = size - n;
-  // Number k (≤ half) fights k + half; if k + half > n that opponent is a BYE.
-  const byeNumbers = Array.from({ length: half }, (_, i) => i + 1).filter((k) => k + half > n);
-  const fightNumbers = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !byeNumbers.includes(k));
-  return { size, byes, firstRoundFights: (n - byes) / 2, byeNumbers, fightNumbers };
+  // Fewest first-round fights the bracket allows (the standard draw), and the most possible.
+  const minFights = Math.max(0, n - half);
+  const maxFights = Math.floor(n / 2);
+  const f = Math.min(maxFights, Math.max(minFights, fights ?? minFights));
+  const byes = n - 2 * f;
+  // First-round match k pairs number k with k + half: fights take k = 1..f, byes the next numbers,
+  // and any left over are empty (no players) — their bye carries into round 2.
+  const empties = half - f - byes;
+  const byeNumbers = Array.from({ length: byes }, (_, i) => f + i + 1);
+  const fightNumbers = [
+    ...Array.from({ length: f }, (_, i) => i + 1),
+    ...Array.from({ length: f }, (_, i) => half + i + 1),
+  ];
+  return { size, byes, firstRoundFights: f, minFights, maxFights, empties, byeNumbers, fightNumbers };
 }
 
 const shuffled = <T,>(a: T[]) => { const c = [...a]; for (let i = c.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [c[i], c[j]] = [c[j], c[i]]; } return c; };
@@ -558,8 +570,8 @@ const shuffled = <T,>(a: T[]) => { const c = [...a]; for (let i = c.length - 1; 
  * to pick them at random. Everyone else is drawn at random into the fight numbers, re-drawing a few
  * times to keep players of the same club apart in round 1 where possible.
  */
-export function slotsFromDrawSetup(players: RegisteredPlayer[], byeIds: string[] | null): (RegisteredPlayer | "BYE")[] {
-  const { size, byes, byeNumbers, fightNumbers } = drawSetupFor(players.length);
+export function slotsFromDrawSetup(players: RegisteredPlayer[], byeIds: string[] | null, fights?: number): (RegisteredPlayer | "BYE")[] {
+  const { size, byes, byeNumbers, fightNumbers } = drawSetupFor(players.length, fights);
   const half = size / 2;
   const chosen = byeIds && byeIds.length === byes ? new Set(byeIds) : new Set(shuffled(players).slice(0, byes).map((p) => p.id));
   const byePlayers = shuffled(players.filter((p) => chosen.has(p.id)));

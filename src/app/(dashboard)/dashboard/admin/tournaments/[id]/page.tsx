@@ -800,11 +800,6 @@ export default function TournamentDetailPage() {
     const slots = slotsFromRounds(d.rounds);
     if (from < 0 || to < 0 || from >= slots.length || to >= slots.length) return;
     [slots[from], slots[to]] = [slots[to], slots[from]];
-    const doubleBye = Array.from({ length: slots.length / 2 }, (_, m) => m).find((m) => slots[m * 2] === null && slots[m * 2 + 1] === null);
-    if (doubleBye !== undefined) {
-      showToast(`That would leave match ${doubleBye + 1} with two BYEs. Every first-round match needs a player.`, false);
-      return;
-    }
     try {
       await saveEditedDraw(key, d, slots);
     } catch (e) {
@@ -925,7 +920,7 @@ export default function TournamentDetailPage() {
       // With a setup choice, players get draw numbers (01 v 05, 03 v 07 | 02 v 06, 04 v 08) and the
       // organiser's byes; otherwise the earlier automatic bracket.
       const rawRounds = setup
-        ? bracketFromSlots(slotsFromDrawSetup(activePlayers, setup.byeIds))
+        ? bracketFromSlots(slotsFromDrawSetup(activePlayers, setup.byeIds, setup.fights))
         : generateIJFBracket(isShuffle ? clubSeparatedShuffle(activePlayers) : activePlayers, seeds, "club-separated");
       rounds = processByeMatches(rawRounds);
       const wantsRepechage = selectedMethod === "single-repechage" || selectedMethod === "double-repechage";
