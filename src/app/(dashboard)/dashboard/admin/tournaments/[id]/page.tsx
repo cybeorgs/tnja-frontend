@@ -17,7 +17,7 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, 
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
-  getEliminationFormatLabel,
+  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf,
 } from "./lib/bracketEngine";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -750,7 +750,10 @@ export default function TournamentDetailPage() {
   const [editingDrawKey, setEditingDrawKey] = useState<string | null>(null);
   const saveEditedDraw = async (key: string, d: DrawCategory, slots: (string | null)[]) => {
     const byId = new Map(players.map((p) => [p.id, p]));
-    const rounds = bracketFromSlots(slots.map((id) => (id ? byId.get(id) ?? null : "BYE")));
+    const main = bracketFromSlots(slots.map((id) => (id ? byId.get(id) ?? null : "BYE")));
+    // A repechage draw keeps its format: rebuild the repechage + bronze rounds after the edited main bracket.
+    const kind = repechageKindOf(d.rounds);
+    const rounds = kind ? appendRepechageRounds(main, kind) : main;
     const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -884,98 +887,8 @@ export default function TournamentDetailPage() {
         rounds = generateRoundRobin(isShuffle ? shuffleArray(activePlayers) : activePlayers);
         drawNote = `Repechage needs a quarter-final round (5+ players). ${activePlayers.length} players — drawn as Round Robin instead.`;
       } else if (wantsRepechage) {
-        // generateIJFBracket always appends a generic "TBD vs TBD" consolation-bronze
-        // match to the final round for plain straight-elimination brackets. Repechage
-        // formats supply their own dedicated bronze round below, so drop that phantom
-        // match here — otherwise it's left stranded, unpopulated, forever.
-        const finalRoundIdx = rounds.length - 1;
-        rounds[finalRoundIdx] = rounds[finalRoundIdx].filter(m => !m.matchId.startsWith("M_BRONZE_"));
-
-        const totalRounds = rounds.length;
-
-        if (selectedMethod === "double-repechage") {
-          // Append Repechage Round 1 (2 matches)
-          const repRound: BracketMatch[] = [
-            {
-              matchId: `rr_rep1_m1_${Date.now()}`,
-              round: totalRounds + 1,
-              matchNumber: 1,
-              matNumber: 1,
-              status: "PENDING",
-              winnerId: null,
-              slotA: { playerId: null, playerName: "Loser of QF 1", club: "", isBye: false },
-              slotB: { playerId: null, playerName: "Loser of QF 2", club: "", isBye: false }
-            },
-            {
-              matchId: `rr_rep1_m2_${Date.now()}`,
-              round: totalRounds + 1,
-              matchNumber: 2,
-              matNumber: 1,
-              status: "PENDING",
-              winnerId: null,
-              slotA: { playerId: null, playerName: "Loser of QF 3", club: "", isBye: false },
-              slotB: { playerId: null, playerName: "Loser of QF 4", club: "", isBye: false }
-            }
-          ];
-
-          // Append Bronze Matches (2 matches)
-          const bronzeRound: BracketMatch[] = [
-            {
-              matchId: `rr_bronze1_${Date.now()}`,
-              round: totalRounds + 2,
-              matchNumber: 1,
-              matNumber: 1,
-              status: "PENDING",
-              winnerId: null,
-              slotA: { playerId: null, playerName: "Winner of Rep 1", club: "", isBye: false },
-              slotB: { playerId: null, playerName: "Loser of Semifinal 2", club: "", isBye: false }
-            },
-            {
-              matchId: `rr_bronze2_${Date.now()}`,
-              round: totalRounds + 2,
-              matchNumber: 2,
-              matNumber: 1,
-              status: "PENDING",
-              winnerId: null,
-              slotA: { playerId: null, playerName: "Winner of Rep 2", club: "", isBye: false },
-              slotB: { playerId: null, playerName: "Loser of Semifinal 1", club: "", isBye: false }
-            }
-          ];
-
-          rounds.push(repRound);
-          rounds.push(bronzeRound);
-        } else if (selectedMethod === "single-repechage") {
-          // Append Repechage Round 1 (1 match)
-          const repRound: BracketMatch[] = [
-            {
-              matchId: `rr_rep1_m1_${Date.now()}`,
-              round: totalRounds + 1,
-              matchNumber: 1,
-              matNumber: 1,
-              status: "PENDING",
-              winnerId: null,
-              slotA: { playerId: null, playerName: "Finalist's QF Loser", club: "", isBye: false },
-              slotB: { playerId: null, playerName: "Finalist's SF Loser", club: "", isBye: false }
-            }
-          ];
-
-          // Append Bronze Match (1 match)
-          const bronzeRound: BracketMatch[] = [
-            {
-              matchId: `rr_bronze1_${Date.now()}`,
-              round: totalRounds + 2,
-              matchNumber: 1,
-              matNumber: 1,
-              status: "PENDING",
-              winnerId: null,
-              slotA: { playerId: null, playerName: "Winner of Rep 1", club: "", isBye: false },
-              slotB: { playerId: null, playerName: "Loser of Finals (Runner-up)", club: "", isBye: false }
-            }
-          ];
-
-          rounds.push(repRound);
-          rounds.push(bronzeRound);
-        }
+        // Repechage + bronze rounds come from the shared builder, so an edited draw rebuilds identically.
+        rounds = appendRepechageRounds(rounds, selectedMethod === "double-repechage" ? "double" : "single");
       }
     }
     
@@ -2354,6 +2267,15 @@ export default function TournamentDetailPage() {
                                 {effectiveCatViewMode === "bracket" ? "Bracket" : effectiveCatViewMode === "list" ? "Match List" : "Leaderboard"}
                               </h4>
                               <div className="flex items-center gap-2">
+                                {draw.saved && !draw.startedAt && !draw.isConcluded && canEditBracket(draw.rounds) && (
+                                  <button
+                                    onClick={() => setEditingDrawKey(key)}
+                                    title="Change first-round pairings and who gets a BYE (before Start)"
+                                    className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold text-slate-600 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
+                                  >
+                                    <Edit2 size={13} /> Edit draw
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => exportCategoryChartPDF(tournament, key, draw, catDrawPlayers)}
                                   title="Download bracket chart (PDF)"
@@ -2593,10 +2515,10 @@ export default function TournamentDetailPage() {
                         {generated && currentDraw?.saved && !locked && canEditBracket(currentDraw.rounds) && (
                           <button
                             onClick={() => setEditingDrawKey(currentKey)}
-                            title="Change who fights whom in the first round"
+                            title="Change first-round pairings and who gets a BYE (before Start)"
                             className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400]"
                           >
-                            <Edit2 size={14} /> Edit
+                            <Edit2 size={14} /> Edit draw
                           </button>
                         )}
 

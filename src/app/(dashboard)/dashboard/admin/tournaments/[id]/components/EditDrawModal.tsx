@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Loader2, Pencil, Save, X } from "lucide-react";
 import type { BracketMatch, RegisteredPlayer } from "../types";
+import { mainBracketRoundCount } from "../lib/bracketEngine";
 
 /** First-round places: match 1 A, match 1 B, match 2 A, … (player id, or null for a BYE) */
 type Slots = (string | null)[];
@@ -12,12 +13,13 @@ type Slots = (string | null)[];
 export const slotsFromRounds = (rounds: BracketMatch[][]): Slots =>
   (rounds[0] ?? []).flatMap((m) => [m.slotA.isBye ? null : m.slotA.playerId, m.slotB.isBye ? null : m.slotB.playerId]);
 
-/** True for a straight-elimination bracket that hasn't been played yet (can be edited). */
+/** True for an elimination bracket (straight or repechage) that hasn't been played yet (can be edited). */
 export function canEditBracket(rounds: BracketMatch[][]): boolean {
   const first = rounds[0] ?? [];
   if (!first.length || first[0]!.matchId.startsWith("rr_")) return false;
   const size = first.length * 2;
-  if (rounds.length !== Math.log2(size)) return false; // repechage formats add rounds; not edited here
+  // Repechage formats add a repechage + bronze round after the main bracket; those are rebuilt on save.
+  if (mainBracketRoundCount(rounds) !== Math.log2(size)) return false;
   return !rounds.some((r) => r.some((m) => m.status === "IN_PROGRESS" || (m.status === "COMPLETED" && !m.slotA.isBye && !m.slotB.isBye)));
 }
 
@@ -94,7 +96,7 @@ export function EditDrawModal({
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           <p className="text-xs font-semibold text-slate-500">
             Choose who fights whom in each first-round match. Picking a player who is already placed swaps the two.
-            {byes > 0 && " A player drawn against a BYE goes straight to the next round."}
+            {byes > 0 && " To give a player a BYE, choose BYE for their opponent's spot — that opponent moves into the BYE's old place. A player drawn against a BYE goes straight to the next round."}
           </p>
           {error && (
             <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-bold flex items-center gap-2">

@@ -430,3 +430,46 @@ export function findNextMatch(rounds: BracketMatch[][], currentRoundIndex: numbe
 
 export const categoryKey = (age: string, exactAge: string, gender: string, weight: string) =>
   `${age}_${exactAge}_${gender}_${weight}`;
+
+// ── Repechage rounds ──────────────────────────────────────────────────────────
+export type RepechageKind = "single" | "double";
+
+/** Which repechage format a saved draw uses (null for straight elimination / round robin). */
+export function repechageKindOf(rounds: BracketMatch[][]): RepechageKind | null {
+  if (rounds.some((r) => r.some((m) => m.matchId.startsWith("rr_rep1_m2")))) return "double";
+  if (rounds.some((r) => r.some((m) => m.matchId.startsWith("rr_rep")))) return "single";
+  return null;
+}
+
+/**
+ * Appends the repechage round and its bronze round to a main elimination bracket. Used both
+ * when a draw is generated and when an edited draw is rebuilt, so the two always match.
+ * The main bracket's generic "TBD vs TBD" consolation bronze (M_BRONZE_) is dropped: these
+ * formats supply their own bronze round, and the phantom match would never be filled.
+ */
+export function appendRepechageRounds(main: BracketMatch[][], kind: RepechageKind): BracketMatch[][] {
+  const rounds = main.map((r) => [...r]);
+  const finalIdx = rounds.length - 1;
+  rounds[finalIdx] = rounds[finalIdx].filter((m) => !m.matchId.startsWith("M_BRONZE_"));
+  const total = rounds.length;
+  const stamp = Date.now();
+  const slot = (playerName: string): BracketSlot => ({ playerId: null, playerName, club: "", isBye: false });
+  const match = (matchId: string, round: number, matchNumber: number, a: string, b: string): BracketMatch => ({
+    matchId, round, matchNumber, matNumber: 1, status: "PENDING", winnerId: null, slotA: slot(a), slotB: slot(b),
+  });
+
+  if (kind === "double") {
+    rounds.push([
+      match(`rr_rep1_m1_${stamp}`, total + 1, 1, "Loser of QF 1", "Loser of QF 2"),
+      match(`rr_rep1_m2_${stamp}`, total + 1, 2, "Loser of QF 3", "Loser of QF 4"),
+    ]);
+    rounds.push([
+      match(`rr_bronze1_${stamp}`, total + 2, 1, "Winner of Rep 1", "Loser of Semifinal 2"),
+      match(`rr_bronze2_${stamp}`, total + 2, 2, "Winner of Rep 2", "Loser of Semifinal 1"),
+    ]);
+  } else {
+    rounds.push([match(`rr_rep1_m1_${stamp}`, total + 1, 1, "Finalist's QF Loser", "Finalist's SF Loser")]);
+    rounds.push([match(`rr_bronze1_${stamp}`, total + 2, 1, "Winner of Rep 1", "Loser of Finals (Runner-up)")]);
+  }
+  return rounds;
+}
