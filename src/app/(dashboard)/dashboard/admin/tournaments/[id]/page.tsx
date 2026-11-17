@@ -11,11 +11,13 @@ import {
   PlayCircle, Lock, Search, XCircle, Printer,
   ChevronLeft, ChevronRight, ChevronDown, Eye, FilterX,
   LayoutList, Upload, AlertTriangle, Scale,
+  LayoutGrid, UserPlus, Grid3x3, Network, Ban, type LucideIcon,
 } from "lucide-react";
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, Tab, Tournament, ViewMode } from "./types";
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
+  getEliminationFormatLabel,
 } from "./lib/bracketEngine";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -48,6 +50,22 @@ type ConfirmModalState = {
 const CLOSED_CONFIRM: ConfirmModalState = { isOpen: false, title: "", message: "" };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
+
+/** Weight categories are stored as "-60kg" or "60"; never print "kg kg". */
+const fmtKg = (w: unknown) => { const v = String(w ?? "").trim(); return !v ? "" : /kg/i.test(v) ? v : `${v} kg`; };
+
+const TAB_META: Record<Tab, { label: string; icon: LucideIcon }> = {
+  overview: { label: "Overview", icon: LayoutGrid },
+  players: { label: "Registrations", icon: UserPlus },
+  mats: { label: "Mats", icon: Grid3x3 },
+  "weigh-in": { label: "Weigh-In", icon: Scale },
+  draws: { label: "Draw Generation", icon: Network },
+  matches: { label: "Matches", icon: Swords },
+  results: { label: "Results", icon: BarChart3 },
+  certificate: { label: "Certificates", icon: Award },
+  points: { label: "Points", icon: Medal },
+  disqualify: { label: "Disqualify", icon: Ban },
+};
 
 export default function TournamentDetailPage() {
   const params = useParams();
@@ -452,6 +470,7 @@ export default function TournamentDetailPage() {
   };
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+  const isFreeTournament = !!tournament && !(Number(tournament.entryFee) > 0);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -812,7 +831,9 @@ export default function TournamentDetailPage() {
       return;
     }
 
-    const hasActive = activeDraw?.rounds?.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"));
+    // Bye walkovers are auto-completed when the draw is made; only real bouts (two players) lock the draw.
+    const isRealBout = (m: BracketMatch) => !!m.slotA.playerId && !!m.slotB.playerId && !m.slotA.isBye && !m.slotB.isBye;
+    const hasActive = activeDraw?.rounds?.some(r => r.some(m => isRealBout(m) && (m.status === "COMPLETED" || m.status === "IN_PROGRESS")));
     if (hasActive) {
       showToast("Cannot shuffle or re-generate because matches have already started or completed in this category!", false);
       return;
@@ -840,6 +861,8 @@ export default function TournamentDetailPage() {
     if (isShuffle) setShuffleKey(k => k + 1);
     
     let rounds;
+    /** Shown with the "generated" toast when the chosen method had to be changed. */
+    let drawNote = "";
     if (activePlayers.length === 1) {
       // Single-player category — no opponent to pair against, so just declare
       // a direct win. generateIJFBracket pairs the lone player against a BYE
@@ -852,8 +875,15 @@ export default function TournamentDetailPage() {
       const shuffledPlayers = isShuffle ? clubSeparatedShuffle(activePlayers) : activePlayers;
       const rawRounds = generateIJFBracket(shuffledPlayers, seeds, "club-separated");
       rounds = processByeMatches(rawRounds);
+      const wantsRepechage = selectedMethod === "single-repechage" || selectedMethod === "double-repechage";
 
-      if ((selectedMethod === "single-repechage" || selectedMethod === "double-repechage") && rounds.length >= 2) {
+      if (wantsRepechage && rounds.length < 3) {
+        // Repechage is fed by quarter-final losers. A bracket of 4 or fewer has no quarter-final
+        // round, so those slots could never fill and the bronze matches would hang forever.
+        // Small categories are played as a round robin instead (as the default method does).
+        rounds = generateRoundRobin(isShuffle ? shuffleArray(activePlayers) : activePlayers);
+        drawNote = `Repechage needs a quarter-final round (5+ players). ${activePlayers.length} players — drawn as Round Robin instead.`;
+      } else if (wantsRepechage) {
         // generateIJFBracket always appends a generic "TBD vs TBD" consolation-bronze
         // match to the final round for plain straight-elimination brackets. Repechage
         // formats supply their own dedicated bronze round below, so drop that phantom
@@ -994,7 +1024,7 @@ export default function TournamentDetailPage() {
               saved: true
             }
           }));
-          showToast(isShuffle ? "Bracket re-shuffled and auto-saved! 🏆" : "Draw generated and auto-saved! 🏆");
+          showToast(drawNote || (isShuffle ? "Bracket re-shuffled and auto-saved! 🏆" : "Draw generated and auto-saved! 🏆"));
         } else {
           const err = await res.json().catch(() => null);
           showToast(err?.error || "Failed to auto-save draw", false);
@@ -1012,7 +1042,7 @@ export default function TournamentDetailPage() {
   const openScoreboard = (match: BracketMatch) => {
     const owner = Object.values(draws).find((d) => d.rounds.some((r) => r.some((m) => m.matchId === match.matchId)));
     if (owner && !owner.startedAt) {
-      showToast(`Start ${owner.ageGroup} ${owner.weightCategory} first (Draw Generation → Category start board).`, false);
+      showToast(`${owner.ageGroup} ${owner.weightCategory} hasn't started yet. Press Start for it on the Category start board (Draw Generation tab) to open its scoreboards.`, false);
       return;
     }
     const p = new URLSearchParams({
@@ -1439,32 +1469,42 @@ export default function TournamentDetailPage() {
         )}
       </AnimatePresence>
 
-      {/* Compact header: one row on laptop screens — title + key facts on the left, status / action on the right */}
       {/* Header + tabs stay pinned while the tab content scrolls underneath */}
-      <div className="sticky -top-8 z-30 -mt-8 -mx-8 print:static">
-      <div className="bg-[#1A202C] text-white">
-        <div className="px-8 py-2.5 flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-6">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="sticky -top-8 z-30 -mt-8 -mx-8 print:static bg-white border-b border-slate-200">
+        <div className="px-8 pt-5 pb-3 flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
+          <div className="flex items-start gap-4 min-w-0 flex-1">
             <button
               onClick={() => router.back()}
               aria-label="Back"
-              className="-ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              className="w-11 h-11 shrink-0 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-colors"
             >
               <ArrowLeft size={18} />
             </button>
             <div className="min-w-0">
-              <h1 className="text-lg font-black text-white leading-tight truncate">{tournament?.title || "Tournament"}</h1>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <h1 className="text-xl lg:text-2xl font-black text-slate-900 leading-tight">{tournament?.title || "Tournament"}</h1>
+                {tournament && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-black uppercase tracking-wide whitespace-nowrap">
+                    <Trophy size={12} /> {(() => {
+                      const lvl = levelLabel(tournament.level, tournament.levelOther);
+                      return /tournament/i.test(lvl) ? lvl : `${lvl} Tournament`;
+                    })()}
+                  </span>
+                )}
+              </div>
               {tournament && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-0.5 text-xs font-semibold text-slate-400">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm font-medium text-slate-500">
                   {[
                     { icon: Calendar, value: new Date(tournament.date).toLocaleDateString("en-GB"), label: "Date" },
-                    { icon: MapPin, value: tournament.location, label: "Location" },
-                    { icon: Users, value: `${players.length} players`, label: "Players" },
-                    { icon: Trophy, value: levelLabel(tournament.level, tournament.levelOther), label: "Level" },
-                  ].map(({ icon: Icon, value, label }) => (
-                    <span key={label} title={label} className="inline-flex items-center gap-1.5 min-w-0">
-                      <Icon size={13} className="text-[#FF7400] shrink-0" />
-                      <span className="truncate max-w-[14rem]">{value}</span>
+                    { icon: MapPin, value: tournament.location, label: "Venue" },
+                    { icon: Users, value: `${players.length} ${players.length === 1 ? "player" : "players"} registered`, label: "Registrations" },
+                  ].map(({ icon: Icon, value, label }, i) => (
+                    <span key={label} className="inline-flex items-center gap-3 min-w-0">
+                      {i > 0 && <span className="w-1 h-1 rounded-full bg-slate-300" aria-hidden />}
+                      <span title={label} className="inline-flex items-center gap-1.5 min-w-0">
+                        <Icon size={15} className="text-[#FF7400] shrink-0" />
+                        <span className="truncate max-w-[16rem]">{value}</span>
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -1473,23 +1513,23 @@ export default function TournamentDetailPage() {
           </div>
 
           {tournament && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-3 shrink-0 lg:self-center pl-[60px] lg:pl-0">
               {tournament.status === "CLOSED" ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-400/30 rounded-lg text-emerald-300 font-bold text-xs">
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 font-bold text-xs">
                   <Check size={14} /> Concluded · certificates available
                 </span>
               ) : tournament.registrationClosed ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-300 font-bold text-xs">
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 font-bold text-xs">
                   <Lock size={13} /> Registration closed
                 </span>
               ) : (
                 <>
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Registration open
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Registration open
                   </span>
                   <button
                     onClick={handleCloseRegistration}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FF7400] hover:bg-orange-600 text-white font-bold rounded-lg transition-colors text-xs"
+                    className="inline-flex items-center gap-1.5 h-10 px-4 bg-[#FF7400] hover:bg-orange-600 text-white font-bold rounded-xl transition-colors text-sm"
                   >
                     <Lock size={14} /> Close Registration
                   </button>
@@ -1498,35 +1538,44 @@ export default function TournamentDetailPage() {
             </div>
           )}
         </div>
-      </div>
 
-        <div className="bg-slate-50/95 backdrop-blur border-b border-slate-200 px-8 py-2 print:hidden">
-          {/* Tabs */}
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl w-fit max-w-full overflow-x-auto scrollbar-hide">
+        {/* Tabs */}
+        <nav aria-label="Tournament sections" className="px-8 print:hidden">
+          <div className="flex gap-1 overflow-x-auto scrollbar-hide -mb-px">
             {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "certificate", "points", "disqualify"] as Tab[]).map((tab) => {
               // Results tab is ALWAYS accessible — even for expired/CLOSED tournaments
               // Draws and matches are locked once the tournament date has passed
               const lockedByExpiry = expired && (tab === "draws" || tab === "matches");
+              const active = activeTab === tab;
+              const { label, icon: Icon } = TAB_META[tab];
               return (
                 <button
                   key={tab}
                   onClick={() => !lockedByExpiry && setActiveTab(tab)}
                   title={lockedByExpiry ? "Not available — tournament has expired" : undefined}
-                  className={`px-4 py-1.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  aria-current={active ? "page" : undefined}
+                  className={`relative inline-flex items-center gap-2 px-3.5 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
                     lockedByExpiry
-                      ? "text-slate-300 cursor-not-allowed"
-                      : activeTab === tab
-                      ? "bg-white text-[#FF7400] shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
+                      ? "border-transparent text-slate-300 cursor-not-allowed"
+                      : active
+                      ? "border-[#FF7400] text-[#FF7400]"
+                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-200"
                   }`}
                 >
-                  {lockedByExpiry && <span className="text-[10px]">🔒</span>}
-                  {tab === "players" ? `Registrations (${players.length})` : tab === "draws" ? "Draw Generation" : tab === "results" ? "Results & Reports" : tab === "weigh-in" ? "Weigh-In" : tab === "certificate" ? "Certificates" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {lockedByExpiry ? <Lock size={15} /> : <Icon size={16} className={active ? "text-[#FF7400]" : tab === "players" ? "text-[#FF7400]" : "text-slate-400"} />}
+                  {label}
+                  {tab === "players" && (
+                    <span className={`min-w-[24px] h-6 px-1.5 inline-flex items-center justify-center rounded-full text-[11px] font-black border ${
+                      active ? "bg-[#FF7400] border-[#FF7400] text-white" : "bg-orange-50 border-orange-200 text-[#FF7400]"
+                    }`}>
+                      {players.length}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
-        </div>
+        </nav>
       </div>
 
       {/* Expired banner */}
@@ -1855,7 +1904,10 @@ export default function TournamentDetailPage() {
                             ) : "—"}
                           </td>
                           <td className="px-5 py-4">
-                            {p.isPaid ? (
+                            {/* Free tournaments mark registrations paid so they pass the payment check; show them as Free. */}
+                            {isFreeTournament ? (
+                              <span className="bg-sky-50 text-sky-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Free</span>
+                            ) : p.isPaid ? (
                               <span className="bg-emerald-50 text-emerald-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Paid</span>
                             ) : (
                               <span className="bg-amber-50 text-amber-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Unpaid</span>
@@ -1907,7 +1959,7 @@ export default function TournamentDetailPage() {
                                         { l: "Weight", v: p.rawWeight || (p.weight ? `${p.weight} kg` : "—") },
                                         { l: "Height", v: p.rawHeight || "—" },
                                         { l: "Weight Category", v: p.weightLabel || "—" },
-                                        { l: "Payment", v: p.isPaid ? "Paid" : "Unpaid" },
+                                        { l: "Payment", v: isFreeTournament ? "Free" : p.isPaid ? "Paid" : "Unpaid" },
                                         { l: "Registered On", v: p.registeredAt ? new Date(p.registeredAt).toLocaleString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—" },
                                       ].map(({ l, v }) => (
                                         <div key={l}>
@@ -2304,17 +2356,19 @@ export default function TournamentDetailPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => exportCategoryChartPDF(tournament, key, draw, catDrawPlayers)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF7400] hover:bg-[#e66800] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                                  title="Download Official Visual Competition Bracket Chart (PDF)"
+                                  title="Download bracket chart (PDF)"
+                                  aria-label="Download bracket chart (PDF)"
+                                  className="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-[#FF7400] hover:border-orange-200 transition-colors"
                                 >
-                                  <Download size={13} /> Download Chart (PDF)
+                                  <Download size={16} />
                                 </button>
                                 <button
                                   onClick={() => exportCategoryReport(tournament, key, draw, catDrawPlayers)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-[#FF7400] border border-orange-200 rounded-xl text-xs font-bold transition-all shadow-sm"
-                                  title="Print Entire Match Result Report for this Category"
+                                  title="Print match report"
+                                  aria-label="Print match report"
+                                  className="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-[#FF7400] hover:border-orange-200 transition-colors"
                                 >
-                                  <Printer size={13} /> Print Report
+                                  <Printer size={16} />
                                 </button>
                                 <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
                                   {(isCatRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "list"] as ViewMode[])).map((v) => (
@@ -2359,13 +2413,6 @@ export default function TournamentDetailPage() {
                                 <span className="text-xs font-bold text-slate-500">
                                   Total {draw.rounds.reduce((acc, r) => acc + r.length, 0)} Matches across {draw.rounds.length} Rounds
                                 </span>
-                                <button
-                                  onClick={() => exportCategoryReport(tournament, key, draw, catDrawPlayers)}
-                                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#FF7400] hover:bg-[#e66800] text-white rounded-xl text-xs font-black transition-all shadow-sm"
-                                  title="Print Entire Match Results Report"
-                                >
-                                  <Printer size={13} /> Print Entire Match Results
-                                </button>
                               </div>
                               <div className="divide-y divide-slate-50">
                                 {draw.rounds.map((round, ri) => (
@@ -2434,78 +2481,46 @@ export default function TournamentDetailPage() {
                 exit={{ opacity: 0, x: 100, transition: { duration: 0.3 } }}
                 className="space-y-6"
               >
-                {/* Player cards list */}
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                {/* Category toolbar: everything for this category in one place */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
                 {drawPlayers.length === 0 ? (
-                  <div className="py-16 text-center space-y-4">
-                    <Target size={48} className="mx-auto text-slate-200" />
-                    <div>
-                      <p className="text-slate-500 font-bold text-lg">No Players in This Category</p>
-                      <p className="text-slate-400 text-sm mt-1">Select a different category filter above.</p>
-                    </div>
+                  <div className="py-12 text-center">
+                    <p className="text-slate-500 font-bold">No players in this category</p>
+                    <p className="text-slate-400 text-sm mt-1">Pick another category above.</p>
                   </div>
-                ) : (
-                  <div className="p-5">
-                    <div className="flex flex-col xl:flex-row items-center justify-between bg-white border-2 border-slate-100 rounded-[2px] p-4 mb-6 shadow-sm gap-6">
-                      {/* Left Side: Status */}
-                      <div className="flex items-center gap-4 w-full xl:w-auto">
-                        <div className="flex items-center justify-center w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 shrink-0">
-                          <Users size={24} />
-                        </div>
-                        <div>
-                          <p className="font-black text-slate-800 text-lg">
-                            {drawPlayers.length} Players Ready
-                          </p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                            {drawPlayers.length === 1
-                              ? (currentDraw?.generated ? "Winner declared" : "No opponent — declare a direct win")
-                              : (currentDraw?.generated ? "Assign seeds & Re-Shuffle" : "Assign seeds & Generate Draw")}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Right Side: Actions */}
-                      <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full xl:w-auto">
-
-                        {/* Format Select */}
-                        {drawPlayers.length > 1 && (
-                          <div className="relative w-full md:w-auto">
-                            <select
-                              value={detailDrawMethod || (drawPlayers.length <= 5 ? "round-robin" : "straight-elimination")}
-                              onChange={(e) => setDetailDrawMethod(e.target.value as DrawMethodType)}
-                              className="w-full md:w-auto pl-4 pr-10 py-2.5 text-sm font-bold bg-orange-50/50 border-2 border-orange-200 text-orange-900 rounded-xl focus:outline-none focus:border-[#FF7400] hover:border-orange-300 transition-all cursor-pointer shadow-sm appearance-none"
-                            >
-                              <option value="round-robin">1. Round Robin</option>
-                              <option value="straight-elimination">2. Straight Elimination</option>
-                              <option value="single-repechage">3. Single Repechage</option>
-                              <option value="double-repechage">4. Double Repechage</option>
-                            </select>
-                            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-orange-400 pointer-events-none" />
+                ) : (() => {
+                  const locked = !!currentDraw?.startedAt;
+                  const busy = drawPhase === "shuffling" || drawPhase === "dealing" || autoGenerating;
+                  const generated = !!currentDraw?.generated;
+                  const status = currentDraw?.isConcluded ? "finished" : locked ? "live" : generated ? "ready" : "none";
+                  const catTitle = [ageFilter !== "ALL" ? ageFilter : "", genderFilter === "FEMALE" ? "Girls" : genderFilter === "MALE" ? "Boys" : "", weightFilter !== "ALL" ? fmtKg(weightFilter) : ""].filter(Boolean).join(" · ") || "All players";
+                  const formatLabel = generated && currentDraw ? (isCurrentRoundRobin ? "Round Robin" : getEliminationFormatLabel(currentDraw.rounds)) : "";
+                  const iconBtn = "w-9 h-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-[#FF7400] hover:border-orange-200 transition-colors";
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4 border-b border-slate-100">
+                        {/* Title + facts */}
+                        <div className="min-w-0 mr-auto">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-black text-slate-800">{catTitle}</h3>
+                            {status === "live" && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black bg-orange-100 text-orange-700">
+                                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" /> Live
+                              </span>
+                            )}
+                            {status === "finished" && <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-700">Finished</span>}
+                            {status === "ready" && <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-slate-100 text-slate-500">Not started</span>}
                           </div>
-                        )}
+                          <p className="text-xs font-semibold text-slate-400 mt-0.5">
+                            {drawPlayers.length} {drawPlayers.length === 1 ? "player" : "players"}
+                            {formatLabel && <> · {formatLabel}</>}
+                          </p>
+                        </div>
 
-                        {/* Action Button */}
-                        <button
-                          onClick={() => currentDraw?.generated ? handleShuffle() : handleGenerateDraw()}
-                          disabled={drawPlayers.length < 1 || (drawPlayers.length === 1 && !!currentDraw?.generated) || !!currentDraw?.startedAt || drawPhase === "shuffling" || drawPhase === "dealing" || autoGenerating}
-                          title={currentDraw?.startedAt ? "This category has started — its draw is locked" : undefined}
-                          className={`w-full md:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm shadow-md transition-all ${
-                            currentDraw?.generated
-                            ? "bg-slate-700 text-white hover:bg-slate-600 hover:shadow-lg active:scale-95 disabled:opacity-50"
-                            : "bg-slate-800 text-white hover:bg-slate-700 hover:shadow-lg active:scale-95 disabled:opacity-50"
-                          }`}
-                        >
-                          {drawPhase === "shuffling" || drawPhase === "dealing"
-                            ? <><Loader2 size={16} className="animate-spin" /> Processing...</>
-                            : drawPlayers.length === 1
-                            ? <><Trophy size={16} /> {currentDraw?.generated ? "Winner Declared" : "Direct Win"}</>
-                            : <><Shuffle size={16} /> {currentDraw?.generated ? "Re-Shuffle Bracket" : "Generate Draw"}</>}
-                        </button>
-
-                        {/* Mat Assign */}
-                        <div className="flex items-center justify-between md:justify-start w-full md:w-auto gap-3 md:ml-2 md:border-l border-slate-200 md:pl-4 mt-2 md:mt-0">
-                          <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Assign:</span>
-                          <div className="relative">
+                        {/* Mat */}
+                        <label className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-400">Mat</span>
+                          <span className="relative">
                             <select
                               value={currentDraw?.matNumber || pendingMatByKey[currentKey] || 1}
                               onChange={async (e) => {
@@ -2516,7 +2531,6 @@ export default function TournamentDetailPage() {
                                 }
                                 const updatedDraw = { ...currentDraw, matNumber: newMat };
                                 setDraws(prev => ({ ...prev, [currentKey]: updatedDraw }));
-
                                 try {
                                   await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
                                     method: "POST",
@@ -2534,84 +2548,132 @@ export default function TournamentDetailPage() {
                                   console.error(err);
                                 }
                               }}
-                              className="pl-4 pr-10 py-2.5 text-sm font-black bg-indigo-50 border-2 border-indigo-200 text-indigo-700 rounded-xl outline-none focus:border-indigo-400 hover:bg-indigo-100 transition-colors cursor-pointer appearance-none shadow-sm"
+                              className="h-9 pl-3 pr-8 text-sm font-bold bg-white border border-slate-200 text-slate-700 rounded-lg outline-none focus:border-[#FF7400] hover:border-slate-300 cursor-pointer appearance-none"
                             >
                               {(tournamentMats.length > 0 ? tournamentMats.map(m => m.matNumber).sort((a, b) => a - b) : [1]).map(m => {
-                                const coachName = tournamentMats.find(tm => tm.matNumber === m)?.refereeName;
-                                return (
-                                  <option key={m} value={m}>MAT {m}{coachName ? ` — ${coachName}` : ""}</option>
-                                );
+                                const refName = tournamentMats.find(tm => tm.matNumber === m)?.refereeName;
+                                return <option key={m} value={m}>{m}{refName ? ` — ${refName}` : ""}</option>;
                               })}
                             </select>
-                            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-500 pointer-events-none" />
-                          </div>
-                        </div>
+                            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          </span>
+                        </label>
 
+                        {/* Draw controls (hidden once the category has started) */}
+                        {!locked && drawPlayers.length > 1 && (
+                          <span className="relative">
+                            <select
+                              value={detailDrawMethod || (drawPlayers.length <= 5 ? "round-robin" : "straight-elimination")}
+                              onChange={(e) => setDetailDrawMethod(e.target.value as DrawMethodType)}
+                              aria-label="Draw format"
+                              className="h-9 pl-3 pr-8 text-sm font-bold bg-white border border-slate-200 text-slate-700 rounded-lg outline-none focus:border-[#FF7400] hover:border-slate-300 cursor-pointer appearance-none"
+                            >
+                              <option value="round-robin">Round Robin</option>
+                              <option value="straight-elimination">Straight Elimination</option>
+                              <option value="single-repechage">Single Repechage</option>
+                              <option value="double-repechage">Double Repechage</option>
+                            </select>
+                            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          </span>
+                        )}
+                        {!locked && !(drawPlayers.length === 1 && generated) && (
+                          <button
+                            onClick={() => generated ? handleShuffle() : handleGenerateDraw()}
+                            disabled={busy}
+                            title={generated ? "Draw again with the selected format" : undefined}
+                            className={`h-9 inline-flex items-center gap-1.5 px-4 rounded-lg text-sm font-black transition-colors disabled:opacity-50 ${
+                              generated ? "bg-white border border-slate-200 text-slate-700 hover:border-[#FF7400] hover:text-[#FF7400]" : "bg-[#FF7400] text-white hover:bg-orange-600"
+                            }`}
+                          >
+                            {busy ? <Loader2 size={15} className="animate-spin" />
+                              : drawPlayers.length === 1 ? <Trophy size={15} /> : <Shuffle size={15} />}
+                            {drawPlayers.length === 1 ? "Declare winner" : generated ? "Redraw" : "Generate draw"}
+                          </button>
+                        )}
+                        {generated && currentDraw?.saved && !locked && canEditBracket(currentDraw.rounds) && (
+                          <button
+                            onClick={() => setEditingDrawKey(currentKey)}
+                            title="Change who fights whom in the first round"
+                            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400]"
+                          >
+                            <Edit2 size={14} /> Edit
+                          </button>
+                        )}
+
+                        {/* Output + view */}
+                        {generated && currentDraw && (
+                          <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
+                            <button
+                              onClick={() => exportCategoryChartPDF(tournament, currentKey, currentDraw, filteredPlayers)}
+                              title="Download bracket chart (PDF)"
+                              aria-label="Download bracket chart (PDF)"
+                              className={iconBtn}
+                            >
+                              <Download size={16} />
+                            </button>
+                            <button
+                              onClick={() => exportCategoryReport(tournament, currentKey, currentDraw, filteredPlayers)}
+                              title="Print match report"
+                              aria-label="Print match report"
+                              className={iconBtn}
+                            >
+                              <Printer size={16} />
+                            </button>
+                            <div className="flex gap-0.5 bg-slate-100 p-0.5 rounded-lg ml-1">
+                              {(isCurrentRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "list"] as ViewMode[])).map((v) => (
+                                <button
+                                  key={v}
+                                  onClick={() => setViewMode(v)}
+                                  className={`h-8 px-3 rounded-md text-xs font-bold inline-flex items-center gap-1 transition-colors ${effectiveViewMode === v ? "bg-white text-[#FF7400] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                                >
+                                  {v === "bracket" ? <><Grid size={12} />Bracket</> : v === "list" ? <><List size={12} />List</> : <><BarChart3 size={12} />Standings</>}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {drawPlayers.map((p, i) => (
-                        <motion.div
-                          key={`${p.id}-${shuffleKey}`}
-                          layoutId={`player-card-${p.id}`}
-                          initial={{ opacity: 0, y: 30, scale: 0.85 }}
-                          animate={{
-                            opacity: 1,
-                            y: drawPhase === "shuffling" ? [0, -12, 8, -5, 0] : 0,
-                            x: drawPhase === "shuffling" ? [0, (i % 2 === 0 ? -8 : 8), (i % 3 === 0 ? 5 : -5), 0] : 0,
-                            scale: drawPhase === "shuffling" ? [1, 0.92, 1.04, 0.97, 1] : 1,
-                            rotate: drawPhase === "shuffling" ? [0, (i % 2 === 0 ? -6 : 6), (i % 3 === 0 ? 3 : -3), 0] : 0,
-                          }}
-                          transition={{
-                            opacity: { delay: i * 0.04, duration: 0.3 },
-                            y: drawPhase === "shuffling"
-                              ? { duration: 0.7, delay: i * 0.05, ease: "easeInOut" }
-                              : { delay: i * 0.04, duration: 0.4, type: "spring" },
-                            x: drawPhase === "shuffling"
-                              ? { duration: 0.7, delay: i * 0.05 }
-                              : { delay: i * 0.04 },
-                            scale: drawPhase === "shuffling"
-                              ? { duration: 0.7, delay: i * 0.05 }
-                              : { delay: i * 0.04, duration: 0.4, type: "spring" },
-                            rotate: drawPhase === "shuffling"
-                              ? { duration: 0.7, delay: i * 0.05 }
-                              : { delay: i * 0.04 },
-                          }}
-                          className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm hover:shadow-md hover:border-orange-300 transition-shadow cursor-default"
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm text-white shrink-0 ${p.gender === "FEMALE" ? "bg-pink-400" : "bg-blue-500"}`}>
+
+                      {/* Players */}
+                      <div className="px-5 py-3 flex flex-wrap gap-2">
+                        {drawPlayers.map((p, i) => (
+                          <motion.div
+                            key={`${p.id}-${shuffleKey}`}
+                            layoutId={`player-card-${p.id}`}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{
+                              opacity: 1,
+                              y: drawPhase === "shuffling" ? [0, -8, 5, 0] : 0,
+                              rotate: drawPhase === "shuffling" ? [0, (i % 2 === 0 ? -4 : 4), 0] : 0,
+                            }}
+                            transition={{
+                              opacity: { delay: i * 0.03, duration: 0.25 },
+                              y: drawPhase === "shuffling" ? { duration: 0.6, delay: i * 0.04 } : { delay: i * 0.03, duration: 0.3 },
+                              rotate: drawPhase === "shuffling" ? { duration: 0.6, delay: i * 0.04 } : { duration: 0.2 },
+                            }}
+                            className="group inline-flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-slate-200 bg-white"
+                          >
+                            <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] text-white shrink-0 ${p.gender === "FEMALE" ? "bg-pink-400" : "bg-blue-500"}`}>
                               {p.name.charAt(0)}
-                            </div>
-                            <div className="overflow-hidden">
-                              <p className="text-xs font-black text-slate-800 truncate leading-tight">{p.name}</p>
-                              <p className="text-[9px] text-slate-400 truncate">{p.gender === "FEMALE" ? "Female" : "Male"} · {p.club || p.district}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-black text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
-                                {p.weight} kg
-                              </span>
-                              <button
-                                onClick={() => openEditMetricsModal(p)}
-                                className="text-slate-300 hover:text-orange-500 transition-colors"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {seeds[1]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S1</span>}
-                              {seeds[2]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S2</span>}
-                              {seeds[3]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S3</span>}
-                              {seeds[4]?.id === p.id && <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-sm">S4</span>}
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                            </span>
+                            <span className="text-xs font-bold text-slate-700 max-w-[10rem] truncate" title={`${p.name} · ${p.club || p.district}`}>{p.name}</span>
+                            <span className="text-[11px] font-semibold text-slate-400">{fmtKg(p.weight)}</span>
+                            {([1, 2, 3, 4] as const).map((s) => seeds[s]?.id === p.id && (
+                              <span key={s} className="text-[9px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">S{s}</span>
+                            ))}
+                            <button
+                              onClick={() => openEditMetricsModal(p)}
+                              aria-label={`Edit ${p.name}'s weight`}
+                              className="text-slate-300 hover:text-[#FF7400] transition-colors"
+                            >
+                              <Edit2 size={11} />
+                            </button>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
                 </div>
 
                 {/* Bracket — post-generate */}
@@ -2623,100 +2685,6 @@ export default function TournamentDetailPage() {
                     exit={{ opacity: 0 }}
                     className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
                   >
-                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                  <h3 className="font-black text-slate-800">
-                    Draw — {filteredPlayers.length} Players
-                    <span className="ml-2 text-xs font-semibold text-slate-400">
-                      {ageFilter !== "ALL" ? ageFilter : ""} {genderFilter !== "ALL" ? genderFilter : ""} {weightFilter !== "ALL" ? `${weightFilter}kg` : ""}
-                    </span>
-                    {currentDraw.matNumber && (
-                      <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                        MAT {currentDraw.matNumber}
-                      </span>
-                    )}
-                    {currentDraw.saved && !currentDraw.isConcluded && (
-                      currentDraw.startedAt ? (
-                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-bold bg-orange-100 text-orange-700">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" /> LIVE
-                        </span>
-                      ) : (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-bold bg-slate-100 text-slate-500">NOT STARTED</span>
-                      )
-                    )}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    {currentDraw.saved && !currentDraw.startedAt && canEditBracket(currentDraw.rounds) && (
-                      <button
-                        onClick={() => setEditingDrawKey(currentKey)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-600 rounded-xl text-xs font-black"
-                        title="Change who fights whom in the first round (BYEs included)"
-                      >
-                        <Edit2 size={13} /> Edit draw
-                      </button>
-                    )}
-                    {currentDraw.saved && !currentDraw.startedAt && !currentDraw.isConcluded && (
-                      <button
-                        onClick={() => toggleCategoryStart(currentKey, currentDraw, true)}
-                        disabled={startingKey === currentKey || !tournament?.registrationClosed}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black disabled:opacity-40"
-                      >
-                        {startingKey === currentKey ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={13} />} Start category
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => { 
-                        const hasActive = currentDraw.rounds.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"));
-                        if (currentDraw.startedAt) {
-                          showToast("This category has started — its draw is locked.", false);
-                          return;
-                        }
-                        if (hasActive) {
-                          showToast("Cannot re-draw the bracket because matches have already started or completed!", false);
-                          return;
-                        }
-                        if (window.confirm("Are you sure you want to re-draw this bracket? This will wipe the current bracket.")) {
-                          setDraws(p => ({ ...p, [currentKey]: { ...currentDraw!, generated: false, saved: false } })); 
-                          setDrawPhase("idle"); 
-                        }
-                      }}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                        currentDraw.startedAt || currentDraw.rounds.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"))
-                          ? "text-slate-300 cursor-not-allowed"
-                          : "text-slate-500 hover:text-red-500 hover:bg-red-50"
-                      }`}>
-                      ↺ Re-draw
-                    </button>
-                    <button
-                      onClick={() => exportCategoryChartPDF(tournament, currentKey, currentDraw, filteredPlayers)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF7400] hover:bg-[#e66800] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                      title="Download Official Visual Competition Bracket Chart (PDF)"
-                    >
-                      <Download size={13} /> Download Chart (PDF)
-                    </button>
-                    <button
-                      onClick={() => exportCategoryReport(tournament, currentKey, currentDraw, filteredPlayers)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-[#FF7400] border border-orange-200 rounded-xl text-xs font-bold transition-all shadow-sm"
-                      title="Print Entire Match Result Report for this Category"
-                    >
-                      <Printer size={13} /> Print Report
-                    </button>
-                    <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
-                      {(
-                        isCurrentRoundRobin
-                          ? (["bracket", "list", "leaderboard"] as ViewMode[])
-                          : (["bracket", "list"] as ViewMode[])
-                      ).map((v) => (
-                        <button key={v} onClick={() => setViewMode(v)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${effectiveViewMode === v ? "bg-white text-[#FF7400] shadow-sm" : "text-slate-400"}`}>
-                          {v === "bracket" ? <><Grid size={12} className="inline mr-1" />Bracket</>
-                            : v === "list" ? <><List size={12} className="inline mr-1" />List</>
-                            : <><BarChart3 size={12} className="inline mr-1" />Leaderboard</>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 {effectiveViewMode === "leaderboard" ? (
                   <div className="p-5 pb-8 bg-slate-50/50">
                     <RoundRobinLeaderboard
@@ -2733,22 +2701,6 @@ export default function TournamentDetailPage() {
                       <span className="text-xs font-bold text-slate-500">
                         Total {currentDraw.rounds.reduce((acc, r) => acc + r.length, 0)} Matches across {currentDraw.rounds.length} Rounds
                       </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => exportCategoryChartPDF(tournament, currentKey, currentDraw, filteredPlayers)}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#FF7400] hover:bg-[#e66800] text-white rounded-xl text-xs font-black transition-all shadow-sm"
-                          title="Download Official Visual Competition Bracket Chart as PDF"
-                        >
-                          <Download size={13} /> Download Chart (PDF)
-                        </button>
-                        <button
-                          onClick={() => exportCategoryReport(tournament, currentKey, currentDraw, filteredPlayers)}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
-                          title="Print Entire Match Results Report"
-                        >
-                          <Printer size={13} /> Print Entire Match Results
-                        </button>
-                      </div>
                     </div>
                     <div className="divide-y divide-slate-50">
                     {currentDraw.rounds.map((round, ri) => (
@@ -3097,20 +3049,16 @@ export default function TournamentDetailPage() {
       {/* ══ RESULTS & REPORTS ══════════════════════════════════════════════════ */}
       {activeTab === "results" && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                <BarChart3 size={24} /> Match Results & Reports
-              </h2>
-              <p className="text-slate-500 text-sm mt-1">View completed matches, winners, and generate PDF reports</p>
-            </div>
-            <button onClick={() => exportOverallTournamentReport(tournament, players, draws, placements)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all">
-              <Printer size={16} /> Official Completion Report
-            </button>
-          </div>
-          
           <DrawCategoryFilters
+                variant="compact"
+                trailing={
+                  <button
+                    onClick={() => exportOverallTournamentReport(tournament, players, draws, placements)}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-orange-200 bg-orange-50 text-[#FF7400] text-sm font-bold hover:bg-orange-100 transition-colors"
+                  >
+                    <Printer size={15} /> Completion report
+                  </button>
+                }
                 genderFilter={genderFilter}
                 setGenderFilter={setGenderFilter}
                 ageFilter={ageFilter}
@@ -3570,7 +3518,7 @@ export default function TournamentDetailPage() {
                         </p>
                         {seeds[seedNum] && (
                           <p className="text-xs text-slate-400 font-semibold">
-                            {seeds[seedNum]?.club} · {seeds[seedNum]?.weight}kg
+                            {seeds[seedNum]?.club} · {fmtKg(seeds[seedNum]?.weight)}
                           </p>
                         )}
                       </div>
@@ -3607,7 +3555,7 @@ export default function TournamentDetailPage() {
                             <button key={p.id} onClick={() => handleAssignSeed(assigningSeed, p)}
                               className="w-full flex items-center justify-between px-4 py-3 hover:bg-orange-100 transition-colors text-left border-b border-orange-50 last:border-0">
                               <span className="text-sm font-bold text-slate-800">{p.name}</span>
-                              <span className="text-xs text-slate-400 font-semibold">{p.club} · {p.weight}kg</span>
+                              <span className="text-xs text-slate-400 font-semibold">{p.club} · {fmtKg(p.weight)}</span>
                             </button>
                           ))
                         )}
@@ -3768,7 +3716,7 @@ export default function TournamentDetailPage() {
 
               <div className="p-6">
                 {(() => {
-                  const categoryLabel = `${ageFilter !== "ALL" ? ageFilter : ""} · ${genderFilter === "FEMALE" ? "Girls" : "Boys"} · ${weightFilter !== "ALL" ? `${weightFilter}kg` : ""}`;
+                  const categoryLabel = `${ageFilter !== "ALL" ? ageFilter : ""} · ${genderFilter === "FEMALE" ? "Girls" : "Boys"} · ${weightFilter !== "ALL" ? fmtKg(weightFilter) : ""}`;
                   const otherDraws = Object.entries(draws).filter(([k, d]) => k !== currentKey && d.generated);
                   const isLastCategory = otherDraws.length === 0 || otherDraws.every(([, d]) => d.isConcluded);
                   return (

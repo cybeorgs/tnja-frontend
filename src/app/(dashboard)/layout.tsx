@@ -768,7 +768,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Scrollable Area */}
-        <main className="flex-grow overflow-y-auto p-8 bg-slate-50 print:overflow-visible print:p-0 print:bg-white print:block">
+        <main className="flex-grow overflow-y-auto [scrollbar-gutter:stable] p-8 bg-slate-50 print:overflow-visible print:p-0 print:bg-white print:block">
           {children}
         </main>
       </div>

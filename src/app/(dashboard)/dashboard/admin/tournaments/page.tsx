@@ -504,8 +504,8 @@ export default function AdminTournamentsPage() {
     if (tabParam === "approval" || tabParam === "mine" || tabParam === "approved") {
       setActiveTab(tabParam);
     } else {
-      const isCreatorOnly = role === "ZONE_PRESIDENT" || role === "ZONE_SECRETARY";
-      setActiveTab(isCreatorOnly ? "mine" : "approval");
+      // Open on the organiser's own tournaments; approvers who can't create land on the queue.
+      setActiveTab(CAN_CREATE_ROLES.includes(role) ? "mine" : "approval");
     }
 
     const token = localStorage.getItem("token");

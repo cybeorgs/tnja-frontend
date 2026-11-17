@@ -188,6 +188,8 @@ const BX_STYLES = `
 `;
 
 export function printRegistrationSlip(player: RegisteredPlayer, tournament: Tournament | null) {
+  // Free tournaments mark registrations paid so they pass the payment check; print them as Free.
+  const isFree = !!tournament && !(Number(tournament.entryFee) > 0);
   const html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -228,7 +230,7 @@ export function printRegistrationSlip(player: RegisteredPlayer, tournament: Tour
           <div><label>Weight</label><span>${player.rawWeight ? `${player.rawWeight} kg` : "—"}</span></div>
           <div><label>Height</label><span>${player.rawHeight ? `${player.rawHeight}` : "—"}</span></div>
           <div><label>Coach</label><span>${player.coachName || "—"}</span></div>
-          <div><label>Payment Status</label><span class="status-badge" style="background:${player.isPaid ? "#f0fdf4;color:#22c55e" : "#fffbeb;color:#d97706"}">${player.isPaid ? "Paid" : "Unpaid"}</span></div>
+          <div><label>Payment Status</label><span class="status-badge" style="background:${isFree ? "#f0f9ff;color:#0284c7" : player.isPaid ? "#f0fdf4;color:#22c55e" : "#fffbeb;color:#d97706"}">${isFree ? "Free" : player.isPaid ? "Paid" : "Unpaid"}</span></div>
         </div>
         <div class="footer">
           <p>Registered on ${player.registeredAt ? new Date(player.registeredAt).toLocaleString("en-IN", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}</p>

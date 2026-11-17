@@ -104,27 +104,39 @@ function ImagePicker({ label, hint, value, onChange, tall }: {
     <div>
       <span className="text-xs font-bold text-slate-600">{label}</span>
       <input ref={inputRef} type="file" accept={ACCEPT.join(",")} className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
-      <div className={`mt-1 flex items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-2 ${tall ? "min-h-[84px]" : "min-h-[64px]"}`}>
-        {value ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={value} alt={label} className={`${tall ? "h-16" : "h-12"} max-w-[160px] object-contain bg-white rounded-lg border border-slate-100 p-1`} />
-        ) : (
-          <div className={`${tall ? "h-16" : "h-12"} w-24 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-300`}>
-            <ImagePlus size={20} />
-          </div>
-        )}
-        <div className="flex flex-col gap-1.5">
+      {/* Stacked: preview on top at full width, actions in one row below — wide images can't push the buttons out */}
+      <div className="mt-1 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-2 space-y-2">
+        <button
+          type="button"
+          onClick={() => !busy && inputRef.current?.click()}
+          aria-label={value ? `Replace ${label.toLowerCase()}` : `Upload ${label.toLowerCase()}`}
+          className={`w-full ${tall ? "h-16" : "h-14"} rounded-lg bg-white border border-slate-100 flex items-center justify-center overflow-hidden hover:border-orange-200 transition-colors`}
+        >
+          {value ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={value} alt={label} className="max-h-full max-w-full object-contain p-1" />
+          ) : busy ? (
+            <Loader2 size={20} className="animate-spin text-slate-300" />
+          ) : (
+            <ImagePlus size={20} className="text-slate-300" />
+          )}
+        </button>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-700 border border-slate-200 hover:border-[#FF7400] disabled:opacity-60"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 rounded-lg bg-white px-3 text-xs font-bold text-slate-700 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] disabled:opacity-60 transition-colors"
           >
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {value ? "Replace" : "Upload"}
           </button>
           {value && (
-            <button type="button" onClick={() => onChange("")} className="inline-flex items-center gap-1 text-[11px] font-bold text-red-500 hover:underline">
-              <X size={12} /> Remove
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="inline-flex items-center justify-center gap-1 h-8 px-2.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <X size={13} /> Remove
             </button>
           )}
         </div>

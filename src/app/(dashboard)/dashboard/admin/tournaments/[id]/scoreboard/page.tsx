@@ -920,22 +920,24 @@ function ScoreboardInner() {
   return (
     <>
       <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] flex justify-center xl:items-center font-sans select-none overflow-y-auto text-white print:hidden">
-        <div className="w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[900px] flex flex-col bg-[#111111] relative border border-white/10 rounded-none xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4">
+        <div className="w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[820px] flex flex-col bg-[#111111] relative border border-white/10 rounded-none xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4">
         
         {/* ══ HEADER ════════════════════════════════════════════════════════ */}
-        <div className="flex flex-wrap items-center justify-between gap-4 px-4 lg:px-8 py-4 border-b border-[#333] bg-[#1a1a1a] shadow-md shrink-0">
-        <div className="flex items-center">
-          <span className="flex items-center justify-center h-11 w-11 lg:h-16 lg:w-16 rounded-full bg-white p-1 shadow-md">
+        {/* 3-column grid keeps the title centred whatever the side widths; z-10 keeps the panels' glow underneath */}
+        <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 lg:px-6 py-2.5 border-b border-[#333] bg-[#1a1a1a] shadow-md shrink-0">
+        <div className="flex items-center justify-self-start">
+          {/* The emblem is wide (ribbon to the edges) on a white square — a round frame clips it */}
+          <span className="flex items-center justify-center h-11 w-11 lg:h-[52px] lg:w-[52px] rounded-xl bg-white p-1 ring-1 ring-white/20 shadow-md overflow-hidden">
             <img src={TNJA_LOGO} alt="Tamil Nadu Judo Association logo" className="h-full w-full object-contain" />
           </span>
         </div>
-        <div className="flex flex-col items-center">
-          <h1 className="text-[#f97316] text-lg lg:text-xl font-black tracking-wide uppercase text-center">{tournamentTitle}</h1>
+        <div className="flex flex-col items-center min-w-0">
+          <h1 className="text-[#f97316] text-base lg:text-lg font-black tracking-wide uppercase text-center">{tournamentTitle}</h1>
           <p className="text-gray-400 text-xs lg:text-sm font-medium tracking-wide text-center">
             {weightCategory} <span className="text-[#f97316]">●</span> Match {matchNumber} <span className="text-[#f97316]">●</span> Mat {matNumber}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:gap-4">
+        <div className="flex flex-wrap items-center justify-end justify-self-end gap-2 lg:gap-3">
           {winner ? (
             <div className="bg-green-600 text-white px-4 py-1.5 rounded-md font-bold text-sm shadow-[0_0_10px_rgba(22,163,74,0.6)] flex items-center gap-2 tracking-widest uppercase">
               <Trophy size={14} /> MATCH FINISHED • WINNER: {winner === "A" ? fighterAName : fighterBName}
@@ -963,28 +965,27 @@ function ScoreboardInner() {
       )}
 
       {/* ══ MAIN CONTENT ══════════════════════════════════════════════════════ */}
-      <div className="flex-1 p-4 lg:p-6 flex flex-col xl:flex-row gap-4 lg:gap-6 overflow-y-auto xl:overflow-hidden">
+      <div className="flex-1 p-3 lg:p-4 flex flex-col xl:flex-row gap-3 lg:gap-4 overflow-y-auto xl:overflow-hidden">
         
         {/* ── PLAYER 1 (WHITE) ──────────────────────────────────────────── */}
-        <div className="flex-[1.2] flex flex-col bg-[#161616] rounded-2xl border-2 border-white/80 shadow-[0_0_35px_rgba(255,255,255,0.3)] overflow-hidden p-4 relative order-2 xl:order-1">
-          <div className="flex justify-between items-start mb-4">
-            <span className="bg-white text-black text-xs font-bold px-4 py-1.5 rounded-full tracking-wider shadow-lg">PLAYER 1</span>
-            <span className="text-2xl lg:text-3xl">🇮🇳</span>
+        <div className="flex-[1.2] flex flex-col bg-[#161616] rounded-2xl border-2 border-white/80 shadow-[0_0_20px_rgba(255,255,255,0.18)] overflow-hidden p-3 lg:p-4 relative order-2 xl:order-1">
+          <div className="flex justify-between items-start mb-2">
+            <span className="bg-white text-black text-[11px] font-bold px-3 py-1 rounded-full tracking-wider shadow-lg">PLAYER 1</span>
           </div>
           
-          <div className="flex items-center gap-4 lg:gap-6 mb-4">
-            <div className="w-16 h-16 lg:w-20 lg:h-20 shrink-0 rounded-full border border-gray-400 overflow-hidden bg-gray-200 flex items-center justify-center shadow-lg">
-              <span className="text-black text-xl lg:text-2xl font-black">{fighterAName.substring(0, 2).toUpperCase()}</span>
+          <div className="flex items-center gap-3 lg:gap-4 mb-3">
+            <div className="w-12 h-12 lg:w-14 lg:h-14 shrink-0 rounded-full border border-gray-400 overflow-hidden bg-gray-200 flex items-center justify-center shadow-lg">
+              <span className="text-black text-base lg:text-lg font-black">{fighterAName.substring(0, 2).toUpperCase()}</span>
             </div>
             <div className="flex flex-col min-w-0">
-              <h2 className="text-xl lg:text-2xl font-bold text-white mb-1 truncate">{fighterAName}</h2>
-              <p className="text-xs lg:text-sm text-gray-400 mb-2 truncate">{fighterAClub}</p>
-              {fighterACoach && <div className="text-gray-500 text-xs font-semibold tracking-wider mb-2 truncate">Coach: {fighterACoach}</div>}
-              <div className="text-lg lg:text-xl font-bold text-white">Score : {totalScore(scoreA)}</div>
+              <h2 className="text-lg lg:text-xl font-bold text-white mb-0.5 truncate">{fighterAName}</h2>
+              <p className="text-xs text-gray-400 mb-1 truncate">{fighterAClub}</p>
+              {fighterACoach && <div className="text-gray-500 text-[11px] font-semibold tracking-wider mb-1 truncate">Coach: {fighterACoach}</div>}
+              <div className="text-base font-bold text-white">Score : {totalScore(scoreA)}</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:gap-4 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             <ScoreBox label="IPPON" value={scoreA.ippon} theme="white" onUndo={() => undoScore("A", "ippon")} onAdd={() => addScore("A", "ippon")} />
             <ScoreBox label="WAZA-ARI" value={scoreA.wazaAri} theme="white" onUndo={() => undoScore("A", "wazaAri")} onAdd={() => addScore("A", "wazaAri")} />
             <ScoreBox label="YUKO" value={scoreA.yuko} theme="white" onUndo={() => undoScore("A", "yuko")} onAdd={() => addScore("A", "yuko")} />
@@ -992,9 +993,9 @@ function ScoreboardInner() {
           </div>
 
           <div className="flex flex-col flex-grow">
-            <span className="text-xs font-bold tracking-widest text-white mb-2">ACTIONS</span>
+            <span className="text-[11px] font-bold tracking-widest text-white/80 mb-1.5">ACTIONS</span>
             
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 lg:gap-3 mb-4">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-3">
               <ActionBtn icon={<span className="text-[14px]">🥋</span>} label="IPPON" onClick={() => addScore("A", "ippon")} />
               <ActionBtn icon={<span className="text-[14px]">🥋</span>} label="WAZA-ARI" onClick={() => addScore("A", "wazaAri")} />
               <ActionBtn icon={<span className="text-[14px]">🥋</span>} label="YUKO" onClick={() => addScore("A", "yuko")} />
@@ -1002,30 +1003,30 @@ function ScoreboardInner() {
               <ActionBtn icon={<div className="w-3 h-4 bg-red-600 rounded-sm shadow-sm" />} label="HANSOKU" onClick={() => applyPenalty("A", "Hansoku-make", "")} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <button onClick={() => undoLastScore("A")} className="border border-red-700 text-red-500 hover:bg-red-900/30 py-2.5 rounded-sm font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-                <RotateCcw size={16} /> UNDO LAST
+            <div className="grid grid-cols-2 gap-2 lg:gap-3 mb-3">
+              <button onClick={() => undoLastScore("A")} className="border border-red-700 text-red-500 hover:bg-red-900/30 py-2 rounded-sm font-bold text-xs flex items-center justify-center gap-2 transition-colors">
+                <RotateCcw size={14} /> UNDO LAST
               </button>
-              <button onClick={() => setConfirmWinner("A")} className="border border-green-700 text-green-500 hover:bg-green-900/30 py-2.5 rounded-sm font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-                <Trophy size={16} /> WINNER
+              <button onClick={() => setConfirmWinner("A")} className="border border-green-700 text-green-500 hover:bg-green-900/30 py-2 rounded-sm font-bold text-xs flex items-center justify-center gap-2 transition-colors">
+                <Trophy size={14} /> WINNER
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <select value={selectedTechA} onChange={e=>setSelectedTechA(e.target.value)} className="bg-transparent border border-white/50 text-gray-300 rounded-sm p-3 text-sm focus:outline-none focus:ring-1 focus:ring-white appearance-none">
+            <div className="grid grid-cols-2 gap-2 lg:gap-3 mb-3">
+              <select value={selectedTechA} onChange={e=>setSelectedTechA(e.target.value)} className="bg-transparent border border-white/50 text-gray-300 rounded-sm px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-white appearance-none">
                 <option value="">Select Technique</option>
                 {techniques.map(t=><option key={t} value={t} className="bg-[#141414]">{t}</option>)}
               </select>
-              <select value={selectedPenA} onChange={e=>setSelectedPenA(e.target.value)} className="bg-transparent border border-white/50 text-gray-300 rounded-sm p-3 text-sm focus:outline-none focus:ring-1 focus:ring-white appearance-none">
+              <select value={selectedPenA} onChange={e=>setSelectedPenA(e.target.value)} className="bg-transparent border border-white/50 text-gray-300 rounded-sm px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-white appearance-none">
                 <option value="">Select Penalty</option>
                 {penalties.map(p=><option key={p} value={p} className="bg-[#141414]">{p}</option>)}
               </select>
             </div>
 
-            <textarea value={descA} onChange={e=>setDescA(e.target.value)} placeholder="Description" className="w-full bg-transparent border border-white/50 text-gray-300 rounded-sm p-3 text-sm h-16 resize-none mb-4 focus:outline-none focus:ring-1 focus:ring-white" />
+            <textarea value={descA} onChange={e=>setDescA(e.target.value)} placeholder="Description" className="w-full bg-transparent border border-white/50 text-gray-300 rounded-sm px-3 py-2 text-xs h-11 resize-none mb-3 focus:outline-none focus:ring-1 focus:ring-white" />
             
             <div className="mt-auto flex justify-center">
-              <button onClick={() => handleApply("A")} className="bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-3 px-16 rounded-sm text-sm transition-colors shadow-[0_0_15px_rgba(22,163,74,0.4)]">
+              <button onClick={() => handleApply("A")} className="bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2 px-12 rounded-sm text-sm transition-colors shadow-[0_0_15px_rgba(22,163,74,0.4)]">
                 APPLY
               </button>
             </div>
@@ -1033,11 +1034,11 @@ function ScoreboardInner() {
         </div>
 
         {/* ── CENTER PANEL ────────────────────────────────────────────────── */}
-        <div className="w-full xl:w-[380px] shrink-0 flex flex-col lg:flex-row xl:flex-col gap-4 lg:gap-6 order-1 xl:order-2 lg:col-span-2 xl:col-span-1 items-stretch">
-          <div className="bg-[#1a1a1a] rounded-2xl flex flex-col items-center justify-center pt-8 pb-4 relative shadow-lg lg:w-[380px] xl:w-auto shrink-0">
+        <div className="w-full xl:w-[300px] shrink-0 flex flex-col lg:flex-row xl:flex-col gap-3 order-1 xl:order-2 lg:col-span-2 xl:col-span-1 items-stretch">
+          <div className="bg-[#1a1a1a] rounded-2xl flex flex-col items-center justify-center pt-3 pb-3 relative shadow-lg lg:w-[300px] xl:w-auto shrink-0">
             
             <div className="relative flex flex-col items-center justify-center">
-              <svg className="w-[260px] h-[260px]">
+              <svg viewBox="0 0 260 260" className="w-[190px] h-[190px]">
                 <defs>
                   <linearGradient id="timerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#f97316" />
@@ -1081,31 +1082,31 @@ function ScoreboardInner() {
               </svg>
 
               <div className="absolute inset-0 flex flex-col items-center justify-center pb-4">
-                <span className="text-[11px] font-black tracking-[0.2em] text-[#5a7fa8] mb-1">{goldenScore ? "GOLDEN SCORE" : "ROUND 1"}</span>
-                <button onClick={handleOpenEditTimer} className="text-6xl font-black text-white tabular-nums tracking-tighter mb-1 drop-shadow-md hover:text-orange-400 hover:scale-105 transition-all cursor-pointer">
+                <span className="text-[10px] font-black tracking-[0.2em] text-[#5a7fa8] mb-0.5">{goldenScore ? "GOLDEN SCORE" : "ROUND 1"}</span>
+                <button onClick={handleOpenEditTimer} className="text-[2.6rem] leading-none font-black text-white tabular-nums tracking-tighter mb-1 drop-shadow-md hover:text-orange-400 hover:scale-105 transition-all cursor-pointer">
                   {fmt(timeLeft)}
                 </button>
                 <span className="text-[10px] font-black tracking-[0.1em] text-[#5a7fa8]">TIME REMAINING</span>
               </div>
             </div>
 
-            <div className="flex gap-5 w-full px-4 mt-2 justify-center">
-              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } if (!winner) { setRunning(true); } }} className="bg-[#2ecc71] hover:bg-[#27ae60] text-white pt-2 pb-1.5 w-[90px] rounded-lg font-black text-[11px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(46,204,113,0.3)]">
-                <PlayCircle size={18} strokeWidth={2.5}/> START
+            <div className="flex gap-3 w-full px-4 mt-1 justify-center">
+              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } if (!winner) { setRunning(true); } }} className="bg-[#2ecc71] hover:bg-[#27ae60] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(46,204,113,0.3)]">
+                <PlayCircle size={16} strokeWidth={2.5}/> START
               </button>
-              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); }} className="bg-[#f1c40f] hover:bg-[#d4ac0d] text-black pt-2 pb-1.5 w-[90px] rounded-lg font-black text-[11px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(241,196,15,0.3)]">
-                <PauseCircle size={18} strokeWidth={2.5}/> PAUSE
+              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); }} className="bg-[#f1c40f] hover:bg-[#d4ac0d] text-black pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(241,196,15,0.3)]">
+                <PauseCircle size={16} strokeWidth={2.5}/> PAUSE
               </button>
-              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); setTimeLeft(0); }} className="bg-[#e74c3c] hover:bg-[#c0392b] text-white pt-2 pb-1.5 w-[90px] rounded-lg font-black text-[11px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(231,76,60,0.3)]">
-                <StopCircle size={18} strokeWidth={2.5}/> STOP
+              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); setTimeLeft(0); }} className="bg-[#e74c3c] hover:bg-[#c0392b] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(231,76,60,0.3)]">
+                <StopCircle size={16} strokeWidth={2.5}/> STOP
               </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 lg:gap-6 flex-1 min-w-0">
-            <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 flex-1 min-w-0">
+            <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold tracking-widest text-white">OSAEKOMI TIMER</span>
+              <span className="text-[11px] font-bold tracking-widest text-white/80">OSAEKOMI TIMER</span>
               {osaActive && (
                 <span className={`text-xl font-black animate-pulse ${osaFor === "A" ? "text-white" : "text-blue-400"}`}>
                   {osaTime}s
@@ -1113,17 +1114,17 @@ function ScoreboardInner() {
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => startOsaekomi("A")} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2.5 rounded-sm border border-white/30">Osaekomi (P1)</button>
-              <button onClick={() => startOsaekomi("B")} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2.5 rounded-sm border border-blue-700">Osaekomi (P2)</button>
+              <button onClick={() => startOsaekomi("A")} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30">Osaekomi (P1)</button>
+              <button onClick={() => startOsaekomi("B")} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700">Osaekomi (P2)</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={swapOsaekomi} disabled={!osaActive} className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2.5 rounded-sm transition-all">Swap P1 ⇄ P2 (Keep Time)</button>
-              <button onClick={toketa} className="bg-transparent border border-gray-600 hover:bg-gray-800 text-gray-300 text-[10px] font-bold py-2.5 rounded-sm transition-all">Toketa (Stop Hold)</button>
+              <button onClick={swapOsaekomi} disabled={!osaActive} className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Swap P1 ⇄ P2 (Keep Time)</button>
+              <button onClick={toketa} className="bg-transparent border border-gray-600 hover:bg-gray-800 text-gray-300 text-[10px] font-bold py-2 rounded-sm transition-all">Toketa (Stop Hold)</button>
             </div>
           </div>
 
-          <div className="bg-[#1a1a1a] rounded-xl flex-1 p-5 overflow-hidden flex flex-col shadow-lg border border-[#333]">
-            <div className="flex justify-between items-center mb-6">
+          <div className="bg-[#1a1a1a] rounded-xl flex-1 min-h-[140px] p-3 overflow-hidden flex flex-col shadow-lg border border-[#333]">
+            <div className="flex justify-between items-center mb-2">
               <span className="text-xs font-bold tracking-widest text-white">MATCH STATISTICS</span>
               <div className="flex flex-col gap-1 items-end">
                 <span className="text-[10px] flex items-center gap-2 text-gray-400 font-bold tracking-wider"><span className="w-2.5 h-2.5 rounded-full bg-white"></span> PLAYER 1</span>
@@ -1173,24 +1174,23 @@ function ScoreboardInner() {
         </div>
 
         {/* ── PLAYER 2 (BLUE) ────────────────────────────────────────── */}
-        <div className="flex-[1.2] flex flex-col bg-[#161616] rounded-2xl border-2 border-blue-500 shadow-[0_0_35px_rgba(37,99,235,0.5)] overflow-hidden p-4 relative order-3 xl:order-3">
-          <div className="flex justify-between items-start mb-4">
-            <span className="bg-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-full tracking-wider shadow-lg">PLAYER 2</span>
-            <span className="text-2xl lg:text-3xl">🇮🇳</span>
+        <div className="flex-[1.2] flex flex-col bg-[#161616] rounded-2xl border-2 border-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.35)] overflow-hidden p-3 lg:p-4 relative order-3 xl:order-3">
+          <div className="flex justify-between items-start mb-2">
+            <span className="bg-blue-600 text-white text-[11px] font-bold px-3 py-1 rounded-full tracking-wider shadow-lg">PLAYER 2</span>
           </div>
           
-          <div className="flex items-center gap-4 lg:gap-6 mb-4">
-            <div className="w-16 h-16 lg:w-20 lg:h-20 shrink-0 rounded-full border border-gray-600 overflow-hidden bg-blue-800 flex items-center justify-center shadow-lg">
-              <span className="text-white text-xl lg:text-2xl font-black">{fighterBName.substring(0, 2).toUpperCase()}</span>
+          <div className="flex items-center gap-3 lg:gap-4 mb-3">
+            <div className="w-12 h-12 lg:w-14 lg:h-14 shrink-0 rounded-full border border-gray-600 overflow-hidden bg-blue-800 flex items-center justify-center shadow-lg">
+              <span className="text-white text-base lg:text-lg font-black">{fighterBName.substring(0, 2).toUpperCase()}</span>
             </div>
             <div className="flex flex-col min-w-0">
-              <h2 className="text-xl lg:text-2xl font-bold text-white mb-1 truncate">{fighterBName}</h2>
-              <p className="text-xs lg:text-sm text-gray-400 mb-2 truncate">{fighterBClub}</p>
-              <div className="text-lg lg:text-xl font-bold text-white">Score : {totalScore(scoreB)}</div>
+              <h2 className="text-lg lg:text-xl font-bold text-white mb-0.5 truncate">{fighterBName}</h2>
+              <p className="text-xs text-gray-400 mb-1 truncate">{fighterBClub}</p>
+              <div className="text-base font-bold text-white">Score : {totalScore(scoreB)}</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:gap-4 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             <ScoreBox label="IPPON" value={scoreB.ippon} theme="blue" onUndo={() => undoScore("B", "ippon")} onAdd={() => addScore("B", "ippon")} />
             <ScoreBox label="WAZA-ARI" value={scoreB.wazaAri} theme="blue" onUndo={() => undoScore("B", "wazaAri")} onAdd={() => addScore("B", "wazaAri")} />
             <ScoreBox label="YUKO" value={scoreB.yuko} theme="blue" onUndo={() => undoScore("B", "yuko")} onAdd={() => addScore("B", "yuko")} />
@@ -1198,9 +1198,9 @@ function ScoreboardInner() {
           </div>
 
           <div className="flex flex-col flex-grow">
-            <span className="text-xs font-bold tracking-widest text-white mb-2">ACTIONS</span>
+            <span className="text-[11px] font-bold tracking-widest text-white/80 mb-1.5">ACTIONS</span>
             
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 lg:gap-3 mb-4">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-3">
               <ActionBtn icon={<span className="text-[14px]">🥋</span>} label="IPPON" onClick={() => addScore("B", "ippon")} />
               <ActionBtn icon={<span className="text-[14px]">🥋</span>} label="WAZA-ARI" onClick={() => addScore("B", "wazaAri")} />
               <ActionBtn icon={<span className="text-[14px]">🥋</span>} label="YUKO" onClick={() => addScore("B", "yuko")} />
@@ -1208,30 +1208,30 @@ function ScoreboardInner() {
               <ActionBtn icon={<div className="w-3 h-4 bg-red-600 rounded-sm shadow-sm" />} label="HANSOKU" onClick={() => applyPenalty("B", "Hansoku-make", "")} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <button onClick={() => undoLastScore("B")} className="border border-red-700 text-red-500 hover:bg-red-900/30 py-2.5 rounded-sm font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-                <RotateCcw size={16} /> UNDO LAST
+            <div className="grid grid-cols-2 gap-2 lg:gap-3 mb-3">
+              <button onClick={() => undoLastScore("B")} className="border border-red-700 text-red-500 hover:bg-red-900/30 py-2 rounded-sm font-bold text-xs flex items-center justify-center gap-2 transition-colors">
+                <RotateCcw size={14} /> UNDO LAST
               </button>
-              <button onClick={() => setConfirmWinner("B")} className="border border-green-700 text-green-500 hover:bg-green-900/30 py-2.5 rounded-sm font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-                <Trophy size={16} /> WINNER
+              <button onClick={() => setConfirmWinner("B")} className="border border-green-700 text-green-500 hover:bg-green-900/30 py-2 rounded-sm font-bold text-xs flex items-center justify-center gap-2 transition-colors">
+                <Trophy size={14} /> WINNER
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <select value={selectedTechB} onChange={e=>setSelectedTechB(e.target.value)} className="bg-transparent border border-blue-500 text-gray-300 rounded-sm p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 appearance-none">
+            <div className="grid grid-cols-2 gap-2 lg:gap-3 mb-3">
+              <select value={selectedTechB} onChange={e=>setSelectedTechB(e.target.value)} className="bg-transparent border border-blue-500 text-gray-300 rounded-sm px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 appearance-none">
                 <option value="">Select Technique</option>
                 {techniques.map(t=><option key={t} value={t} className="bg-[#141414]">{t}</option>)}
               </select>
-              <select value={selectedPenB} onChange={e=>setSelectedPenB(e.target.value)} className="bg-transparent border border-blue-500 text-gray-300 rounded-sm p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 appearance-none">
+              <select value={selectedPenB} onChange={e=>setSelectedPenB(e.target.value)} className="bg-transparent border border-blue-500 text-gray-300 rounded-sm px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 appearance-none">
                 <option value="">Select Penalty</option>
                 {penalties.map(p=><option key={p} value={p} className="bg-[#141414]">{p}</option>)}
               </select>
             </div>
 
-            <textarea value={descB} onChange={e=>setDescB(e.target.value)} placeholder="Description" className="w-full bg-transparent border border-blue-500 text-gray-300 rounded-sm p-3 text-sm h-16 resize-none mb-4 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <textarea value={descB} onChange={e=>setDescB(e.target.value)} placeholder="Description" className="w-full bg-transparent border border-blue-500 text-gray-300 rounded-sm px-3 py-2 text-xs h-11 resize-none mb-3 focus:outline-none focus:ring-1 focus:ring-blue-400" />
             
             <div className="mt-auto flex justify-center">
-              <button onClick={() => handleApply("B")} className="bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-3 px-16 rounded-sm text-sm transition-colors shadow-[0_0_15px_rgba(22,163,74,0.4)]">
+              <button onClick={() => handleApply("B")} className="bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2 px-12 rounded-sm text-sm transition-colors shadow-[0_0_15px_rgba(22,163,74,0.4)]">
                 APPLY
               </button>
             </div>
@@ -1584,9 +1584,9 @@ function ScoreBox({ label, value, theme, onUndo, onAdd }: { label: string; value
     ? "bg-white/10 shadow-[0_0_20px_rgba(255,255,255,0.15)] border-white/30" 
     : "bg-blue-600/20 shadow-[0_0_20px_rgba(37,99,235,0.3)] border-blue-500/40";
   return (
-    <div className={`${bgClass} rounded-lg flex flex-col items-center justify-center py-4 border relative group`}>
-      <span className="text-xs text-white/50 font-bold tracking-widest mb-1">{label}</span>
-      <span className="text-4xl text-white font-black">{value}</span>
+    <div className={`${bgClass} rounded-lg flex flex-col items-center justify-center py-2 border relative group`}>
+      <span className="text-[10px] text-white/50 font-bold tracking-widest">{label}</span>
+      <span className="text-3xl leading-tight text-white font-black">{value}</span>
       <div className="absolute -bottom-2 right-1 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
         {onUndo && (
           <button 
@@ -1613,8 +1613,8 @@ function ScoreBox({ label, value, theme, onUndo, onAdd }: { label: string; value
 
 function ActionBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center justify-center gap-1.5 bg-transparent border border-[#444] hover:bg-[#333] rounded-sm p-2 transition-colors">
-      <div className="h-5 flex items-center justify-center">{icon}</div>
+    <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 bg-transparent border border-[#444] hover:bg-[#333] rounded-sm py-1.5 px-1 transition-colors">
+      <div className="h-4 flex items-center justify-center">{icon}</div>
       <span className="text-[8px] font-black tracking-wider text-gray-300">{label}</span>
     </button>
   );

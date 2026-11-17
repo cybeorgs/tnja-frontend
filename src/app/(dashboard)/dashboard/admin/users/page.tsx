@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { adminStudentSchema, adminClubSchema, adminMemberSchema, adminCoachSchema } from "@/validation/adminEntitySchema";
-import { usePincodeLookup, PincodeHint } from "@/components/features/registers/usePincodeLookup";
+import { usePincodeLookup } from "@/components/features/registers/usePincodeLookup";
+import { CreateUserFields, type CreateType, type DupState } from "./CreateUserFields";
 import {
   Search,
   User,
@@ -376,6 +377,56 @@ export default function UserManagementPage() {
     }
   );
 
+  // ── Create form: field updates, live duplicate check, open/close ──────────────
+  const [dupState, setDupState] = useState<Record<string, DupState>>({});
+  const dupChecking = Object.values(dupState).some((d) => d.status === "checking");
+
+  const setCreateField = (key: string, value: string) => {
+    setCreateForm((prev) => ({ ...prev, [key]: value }));
+    setFormErrors((prev) => (prev[key] ? { ...prev, [key]: "" } : prev));
+  };
+
+  const changeCreateType = (t: CreateType) => {
+    setCreateType(t);
+    setFormErrors({});
+  };
+
+  const closeCreateModal = () => {
+    setCreateModalOpen(false);
+    setFormErrors({});
+    setDupState({});
+  };
+
+  // Email, mobile and Aadhaar must be unique across every account type: check as soon as each is complete.
+  const dupEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.email.trim()) ? createForm.email.trim() : "";
+  const dupMobile = /^[0-9]{10}$/.test(createForm.mobileNumber) ? createForm.mobileNumber : "";
+  const dupAadhaar = createType !== "CLUB" && /^[0-9]{12}$/.test(createForm.aadhaarNumber) ? createForm.aadhaarNumber : "";
+  useEffect(() => {
+    if (!createModalOpen) return;
+    const fields = { email: dupEmail, mobileNumber: dupMobile, aadhaarNumber: dupAadhaar };
+    const toCheck = Object.entries(fields).filter(([, v]) => v);
+    setDupState(Object.fromEntries(toCheck.map(([k]) => [k, { status: "checking" } as DupState])));
+    if (!toCheck.length) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams(toCheck as [string, string][]);
+        const res = await fetch(`${API_BASE}/admin/check-duplicates?${params}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          signal: ctrl.signal,
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error();
+        const conflicts: Record<string, string> = data?.conflicts ?? {};
+        setDupState(Object.fromEntries(toCheck.map(([k]) => [k, conflicts[k] ? { status: "taken", message: conflicts[k] } : { status: "ok" }])));
+      } catch {
+        // Network trouble: don't block the form; the server re-checks on save.
+        if (!ctrl.signal.aborted) setDupState({});
+      }
+    }, 450);
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [createModalOpen, dupEmail, dupMobile, dupAadhaar]);
+
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
@@ -538,6 +589,11 @@ export default function UserManagementPage() {
   };
 
   const handleCreate = async () => {
+    const taken = Object.values(dupState).find((d) => d.status === "taken");
+    if (taken) {
+      showToast(taken.message || "Some details are already registered.", "error");
+      return;
+    }
     try {
       setFormErrors({});
       let schema;
@@ -581,9 +637,13 @@ export default function UserManagementPage() {
         body: JSON.stringify(createForm),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Creation failed");
-      showToast(`${createType} created successfully`, "success");
-      setCreateModalOpen(false);
+      if (!res.ok) {
+        if (data?.fields) setFormErrors(data.fields);
+        throw new Error(data.error || "Creation failed");
+      }
+      const typeLabel = createType === "STUDENT" ? "Player" : createType === "CLUB" ? "Club" : createType === "COACH" ? "Coach" : "Member";
+      showToast(`${typeLabel} created. Login details have been emailed.`, "success");
+      closeCreateModal();
       fetchUsers();
       setCreateForm({ 
         fullName: "", name: "", email: "", mobileNumber: "", districtId: "", talukId: "",
@@ -1085,381 +1145,63 @@ export default function UserManagementPage() {
       {/* Create User Modal */}
       <AnimatePresence>
         {createModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm">
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              initial={{ scale: 0.96, opacity: 0, y: 12 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="w-full max-w-2xl bg-white rounded-3xl p-8 shadow-2xl my-auto max-h-screen overflow-y-auto"
+              exit={{ scale: 0.96, opacity: 0, y: 12 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-user-title"
+              className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-2rem)]"
             >
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl">
-                    <Plus size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800">Create New Entity</h3>
-                    <p className="text-slate-500 text-sm">Force create an approved Player, Coach, Club, or Administrative Member.</p>
-                  </div>
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100">
+                <div>
+                  <h3 id="create-user-title" className="text-lg font-black text-slate-800">Add new user</h3>
+                  <p className="text-sm text-slate-500 mt-0.5">The account is created as approved and login details are emailed to them.</p>
                 </div>
-                <button onClick={() => { setCreateModalOpen(false); setFormErrors({}); }} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+                <button onClick={closeCreateModal} aria-label="Close" className="p-2 -m-1 hover:bg-slate-100 rounded-lg transition-colors">
                   <X size={20} className="text-slate-400" />
                 </button>
               </div>
 
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                    Entity Type
-                  </label>
-                  <select
-                    value={createType}
-                    onChange={(e) => setCreateType(e.target.value as any)}
-                    className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-slate-700"
-                  >
-                    <option value="STUDENT">Player</option>
-                    <option value="COACH">Coach</option>
-                    <option value="CLUB">Club</option>
-                    <option value="MEMBER">Administrative Member</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {createType === "CLUB" ? (
-                    <>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Club Name
-                        </label>
-                        <input
-                          type="text"
-                          value={createForm.name}
-                          onChange={(e) => { setCreateForm({ ...createForm, name: e.target.value }); if (formErrors.name) setFormErrors(prev => ({ ...prev, name: '' })); }}
-                          placeholder="Enter Club Name"
-                          className="` w-full px-4 py-3 bg-white border ${formErrors.name ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm `"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Address Line 1</label>
-                        <input type="text" value={createForm.address1} onChange={(e) => { setCreateForm({ ...createForm, address1: e.target.value }); if (formErrors.address1) setFormErrors(prev => ({ ...prev, address1: '' })); }} placeholder="Address Line 1" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Address Line 2 (Optional)</label>
-                        <input type="text" value={createForm.address2} onChange={(e) => { setCreateForm({ ...createForm, address2: e.target.value }); if (formErrors.address2) setFormErrors(prev => ({ ...prev, address2: '' })); }} placeholder="Address Line 2" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
-                        <input type="text" value={createForm.pincode} onChange={(e) => { setCreateForm({ ...createForm, pincode: e.target.value.replace(/\D/g, '') }); if (formErrors.pincode) setFormErrors(prev => ({ ...prev, pincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">President Name</label>
-                        <input type="text" value={createForm.president} onChange={(e) => { setCreateForm({ ...createForm, president: e.target.value }); if (formErrors.president) setFormErrors(prev => ({ ...prev, president: '' })); }} placeholder="President Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Secretary Name</label>
-                        <input type="text" value={createForm.secretary} onChange={(e) => { setCreateForm({ ...createForm, secretary: e.target.value }); if (formErrors.secretary) setFormErrors(prev => ({ ...prev, secretary: '' })); }} placeholder="Secretary Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Coach Name</label>
-                        <input type="text" value={createForm.coach} onChange={(e) => { setCreateForm({ ...createForm, coach: e.target.value }); if (formErrors.coach) setFormErrors(prev => ({ ...prev, coach: '' })); }} placeholder="Coach Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                        Full Name
-                      </label>
-                      <input
-                        type="text"
-                        value={createForm.fullName}
-                        onChange={(e) => { setCreateForm({ ...createForm, fullName: e.target.value }); if (formErrors.fullName) setFormErrors(prev => ({ ...prev, fullName: '' })); }}
-                        placeholder="Enter Full Name"
-                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={createForm.email}
-                      onChange={(e) => { setCreateForm({ ...createForm, email: e.target.value }); if (formErrors.email) setFormErrors(prev => ({ ...prev, email: '' })); }}
-                      placeholder="Enter Email Address"
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                      Mobile Number
-                    </label>
-                    <input
-                      type="text"
-                      value={createForm.mobileNumber}
-                      onChange={(e) => { setCreateForm({ ...createForm, mobileNumber: e.target.value.replace(/\D/g, '') }); if (formErrors.mobileNumber) setFormErrors(prev => ({ ...prev, mobileNumber: '' })); }}
-                      placeholder="10-digit Mobile Number"
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                      District
-                    </label>
-                    <select
-                      value={createForm.districtId}
-                      onChange={(e) => { setCreateForm({ ...createForm, districtId: e.target.value, talukId: "" }); if (formErrors.districtId) setFormErrors(prev => ({ ...prev, districtId: '' })); }}
-                      className="` w-full px-4 py-3 bg-white border ${formErrors.districtId ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm `"
-                    >
-                      <option value="">Select District</option>
-                      {districtsList.map((d: any) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      ))}
-                    </select>
-                        {formErrors.name && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.name}</p>}
-                        {formErrors.name && <p className='text-red-500 text-[10px] mt-1 ml-1'>{formErrors.name}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                      Taluk
-                    </label>
-                    <select
-                      value={createForm.talukId}
-                      onChange={(e) => { setCreateForm({ ...createForm, talukId: e.target.value }); if (formErrors.talukId) setFormErrors(prev => ({ ...prev, talukId: '' })); }}
-                      className="` w-full px-4 py-3 bg-white border ${formErrors.talukId ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm `"
-                    >
-                      <option value="">Select Taluk</option>
-                      {taluksList.map((t: any) => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                        {formErrors.talukId && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.talukId}</p>}
-                        {formErrors.talukId && <p className='text-red-500 text-[10px] mt-1 ml-1'>{formErrors.talukId}</p>}
-                  </div>
-
-                  {createType !== "CLUB" && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Gender
-                        </label>
-                        <select
-                          value={createForm.gender}
-                          onChange={(e) => { setCreateForm({ ...createForm, gender: e.target.value }); if (formErrors.gender) setFormErrors(prev => ({ ...prev, gender: '' })); }}
-                          className="` w-full px-4 py-3 bg-white border ${formErrors.gender ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm `"
-                        >
-                          <option value="MALE">Male</option>
-                          <option value="FEMALE">Female</option>
-                          <option value="OTHER">Other</option>
-                        </select>
-                        {formErrors.gender && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.gender}</p>}
-                        {formErrors.gender && <p className='text-red-500 text-[10px] mt-1 ml-1'>{formErrors.gender}</p>}
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Date of Birth
-                        </label>
-                        <input
-                          type="date"
-                          max={new Date(new Date().setFullYear(new Date().getFullYear() - (createType === 'STUDENT' ? 3 : 18))).toISOString().split('T')[0]}
-                          value={createForm.dob}
-                          onChange={(e) => { setCreateForm({ ...createForm, dob: e.target.value }); if (formErrors.dob) setFormErrors(prev => ({ ...prev, dob: '' })); }}
-                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">
-                          Aadhaar Number
-                        </label>
-                        <input
-                          type="text"
-                          value={createForm.aadhaarNumber}
-                          onChange={(e) => { setCreateForm({ ...createForm, aadhaarNumber: e.target.value.replace(/\D/g, '') }); if (formErrors.aadhaarNumber) setFormErrors(prev => ({ ...prev, aadhaarNumber: '' })); }}
-                          placeholder="12-digit Aadhaar Number"
-                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {createType === "STUDENT" && (
-                    <>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Blood Group</label>
-                        <select
-                          value={createForm.bloodGroup}
-                          onChange={(e) => { setCreateForm({ ...createForm, bloodGroup: e.target.value }); if (formErrors.bloodGroup) setFormErrors(prev => ({ ...prev, bloodGroup: '' })); }}
-                          className="` w-full px-4 py-3 bg-white border ${formErrors.bloodGroup ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm `"
-                        >
-                          <option value="">Select Blood Group</option>
-                          <option value="A+">A+</option>
-                          <option value="A-">A-</option>
-                          <option value="B+">B+</option>
-                          <option value="B-">B-</option>
-                          <option value="AB+">AB+</option>
-                          <option value="AB-">AB-</option>
-                          <option value="O+">O+</option>
-                          <option value="O-">O-</option>
-                        </select>
-                        {formErrors.bloodGroup && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.bloodGroup}</p>}
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Address</label>
-                        <input type="text" value={createForm.address} onChange={(e) => { setCreateForm({ ...createForm, address: e.target.value }); if (formErrors.address) setFormErrors(prev => ({ ...prev, address: '' })); }} placeholder="Full Address" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">City</label>
-                        <input type="text" value={createForm.city} onChange={(e) => { setCreateForm({ ...createForm, city: e.target.value }); if (formErrors.city) setFormErrors(prev => ({ ...prev, city: '' })); }} placeholder="City" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">State</label>
-                        <input type="text" value={createForm.state} onChange={(e) => { setCreateForm({ ...createForm, state: e.target.value }); if (formErrors.state) setFormErrors(prev => ({ ...prev, state: '' })); }} placeholder="State" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
-                        <input type="text" value={createForm.addressPincode} onChange={(e) => { setCreateForm({ ...createForm, addressPincode: e.target.value.replace(/\D/g, '') }); if (formErrors.addressPincode) setFormErrors(prev => ({ ...prev, addressPincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Nationality</label>
-                        <input type="text" value={createForm.nationality} onChange={(e) => { setCreateForm({ ...createForm, nationality: e.target.value }); if (formErrors.nationality) setFormErrors(prev => ({ ...prev, nationality: '' })); }} placeholder="Nationality" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Annual Income</label>
-                        <input type="number" value={createForm.annualIncome} onChange={(e) => { setCreateForm({ ...createForm, annualIncome: e.target.value }); if (formErrors.annualIncome) setFormErrors(prev => ({ ...prev, annualIncome: '' })); }} placeholder="Annual Income" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">School Name</label>
-                        <input type="text" value={createForm.schoolName} onChange={(e) => { setCreateForm({ ...createForm, schoolName: e.target.value }); if (formErrors.schoolName) setFormErrors(prev => ({ ...prev, schoolName: '' })); }} placeholder="School Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Grade</label>
-                        <input type="text" value={createForm.grade} onChange={(e) => { setCreateForm({ ...createForm, grade: e.target.value }); if (formErrors.grade) setFormErrors(prev => ({ ...prev, grade: '' })); }} placeholder="Grade" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Area of Interest</label>
-                        <input type="text" value={createForm.areaOfInterest} onChange={(e) => { setCreateForm({ ...createForm, areaOfInterest: e.target.value }); if (formErrors.areaOfInterest) setFormErrors(prev => ({ ...prev, areaOfInterest: '' })); }} placeholder="Area of Interest" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Area of Study</label>
-                        <input type="text" value={createForm.areaOfStudy} onChange={(e) => { setCreateForm({ ...createForm, areaOfStudy: e.target.value }); if (formErrors.areaOfStudy) setFormErrors(prev => ({ ...prev, areaOfStudy: '' })); }} placeholder="Area of Study" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Prefer Location</label>
-                        <input type="text" value={createForm.preferLocation} onChange={(e) => { setCreateForm({ ...createForm, preferLocation: e.target.value }); if (formErrors.preferLocation) setFormErrors(prev => ({ ...prev, preferLocation: '' })); }} placeholder="Prefer Location" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                    </>
-                  )}
-
-                  {createType === "MEMBER" && (
-                    <>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Father's Name</label>
-                        <input type="text" value={createForm.fatherName} onChange={(e) => { setCreateForm({ ...createForm, fatherName: e.target.value }); if (formErrors.fatherName) setFormErrors(prev => ({ ...prev, fatherName: '' })); }} placeholder="Father's Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Blood Group</label>
-                        <select
-                          value={createForm.bloodGroup}
-                          onChange={(e) => { setCreateForm({ ...createForm, bloodGroup: e.target.value }); if (formErrors.bloodGroup) setFormErrors(prev => ({ ...prev, bloodGroup: '' })); }}
-                          className="` w-full px-4 py-3 bg-white border ${formErrors.bloodGroup ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm `"
-                        >
-                          <option value="">Select Blood Group</option>
-                          <option value="A+">A+</option>
-                          <option value="A-">A-</option>
-                          <option value="B+">B+</option>
-                          <option value="B-">B-</option>
-                          <option value="AB+">AB+</option>
-                          <option value="AB-">AB-</option>
-                          <option value="O+">O+</option>
-                          <option value="O-">O-</option>
-                        </select>
-                        {formErrors.bloodGroup && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.bloodGroup}</p>}
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Address Line 1</label>
-                        <input type="text" value={createForm.addressLine1} onChange={(e) => { setCreateForm({ ...createForm, addressLine1: e.target.value }); if (formErrors.addressLine1) setFormErrors(prev => ({ ...prev, addressLine1: '' })); }} placeholder="Address Line 1" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Address Line 2 (Optional)</label>
-                        <input type="text" value={createForm.addressLine2} onChange={(e) => { setCreateForm({ ...createForm, addressLine2: e.target.value }); if (formErrors.addressLine2) setFormErrors(prev => ({ ...prev, addressLine2: '' })); }} placeholder="Address Line 2" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">City</label>
-                        <input type="text" value={createForm.city} onChange={(e) => { setCreateForm({ ...createForm, city: e.target.value }); if (formErrors.city) setFormErrors(prev => ({ ...prev, city: '' })); }} placeholder="City" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
-                        <input type="text" value={createForm.addressPincode} onChange={(e) => { setCreateForm({ ...createForm, addressPincode: e.target.value.replace(/\D/g, '') }); if (formErrors.addressPincode) setFormErrors(prev => ({ ...prev, addressPincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
-                      </div>
-                    </>
-                  )}
-
-                  {createType === "COACH" && (
-                    <>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Father's Name</label>
-                        <input type="text" value={createForm.fatherName} onChange={(e) => { setCreateForm({ ...createForm, fatherName: e.target.value }); if (formErrors.fatherName) setFormErrors(prev => ({ ...prev, fatherName: '' })); }} placeholder="Father's Name" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Blood Group</label>
-                        <select
-                          value={createForm.bloodGroup}
-                          onChange={(e) => { setCreateForm({ ...createForm, bloodGroup: e.target.value }); if (formErrors.bloodGroup) setFormErrors(prev => ({ ...prev, bloodGroup: '' })); }}
-                          className={`w-full px-4 py-3 bg-white border ${formErrors.bloodGroup ? 'border-red-500 bg-red-50 text-red-900' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm`}
-                        >
-                          <option value="">Select Blood Group</option>
-                          {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(g => <option key={g} value={g}>{g}</option>)}
-                        </select>
-                        {formErrors.bloodGroup && <p className="text-red-500 text-xs mt-1.5 font-bold ml-1 flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500"></span>{formErrors.bloodGroup}</p>}
-                      </div>
-                      <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Pincode</label>
-                        <input type="text" value={createForm.addressPincode} onChange={(e) => { setCreateForm({ ...createForm, addressPincode: e.target.value.replace(/\D/g, '') }); if (formErrors.addressPincode) setFormErrors(prev => ({ ...prev, addressPincode: '' })); }} placeholder="Pincode" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                        <div className="mt-1.5 ml-1"><PincodeHint hint={pincodeHint} /></div>
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Highest Achievement in Judo</label>
-                        <input type="text" value={createForm.historyInJudo} onChange={(e) => { setCreateForm({ ...createForm, historyInJudo: e.target.value }); if (formErrors.historyInJudo) setFormErrors(prev => ({ ...prev, historyInJudo: '' })); }} placeholder="e.g. State Champion 2018" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Highest Achievement in Other Martial Arts</label>
-                        <input type="text" value={createForm.historyInOtherMartial} onChange={(e) => { setCreateForm({ ...createForm, historyInOtherMartial: e.target.value }); if (formErrors.historyInOtherMartial) setFormErrors(prev => ({ ...prev, historyInOtherMartial: '' })); }} placeholder="Enter 'None' if not applicable" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Present Grade in Judo</label>
-                        <input type="text" value={createForm.presentGradeInJudo} onChange={(e) => { setCreateForm({ ...createForm, presentGradeInJudo: e.target.value }); if (formErrors.presentGradeInJudo) setFormErrors(prev => ({ ...prev, presentGradeInJudo: '' })); }} placeholder="e.g. Black Belt 1st Dan" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm" />
-                      </div>
-                    </>
-                  )}
-
-                </div>
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                <CreateUserFields
+                  createType={createType}
+                  onTypeChange={changeCreateType}
+                  form={createForm as unknown as Record<string, string>}
+                  setField={setCreateField}
+                  errors={formErrors}
+                  dup={dupState}
+                  districts={districtsList}
+                  taluks={taluksList}
+                  pincodeHint={pincodeHint}
+                />
               </div>
 
-              <div className="flex gap-4 mt-10">
+              {/* Footer */}
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
                 <button
-                  onClick={() => setCreateModalOpen(false)}
-                  className="flex-grow py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
+                  onClick={closeCreateModal}
+                  className="h-11 px-5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreate}
-                  disabled={actionLoading}
-                  className="flex-grow py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={actionLoading || dupChecking}
+                  className="h-11 px-6 rounded-xl text-sm font-black text-white bg-[#FF7400] hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  {actionLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                  Create {createType === "STUDENT" ? "Player" : createType === "CLUB" ? "Club" : createType === "COACH" ? "Coach" : "Administrative Member"}
+                  {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                  Create {createType === "STUDENT" ? "player" : createType === "CLUB" ? "club" : createType === "COACH" ? "coach" : "member"}
                 </button>
               </div>
             </motion.div>
           </div>
         )}
-     </AnimatePresence>
+      </AnimatePresence>
 
       {/* Excel Import Modal */}
       <AnimatePresence>

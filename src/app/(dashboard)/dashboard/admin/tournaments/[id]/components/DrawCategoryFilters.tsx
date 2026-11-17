@@ -22,7 +22,13 @@ export function DrawCategoryFilters({
   availableWeights,
   eligiblePlayersCount,
   draws,
+  variant = "full",
+  trailing,
 }: {
+  /** "compact": one row of dropdowns (Gender · Category · Weight) instead of button groups. */
+  variant?: "full" | "compact";
+  /** Extra controls shown at the right end of the compact row (e.g. a report button). */
+  trailing?: React.ReactNode;
   genderFilter: string;
   setGenderFilter: (g: string) => void;
   ageFilter: string;
@@ -39,6 +45,88 @@ export function DrawCategoryFilters({
   useEffect(() => {
     if (!GENDERS.includes(genderFilter)) setGenderFilter("BOTH");
   }, [genderFilter, setGenderFilter]);
+
+  if (variant === "compact") {
+    const genderOk = (d: DrawCategory) => genderFilter === "BOTH" || d.gender === genderFilter;
+    const selectionStats = getDrawsStats(draws, (d) =>
+      genderOk(d) && (ageFilter === "ALL" || d.ageGroup === ageFilter) && (weightFilter === "ALL" || d.weightCategory === weightFilter));
+    const weightLabel = (w: string) => {
+      const label = groupPlayers.find((p) => String(p.weight) === w)?.weightLabel || w;
+      return /kg/i.test(label) ? label : `${label} kg`;
+    };
+    const hasWeights = ageFilter !== "ALL" && availableWeights.length > 0 && availableWeights[0] !== "0";
+    const selectCls =
+      "h-10 w-full pl-3 pr-9 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 appearance-none cursor-pointer outline-none hover:border-slate-300 focus:border-[#FF7400] focus:ring-2 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed";
+    const Chevron = () => (
+      <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+    );
+
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4 flex flex-wrap items-end gap-3">
+        <label className="w-full sm:w-40">
+          <span className="block text-[11px] font-bold text-slate-500 mb-1">Gender</span>
+          <span className="relative block">
+            <select value={genderFilter} onChange={(e) => setGenderFilter(e.target.value)} className={selectCls}>
+              <option value="BOTH">Boys &amp; Girls</option>
+              <option value="MALE">Boys</option>
+              <option value="FEMALE">Girls</option>
+            </select>
+            <Chevron />
+          </span>
+        </label>
+
+        <label className="w-full sm:w-48">
+          <span className="block text-[11px] font-bold text-slate-500 mb-1">Category</span>
+          <span className="relative block">
+            <select
+              value={ageFilter}
+              onChange={(e) => { setAgeFilter(e.target.value); setWeightFilter("ALL"); setExactAgeFilter("ALL"); }}
+              disabled={availableAgeGroups.length === 0}
+              className={selectCls}
+            >
+              <option value="ALL">All categories</option>
+              {availableAgeGroups.map((age) => <option key={age} value={age}>{age}</option>)}
+            </select>
+            <Chevron />
+          </span>
+        </label>
+
+        <label className="w-full sm:w-48">
+          <span className="block text-[11px] font-bold text-slate-500 mb-1">Weight</span>
+          <span className="relative block">
+            <select
+              value={hasWeights ? weightFilter : "ALL"}
+              onChange={(e) => setWeightFilter(e.target.value)}
+              disabled={!hasWeights}
+              title={!hasWeights ? "Choose a category first" : undefined}
+              className={selectCls}
+            >
+              <option value="ALL">{ageFilter === "ALL" ? "Choose a category first" : "All weights"}</option>
+              {hasWeights && availableWeights.map((w) => {
+                const count = groupPlayers.filter((p) => String(p.weight) === w).length;
+                return <option key={w} value={w}>{weightLabel(w)} ({count} {count === 1 ? "player" : "players"})</option>;
+              })}
+            </select>
+            <Chevron />
+          </span>
+        </label>
+
+        <div className="flex items-center gap-2 h-10 text-xs font-semibold text-slate-500">
+          {ageFilter !== "ALL" && (
+            <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 font-bold">
+              {eligiblePlayersCount} {eligiblePlayersCount === 1 ? "player" : "players"}
+            </span>
+          )}
+          <MatchStatusBadges stats={selectionStats} />
+        </div>
+
+        {trailing && <div className="ml-auto flex items-center gap-2 h-10">{trailing}</div>}
+        {availableAgeGroups.length === 0 && (
+          <p className="w-full text-sm font-semibold text-slate-400">No categories found for {genderFilter === "FEMALE" ? "girls" : genderFilter === "MALE" ? "boys" : "this tournament"}.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">

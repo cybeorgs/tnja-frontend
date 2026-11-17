@@ -161,37 +161,26 @@ export function MatsOfficialsPanel({
     refreshRefSearch();
   };
 
-  return (
-    <div className="bg-white rounded-2xl p-5 lg:p-6 border border-slate-100 shadow-sm space-y-5">
-      {/* Header: title, save status */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
-        <div>
-          <h3 className="font-black text-slate-800 text-lg">Mats &amp; Officials</h3>
-          <p className="text-slate-500 font-semibold text-sm mt-0.5">
-            Change mats or referees any time — every change saves straight away.
-          </p>
-        </div>
-        <span className="inline-flex items-center gap-2 text-xs font-black text-slate-500 shrink-0" aria-live="polite">
-          {savingMats ? (
-            <><Loader2 size={14} className="animate-spin" /> Saving…</>
-          ) : savedAt ? (
-            <><CheckCircle2 size={14} className="text-emerald-500" /> Saved {savedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</>
-          ) : null}
-        </span>
-      </div>
+  const allAssigned = totalMats > 0 && assignedCount === totalMats;
+  const stepBtn =
+    "w-9 h-9 flex items-center justify-center text-slate-500 hover:text-[#FF7400] hover:bg-orange-50 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500";
 
-      {/* Mat count + status */}
-      <div className="flex flex-col md:flex-row md:items-end gap-4 pt-5 border-t border-slate-100">
-        <div>
-          <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Number of Mats</label>
-          <div className="flex items-center gap-3">
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      {/* Header: title · mat count · status · save state */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 px-5 lg:px-6 py-4 border-b border-slate-100">
+        <h3 className="font-black text-slate-800 text-lg mr-auto">Mats &amp; Officials</h3>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-400">Mats</span>
+          <div className="flex items-center rounded-xl border border-slate-200 overflow-hidden">
             <button
               onClick={() => changeCount(Math.max(1, totalMats - 1))}
               disabled={isCompleted || savingMats || totalMats <= 1}
               aria-label="One mat fewer"
-              className="w-10 h-10 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors disabled:opacity-40"
+              className={stepBtn}
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={16} />
             </button>
             <input
               type="number"
@@ -200,43 +189,51 @@ export function MatsOfficialsPanel({
               value={matsCountInput}
               disabled={isCompleted}
               placeholder="0"
+              aria-label="Number of mats"
               onChange={(e) => {
                 const n = parseInt(e.target.value);
                 if (e.target.value === "") return setMatsCountInput("");
                 changeCount(n, true);
               }}
-              className="w-24 h-10 border border-slate-200 rounded-xl font-black text-lg text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/40 focus:border-[#FF7400]"
+              className="w-12 h-9 border-x border-slate-200 font-black text-base text-center text-slate-800 focus:outline-none focus:bg-orange-50/50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <button
               onClick={() => changeCount(totalMats + 1)}
               disabled={isCompleted || savingMats || totalMats >= 50}
               aria-label="One more mat"
-              className="w-10 h-10 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors disabled:opacity-40"
+              className={stepBtn}
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={16} />
             </button>
           </div>
         </div>
+
         {totalMats > 0 && (
-          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold ${assignedCount === totalMats ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
-            {assignedCount === totalMats ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-            {assignedCount} of {totalMats} mats have a referee
-            {assignedCount < totalMats && <span className="font-semibold"> — assign the rest whenever they&apos;re confirmed</span>}
-          </div>
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black ${allAssigned ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+            {allAssigned ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+            {assignedCount}/{totalMats} referees assigned
+          </span>
         )}
+
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 min-w-[90px] justify-end" aria-live="polite">
+          {savingMats ? (
+            <><Loader2 size={13} className="animate-spin" /> Saving…</>
+          ) : savedAt ? (
+            <><CheckCircle2 size={13} className="text-emerald-500" /> Saved {savedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</>
+          ) : null}
+        </span>
       </div>
 
       {totalMats === 0 ? (
-        <div className="min-h-[200px] flex flex-col items-center justify-center text-slate-400 font-bold p-8 bg-orange-50/30 rounded-3xl border-2 border-dashed border-orange-100 text-center">
-          <p className="text-base text-slate-500">No mats yet</p>
-          <p className="text-sm font-normal mt-1">Use the arrows above to add mats, then assign a referee to each.</p>
+        <div className="py-14 text-center">
+          <p className="font-black text-slate-500">No mats yet</p>
+          <p className="text-sm text-slate-400 mt-1">Add mats with the arrows above.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-5 border-t border-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] lg:grid-cols-[280px_1fr]">
           {/* Mats list */}
-          <div className="col-span-1 md:border-r border-slate-100 md:pr-6 space-y-2">
-            <h4 className="font-black text-slate-400 uppercase tracking-widest text-xs mb-4">Mats</h4>
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="p-3 md:border-r border-b md:border-b-0 border-slate-100 bg-slate-50/40">
+            <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible md:max-h-[460px] md:overflow-y-auto custom-scrollbar">
               {Array.from({ length: totalMats }).map((_, i) => {
                 const matNum = i + 1;
                 const isSelected = selectedMatForAssignment === matNum;
@@ -245,19 +242,24 @@ export function MatsOfficialsPanel({
                   <button
                     key={matNum}
                     onClick={() => selectMat(matNum)}
-                    className={`w-full text-left px-4 py-2.5 rounded-xl font-black transition-all flex items-center gap-3 border ${
+                    className={`shrink-0 md:w-full min-w-[160px] text-left px-3 py-2.5 rounded-xl transition-colors flex items-center gap-3 border ${
                       isSelected
-                        ? "bg-[#FF7400] border-[#FF7400] text-white shadow-md shadow-orange-500/20"
-                        : "bg-white border-slate-100 text-slate-700 hover:border-orange-200 hover:bg-orange-50/40"
+                        ? "bg-white border-[#FF7400] shadow-sm"
+                        : "bg-transparent border-transparent hover:bg-white hover:border-slate-200"
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${assigned ? (isSelected ? "bg-white" : "bg-[#FF7400]") : (isSelected ? "bg-white/40" : "bg-slate-200")}`} />
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                      isSelected ? "bg-[#FF7400] text-white" : assigned ? "bg-orange-100 text-[#FF7400]" : "bg-slate-100 text-slate-400"
+                    }`}>
+                      {matNum}
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <span className="text-sm">Mat {matNum}</span>
-                      <p className={`text-[11px] font-bold truncate ${isSelected ? "text-white/80" : assigned ? "text-slate-400" : "text-slate-300"}`}>
-                        {assigned ? assigned.refereeName : "Not assigned"}
+                      <p className={`text-sm font-black ${isSelected ? "text-slate-900" : "text-slate-700"}`}>Mat {matNum}</p>
+                      <p className={`text-xs font-semibold truncate ${assigned ? "text-slate-500" : "text-slate-400 italic"}`}>
+                        {assigned ? assigned.refereeName : "No referee"}
                       </p>
                     </div>
+                    {assigned && <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />}
                   </button>
                 );
               })}
@@ -265,13 +267,10 @@ export function MatsOfficialsPanel({
           </div>
 
           {/* Referee for the selected mat */}
-          <div className="col-span-1 md:col-span-2 md:pl-2">
+          <div className="p-5 lg:p-6 min-w-0">
             {selectedMatForAssignment ? (
-              <div className="space-y-5">
-                <div className="flex items-center gap-3">
-                  <span className="px-3 py-1 rounded-lg bg-orange-50 text-[#FF7400] font-black text-sm">Mat {selectedMatForAssignment}</span>
-                  <h4 className="font-black text-slate-800 text-lg">Referee</h4>
-                </div>
+              <div className="space-y-4">
+                <h4 className="font-black text-slate-800">Mat {selectedMatForAssignment} referee</h4>
 
                 {(() => {
                   const assigned = tournamentMats.find((m) => m.matNumber === selectedMatForAssignment && m.refereeName);
@@ -279,17 +278,15 @@ export function MatsOfficialsPanel({
 
                   if (assigned && !isReassigning) {
                     return (
-                      <div className="bg-orange-50/50 p-6 rounded-2xl border border-orange-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div className="flex items-center gap-4 min-w-0">
-                          <div className="w-12 h-12 rounded-2xl bg-[#FF7400] text-white flex items-center justify-center font-black text-lg shrink-0">
+                      <div className="p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-11 h-11 rounded-xl bg-[#FF7400] text-white flex items-center justify-center font-black shrink-0">
                             {assigned.refereeName!.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-black text-slate-800 text-lg truncate">{assigned.refereeName}</p>
+                            <p className="font-black text-slate-800 truncate">{assigned.refereeName}</p>
                             {assigned.refereeCoachId && (
-                              <span className="inline-block mt-1 text-[11px] font-black text-[#FF7400] bg-white px-2.5 py-0.5 rounded-md border border-orange-200 font-mono">
-                                {assigned.refereeCoachId}
-                              </span>
+                              <p className="text-xs font-bold text-slate-400 font-mono mt-0.5">{assigned.refereeCoachId}</p>
                             )}
                           </div>
                         </div>
@@ -298,14 +295,14 @@ export function MatsOfficialsPanel({
                             <button
                               onClick={() => { setReassigningMat(selectedMatForAssignment); setRefSearchQuery(""); }}
                               disabled={savingMats}
-                              className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-white text-slate-600 hover:text-[#FF7400] border border-slate-200 rounded-xl transition-colors font-bold text-sm disabled:opacity-50"
+                              className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 px-3.5 py-2 text-slate-600 hover:text-[#FF7400] border border-slate-200 rounded-xl transition-colors font-bold text-sm disabled:opacity-50"
                             >
                               <Edit2 size={14} /> Change
                             </button>
                             <button
                               onClick={removeAssignment}
                               disabled={savingMats}
-                              className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-white text-red-500 hover:bg-red-50 border border-red-100 rounded-xl transition-colors font-bold text-sm disabled:opacity-50"
+                              className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 px-3.5 py-2 text-red-500 hover:bg-red-50 border border-red-100 rounded-xl transition-colors font-bold text-sm disabled:opacity-50"
                             >
                               <X size={14} /> Remove
                             </button>
@@ -320,70 +317,65 @@ export function MatsOfficialsPanel({
                   }
 
                   return (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {assigned && isReassigning && (
-                        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-                          <span className="font-bold text-slate-600">
-                            Currently: <span className="text-slate-900 font-black">{assigned.refereeName}</span> — pick a replacement below
+                        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-slate-50 rounded-xl text-sm">
+                          <span className="font-semibold text-slate-500 truncate">
+                            Replacing <span className="text-slate-800 font-black">{assigned.refereeName}</span>
                           </span>
-                          <button onClick={() => { setReassigningMat(null); setRefSearchQuery(""); }} className="text-xs font-black text-slate-400 hover:text-slate-600 shrink-0">
+                          <button onClick={() => { setReassigningMat(null); setRefSearchQuery(""); }} className="text-xs font-black text-slate-400 hover:text-slate-700 shrink-0">
                             Cancel
                           </button>
                         </div>
                       )}
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Registered Referees</label>
                       <div className="relative">
-                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                           type="text"
                           value={refSearchQuery}
                           onChange={(e) => setRefSearchQuery(e.target.value)}
-                          placeholder="Filter by name or ID... e.g. Priya or CBE-COH-A001"
+                          placeholder="Search referee by name or ID"
                           autoComplete="off"
-                          className="w-full pl-11 pr-5 py-3.5 bg-white border border-slate-200 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 focus:border-[#FF7400]/40 text-slate-800"
+                          className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF7400]/30 focus:border-[#FF7400]/50 text-slate-800 placeholder:text-slate-400 placeholder:font-medium"
                         />
-                        {refSearching && <Loader2 size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
+                        {refSearching && <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
                       </div>
 
-                      <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden max-h-72 overflow-y-auto">
-                        {availableRefSearchResults.length === 0 ? (
-                          <div className="px-5 py-4 text-sm font-bold text-slate-400">
-                            {refSearching ? "Loading…" : refSearchQuery.trim() ? `No referee matches "${refSearchQuery}"` : "No approved referees found."}
-                          </div>
-                        ) : (
-                          availableRefSearchResults.map((r) => (
+                      {availableRefSearchResults.length === 0 ? (
+                        <div className="py-8 text-center rounded-xl border border-dashed border-slate-200">
+                          <p className="text-sm font-bold text-slate-500">
+                            {refSearching ? "Loading…" : refSearchQuery.trim() ? `No referee matches "${refSearchQuery}"` : "No referees available"}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="border border-slate-100 rounded-xl overflow-hidden max-h-72 overflow-y-auto divide-y divide-slate-50">
+                          {availableRefSearchResults.map((r) => (
                             <button
                               key={r.id}
                               onClick={() => pickReferee(r)}
                               disabled={savingMats}
-                              className="w-full flex items-center gap-3 px-5 py-3 hover:bg-orange-50 transition-colors text-left border-b border-slate-50 last:border-0 disabled:opacity-50"
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-orange-50/60 transition-colors text-left disabled:opacity-50"
                             >
-                              <div className="w-9 h-9 rounded-full bg-orange-100 text-[#FF7400] flex items-center justify-center font-black text-xs shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-orange-100 text-[#FF7400] flex items-center justify-center font-black text-[11px] shrink-0">
                                 {r.name.split(" ").map((p) => p[0]).slice(-2).join("").toUpperCase()}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="font-black text-slate-800 text-sm truncate">{r.name}</p>
-                                <p className="text-[11px] font-bold text-slate-400 truncate">{r.club}, {r.district}</p>
+                                <p className="text-xs font-semibold text-slate-400 truncate">{[r.club, r.district].filter(Boolean).join(", ")}</p>
                               </div>
-                              <span className="text-[11px] font-black text-[#FF7400] bg-orange-50 px-2.5 py-1 rounded-md shrink-0 font-mono">{r.refId}</span>
+                              {r.refId && <span className="text-[11px] font-bold text-slate-500 font-mono shrink-0">{r.refId}</span>}
                             </button>
-                          ))
-                        )}
-                      </div>
-                      <p className="text-xs font-bold text-slate-400 pt-1">
-                        Only referees approved for tournament duty appear here. A referee already on another mat is hidden.
-                      </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
               </div>
             ) : (
-              <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-slate-400 font-bold p-8 bg-orange-50/30 rounded-3xl border-2 border-dashed border-orange-100 text-center">
-                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm">
-                  <AlertCircle size={28} className="text-[#FF7400]/50" />
-                </div>
-                <p className="text-base text-slate-500">Select a mat from the left</p>
-                <p className="text-sm font-normal mt-1">to assign or change its referee</p>
+              <div className="h-full min-h-[200px] flex flex-col items-center justify-center text-center">
+                <p className="font-black text-slate-500">Select a mat</p>
+                <p className="text-sm text-slate-400 mt-1">to assign its referee</p>
               </div>
             )}
           </div>

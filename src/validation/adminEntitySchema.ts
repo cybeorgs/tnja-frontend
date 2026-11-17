@@ -2,13 +2,13 @@ import { z } from "zod";
 
 export const adminStudentSchema = z.object({
   fullName: z.string().min(3, "Full name is required (min 3 chars)"),
-  email: z.string().email("Invalid email address"),
-  mobileNumber: z.string().regex(/^[0-9]{10}$/, "Mobile number must be exactly 10 digits"),
+  email: z.string().trim().email("Enter a valid email address"),
+  mobileNumber: z.string().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number starting with 6-9"),
   districtId: z.string().min(1, "District is required"),
   talukId: z.string().min(1, "Taluk is required"),
   gender: z.enum(["MALE", "FEMALE", "OTHER"]),
   dob: z.string().min(1, "Date of Birth is required"),
-  aadhaarNumber: z.string().length(12, "Aadhaar must be exactly 12 digits"),
+  aadhaarNumber: z.string().regex(/^[2-9][0-9]{11}$/, "Enter a valid 12-digit Aadhaar number"),
   bloodGroup: z.string().min(1, "Blood Group is required"),
   address: z.string().min(5, "Address must be at least 5 characters"),
   city: z.string().min(1, "City is required"),
@@ -25,8 +25,8 @@ export const adminStudentSchema = z.object({
 
 export const adminClubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
-  email: z.string().email("Invalid email address"),
-  mobileNumber: z.string().regex(/^[0-9]{10}$/, "Mobile number must be exactly 10 digits"),
+  email: z.string().trim().email("Enter a valid email address"),
+  mobileNumber: z.string().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number starting with 6-9"),
   districtId: z.string().min(1, "District is required"),
   talukId: z.string().min(1, "Taluk is required"),
   address1: z.string().min(1, "Address Line 1 is required"),
@@ -39,13 +39,13 @@ export const adminClubSchema = z.object({
 
 export const adminMemberSchema = z.object({
   fullName: z.string().min(3, "Full name is required (min 3 chars)"),
-  email: z.string().email("Invalid email address"),
-  mobileNumber: z.string().regex(/^[0-9]{10}$/, "Mobile number must be exactly 10 digits"),
+  email: z.string().trim().email("Enter a valid email address"),
+  mobileNumber: z.string().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number starting with 6-9"),
   districtId: z.string().min(1, "District is required"),
   talukId: z.string().min(1, "Taluk is required"),
   gender: z.enum(["MALE", "FEMALE", "OTHER"]),
   dob: z.string().min(1, "Date of Birth is required"),
-  aadhaarNumber: z.string().length(12, "Aadhaar must be exactly 12 digits"),
+  aadhaarNumber: z.string().regex(/^[2-9][0-9]{11}$/, "Enter a valid 12-digit Aadhaar number"),
   fatherName: z.string().min(3, "Father's name is required"),
   bloodGroup: z.string().min(1, "Blood Group is required"),
   addressLine1: z.string().min(1, "Address Line 1 is required"),
@@ -56,13 +56,13 @@ export const adminMemberSchema = z.object({
 
 export const adminCoachSchema = z.object({
   fullName: z.string().min(3, "Full name is required (min 3 chars)"),
-  email: z.string().email("Invalid email address"),
-  mobileNumber: z.string().regex(/^[0-9]{10}$/, "Mobile number must be exactly 10 digits"),
+  email: z.string().trim().email("Enter a valid email address"),
+  mobileNumber: z.string().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number starting with 6-9"),
   districtId: z.string().min(1, "District is required"),
   talukId: z.string().min(1, "Taluk is required"),
   gender: z.enum(["MALE", "FEMALE", "OTHER"]),
   dob: z.string().min(1, "Date of Birth is required"),
-  aadhaarNumber: z.string().length(12, "Aadhaar must be exactly 12 digits"),
+  aadhaarNumber: z.string().regex(/^[2-9][0-9]{11}$/, "Enter a valid 12-digit Aadhaar number"),
   fatherName: z.string().min(3, "Father's name is required"),
   bloodGroup: z.string().min(1, "Blood Group is required"),
   addressPincode: z.string().length(6, "Pincode must be exactly 6 digits"),

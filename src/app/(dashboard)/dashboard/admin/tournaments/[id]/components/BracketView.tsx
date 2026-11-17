@@ -71,35 +71,19 @@ export function BracketView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800 text-white px-4 py-3 rounded-2xl shadow-sm border border-slate-700">
+      <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center font-black text-orange-400 text-xs">
+          <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center font-black text-[#FF7400] text-[10px]">
             IJF
           </div>
           <div>
-            <h4 className="text-sm font-black uppercase tracking-wider text-white">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">
               {isRoundRobin ? "Round Robin Bracket" : `${getEliminationFormatLabel(rounds)} Bracket`}
             </h4>
-            <p className="text-[10px] text-slate-300 font-semibold">
+            <p className="text-[10px] text-slate-400 font-semibold">
               {players.length} Competitors {currentDraw?.matNumber ? `• MAT ${currentDraw.matNumber}` : ""}
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => exportCategoryChartPDF(tournament || null, currentKey || "", currentDraw || ({ rounds } as DrawCategory), players)}
-            className="text-xs bg-[#FF7400] hover:bg-[#e66800] text-white px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shadow-sm border border-orange-400/30"
-            title="Download Official Visual Competition Bracket Chart as PDF"
-          >
-            <Download size={13} /> Download Chart (PDF)
-          </button>
-          <button
-            onClick={() => exportCategoryReport(tournament || null, currentKey || "", currentDraw || ({ rounds } as DrawCategory), players)}
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shadow-sm border border-slate-700"
-            title="Print Entire Match Result Report for this Category"
-          >
-            <Printer size={13} /> Print Match Report
-          </button>
         </div>
       </div>
       <div className="flex gap-6">
@@ -110,7 +94,7 @@ export function BracketView({
           return (
             <div key={w} className="mb-4">
               <p className="text-xs font-black text-blue-600 mb-2 pb-1 border-b border-slate-100">
-                {w} kg <span className="text-slate-400 font-semibold">({wPlayers.length} players)</span>
+                {/kg/i.test(String(w)) ? w : `${w} kg`} <span className="text-slate-400 font-semibold">({wPlayers.length} players)</span>
               </p>
               <div className="space-y-1">
                 {wPlayers.map((p) => (
