@@ -15,7 +15,7 @@ import {
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, Tab, Tournament, ViewMode } from "./types";
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
-  isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray,
+  isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
 } from "./lib/bracketEngine";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -26,9 +26,11 @@ import { AddPlayerModal } from "./components/AddPlayerModal";
 import { DisqualifyTab } from "./components/DisqualifyTab";
 import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
+import { CertificateTab } from "./components/CertificateTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
 import { CategoryStartBoard } from "./components/CategoryStartBoard";
+import { EditDrawModal, canEditBracket, slotsFromRounds } from "./components/EditDrawModal";
 import { levelLabel } from "@/utils/tournamentLevel";
 
 type ConfirmModalState = {
@@ -724,6 +726,24 @@ export default function TournamentDetailPage() {
   const drawPlayers = eligiblePlayers;
 
   const currentDraw = draws[currentKey];
+
+  // ── Edit a generated draw by hand (straight elimination, before the category starts) ──
+  const [editingDrawKey, setEditingDrawKey] = useState<string | null>(null);
+  const saveEditedDraw = async (key: string, d: DrawCategory, slots: (string | null)[]) => {
+    const byId = new Map(players.map((p) => [p.id, p]));
+    const rounds = bracketFromSlots(slots.map((id) => (id ? byId.get(id) ?? null : "BYE")));
+    const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ageGroup: d.ageGroup, exactAge: d.exactAge ?? 0, gender: d.gender, weightCategory: d.weightCategory, matNumber: d.matNumber ?? 1, rounds }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Could not save the draw");
+    let saved = data?.draw?.rounds ?? rounds;
+    if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
+    setDraws((p) => ({ ...p, [key]: { ...d, rounds: backfillBronzeMatches(processByeMatches(saved)), generated: true, saved: true } }));
+    showToast("Draw updated", true);
+  };
 
   // ── Start / stop one category (the organiser decides which categories run) ──
   const [startingKey, setStartingKey] = useState<string | null>(null);
@@ -1421,14 +1441,14 @@ export default function TournamentDetailPage() {
 
       {/* Compact header: one row on laptop screens — title + key facts on the left, status / action on the right */}
       {/* Header + tabs stay pinned while the tab content scrolls underneath */}
-      <div className="sticky top-0 z-30 -mt-8 -mx-8 print:static">
+      <div className="sticky -top-8 z-30 -mt-8 -mx-8 print:static">
       <div className="bg-[#1A202C] text-white">
-        <div className="px-6 md:px-8 py-3 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-6">
+        <div className="px-8 py-2.5 flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-6">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               onClick={() => router.back()}
               aria-label="Back"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              className="-ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
             >
               <ArrowLeft size={18} />
             </button>
@@ -1480,10 +1500,10 @@ export default function TournamentDetailPage() {
         </div>
       </div>
 
-        <div className="bg-slate-50/95 backdrop-blur border-b border-slate-200 px-8 py-2.5 print:hidden">
+        <div className="bg-slate-50/95 backdrop-blur border-b border-slate-200 px-8 py-2 print:hidden">
           {/* Tabs */}
           <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl w-fit max-w-full overflow-x-auto scrollbar-hide">
-            {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "points", "disqualify"] as Tab[]).map((tab) => {
+            {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "certificate", "points", "disqualify"] as Tab[]).map((tab) => {
               // Results tab is ALWAYS accessible — even for expired/CLOSED tournaments
               // Draws and matches are locked once the tournament date has passed
               const lockedByExpiry = expired && (tab === "draws" || tab === "matches");
@@ -1501,7 +1521,7 @@ export default function TournamentDetailPage() {
                   }`}
                 >
                   {lockedByExpiry && <span className="text-[10px]">🔒</span>}
-                  {tab === "players" ? `Registrations (${players.length})` : tab === "draws" ? "Draw Generation" : tab === "results" ? "Results & Reports" : tab === "weigh-in" ? "Weigh-In" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab === "players" ? `Registrations (${players.length})` : tab === "draws" ? "Draw Generation" : tab === "results" ? "Results & Reports" : tab === "weigh-in" ? "Weigh-In" : tab === "certificate" ? "Certificates" : tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </button>
               );
             })}
@@ -2467,7 +2487,8 @@ export default function TournamentDetailPage() {
                         {/* Action Button */}
                         <button
                           onClick={() => currentDraw?.generated ? handleShuffle() : handleGenerateDraw()}
-                          disabled={drawPlayers.length < 1 || (drawPlayers.length === 1 && !!currentDraw?.generated) || drawPhase === "shuffling" || drawPhase === "dealing" || autoGenerating}
+                          disabled={drawPlayers.length < 1 || (drawPlayers.length === 1 && !!currentDraw?.generated) || !!currentDraw?.startedAt || drawPhase === "shuffling" || drawPhase === "dealing" || autoGenerating}
+                          title={currentDraw?.startedAt ? "This category has started — its draw is locked" : undefined}
                           className={`w-full md:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm shadow-md transition-all ${
                             currentDraw?.generated
                             ? "bg-slate-700 text-white hover:bg-slate-600 hover:shadow-lg active:scale-95 disabled:opacity-50"
@@ -2624,6 +2645,15 @@ export default function TournamentDetailPage() {
                     )}
                   </h3>
                   <div className="flex items-center gap-2">
+                    {currentDraw.saved && !currentDraw.startedAt && canEditBracket(currentDraw.rounds) && (
+                      <button
+                        onClick={() => setEditingDrawKey(currentKey)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] text-slate-600 rounded-xl text-xs font-black"
+                        title="Change who fights whom in the first round (BYEs included)"
+                      >
+                        <Edit2 size={13} /> Edit draw
+                      </button>
+                    )}
                     {currentDraw.saved && !currentDraw.startedAt && !currentDraw.isConcluded && (
                       <button
                         onClick={() => toggleCategoryStart(currentKey, currentDraw, true)}
@@ -2636,6 +2666,10 @@ export default function TournamentDetailPage() {
                     <button 
                       onClick={() => { 
                         const hasActive = currentDraw.rounds.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"));
+                        if (currentDraw.startedAt) {
+                          showToast("This category has started — its draw is locked.", false);
+                          return;
+                        }
                         if (hasActive) {
                           showToast("Cannot re-draw the bracket because matches have already started or completed!", false);
                           return;
@@ -2646,7 +2680,7 @@ export default function TournamentDetailPage() {
                         }
                       }}
                       className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                        currentDraw.rounds.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"))
+                        currentDraw.startedAt || currentDraw.rounds.some(r => r.some(m => m.status === "COMPLETED" || m.status === "IN_PROGRESS"))
                           ? "text-slate-300 cursor-not-allowed"
                           : "text-slate-500 hover:text-red-500 hover:bg-red-50"
                       }`}>
@@ -3767,6 +3801,20 @@ export default function TournamentDetailPage() {
         )}
       </AnimatePresence>
 
+      {editingDrawKey && draws[editingDrawKey] && (() => {
+        const d = draws[editingDrawKey];
+        const ids = new Set(slotsFromRounds(d.rounds).filter((x): x is string => !!x));
+        return (
+          <EditDrawModal
+            title={`${d.ageGroup} · ${d.gender === "FEMALE" ? "Girls" : "Boys"} · ${d.weightCategory}`}
+            players={players.filter((p) => ids.has(p.id))}
+            rounds={d.rounds}
+            onClose={() => setEditingDrawKey(null)}
+            onSave={(slots) => saveEditedDraw(editingDrawKey, d, slots)}
+          />
+        );
+      })()}
+
       {/* ── Confirm Modal ── */}
       <AnimatePresence>
         {confirmModal.isOpen && (() => {
@@ -3844,6 +3892,9 @@ export default function TournamentDetailPage() {
 
       {/* ══ POINTS (sportsmanship + volunteers) ═════════════════════════════════ */}
       {activeTab === "points" && <PointsTab tournamentId={tournamentId} />}
+
+      {/* ══ CERTIFICATES ══════════════════════════════════════════════════════ */}
+      {activeTab === "certificate" && <CertificateTab tournamentId={tournamentId} />}
 
       {/* ══ DISQUALIFY ═════════════════════════════════════════════════════════ */}
       {activeTab === "disqualify" && !expired && (

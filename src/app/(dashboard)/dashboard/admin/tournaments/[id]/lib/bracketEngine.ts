@@ -299,6 +299,16 @@ export function generateIJFBracket(players: RegisteredPlayer[], seeds: Seeds, sh
     }
   }
 
+  return bracketFromSlots(slots);
+}
+
+/**
+ * A straight-elimination bracket from its first-round places (match 1 A, match 1 B, match 2 A, …).
+ * A place is a player, or "BYE"/null for a bye. Later rounds start empty ("TBD"); with 4+ places the
+ * final round also has the bronze match.
+ */
+export function bracketFromSlots(slots: (RegisteredPlayer | null | "BYE")[]): BracketMatch[][] {
+  const N = slots.length;
   const toSlot = (p: RegisteredPlayer | null | "BYE"): BracketSlot => {
     if (p === "BYE" || p === null) return { playerId: null, playerName: "BYE", club: "", isBye: true, coachName: "" };
     return { playerId: p.id, playerName: p.name, club: p.club, isBye: false, seedNumber: p.seedNumber, coachName: p.coachName };
