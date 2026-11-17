@@ -17,7 +17,7 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, 
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
-  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage,
+  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup,
 } from "./lib/bracketEngine";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -33,6 +33,7 @@ import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
 import { CategoryStartBoard } from "./components/CategoryStartBoard";
 import { EditDrawModal, canEditBracket, slotsFromRounds } from "./components/EditDrawModal";
+import { DrawSetupModal, type DrawSetupChoice } from "./components/DrawSetupModal";
 import { levelLabel } from "@/utils/tournamentLevel";
 
 type ConfirmModalState = {
@@ -772,6 +773,8 @@ export default function TournamentDetailPage() {
 
   // ── Edit a generated draw by hand (straight elimination, before the category starts) ──
   const [editingDrawKey, setEditingDrawKey] = useState<string | null>(null);
+  /** Draw setup dialog (asked before an elimination draw): which format, and is it a redraw. */
+  const [drawSetup, setDrawSetup] = useState<{ isRedraw: boolean; method: DrawMethod } | null>(null);
   const saveEditedDraw = async (key: string, d: DrawCategory, slots: (string | null)[]) => {
     const byId = new Map(players.map((p) => [p.id, p]));
     const main = bracketFromSlots(slots.map((id) => (id ? byId.get(id) ?? null : "BYE")));
@@ -849,7 +852,9 @@ export default function TournamentDetailPage() {
     isShuffle = false,
     isConfirmed = false,
     explicitCat?: { ageGroup: string; exactAge: string; gender: string; weightCategory: string; players: RegisteredPlayer[]; key: string; draw: DrawCategory | undefined },
-    drawMethod?: DrawMethodType
+    drawMethod?: DrawMethodType,
+    /** From the draw setup dialog: who gets the byes (null = random). Uses the draw-number layout. */
+    setup?: DrawSetupChoice
   ) => {
     const activeKey = explicitCat ? explicitCat.key : currentKey;
     const activeDraw = explicitCat ? explicitCat.draw : currentDraw;
@@ -917,8 +922,11 @@ export default function TournamentDetailPage() {
       const shuffledPlayers = isShuffle ? shuffleArray(activePlayers) : activePlayers;
       rounds = generateRoundRobin(shuffledPlayers);
     } else {
-      const shuffledPlayers = isShuffle ? clubSeparatedShuffle(activePlayers) : activePlayers;
-      const rawRounds = generateIJFBracket(shuffledPlayers, seeds, "club-separated");
+      // With a setup choice, players get draw numbers (01 v 05, 03 v 07 | 02 v 06, 04 v 08) and the
+      // organiser's byes; otherwise the earlier automatic bracket.
+      const rawRounds = setup
+        ? bracketFromSlots(slotsFromDrawSetup(activePlayers, setup.byeIds))
+        : generateIJFBracket(isShuffle ? clubSeparatedShuffle(activePlayers) : activePlayers, seeds, "club-separated");
       rounds = processByeMatches(rawRounds);
       const wantsRepechage = selectedMethod === "single-repechage" || selectedMethod === "double-repechage";
 
@@ -2545,7 +2553,13 @@ export default function TournamentDetailPage() {
                         )}
                         {!locked && !(drawPlayers.length === 1 && generated) && (
                           <button
-                            onClick={() => generated ? handleShuffle() : handleGenerateDraw()}
+                            onClick={() => {
+                              const method = shownDrawMethod(detailDrawMethod, drawPlayers.length, generated ? currentDraw?.rounds : undefined);
+                              // Elimination formats ask first: how many fights / byes, and who gets the byes.
+                              if (method !== "round-robin" && drawPlayers.length >= 3) setDrawSetup({ isRedraw: generated, method });
+                              else if (generated) handleShuffle();
+                              else handleGenerateDraw();
+                            }}
                             disabled={busy}
                             title={generated ? "Draw again with the selected format" : undefined}
                             className={`h-9 inline-flex items-center gap-1.5 px-4 rounded-lg text-sm font-black transition-colors disabled:opacity-50 ${
@@ -3728,6 +3742,21 @@ export default function TournamentDetailPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {drawSetup && (
+        <DrawSetupModal
+          title={[ageFilter !== "ALL" ? ageFilter : "", genderFilter === "FEMALE" ? "Girls" : genderFilter === "MALE" ? "Boys" : "", weightFilter !== "ALL" ? fmtKg(weightFilter) : ""].filter(Boolean).join(" · ")}
+          formatLabel={{ "straight-elimination": "Straight Elimination", "single-repechage": "Single Repechage", "double-repechage": "Double Repechage", "round-robin": "Round Robin" }[drawSetup.method]}
+          players={eligiblePlayers}
+          isRedraw={drawSetup.isRedraw}
+          onCancel={() => setDrawSetup(null)}
+          onConfirm={(choice) => {
+            const { isRedraw, method } = drawSetup;
+            setDrawSetup(null);
+            handleGenerateAndSaveDraw(isRedraw, true, undefined, method, choice);
+          }}
+        />
+      )}
 
       {editingDrawKey && draws[editingDrawKey] && (() => {
         const d = draws[editingDrawKey];

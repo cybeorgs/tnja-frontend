@@ -522,3 +522,67 @@ export function tagSmallRepechage(rounds: BracketMatch[][], method: "single-repe
   }
   return copy;
 }
+
+// ── Draw setup: draw numbers, byes chosen by the organiser ────────────────────
+/** Smallest elimination bracket (power of two) that holds n players. */
+export const bracketSizeFor = (n: number) => { let s = 2; while (s < n) s *= 2; return s; };
+
+/**
+ * Draw number of each bracket place, top to bottom. 8 places → 01,05,03,07 | 02,06,04,08:
+ * 01 and 02 can only meet in the final, 03 and 04 sit in the other quarters, and number k
+ * fights number k + size/2 in round 1 (the layout used on the association's draw sheets).
+ */
+export function drawNumberOrder(size: number): number[] {
+  if (size <= 2) return [1, 2].slice(0, Math.max(size, 1));
+  return drawNumberOrder(size / 2).flatMap((k) => [k, k + size / 2]);
+}
+
+/**
+ * How an n-player category is laid out: bracket size, first-round fights and byes. Unused high
+ * draw numbers are byes, so the players holding the matching low numbers go straight to round 2.
+ */
+export function drawSetupFor(n: number) {
+  const size = bracketSizeFor(n);
+  const half = size / 2;
+  const byes = size - n;
+  // Number k (≤ half) fights k + half; if k + half > n that opponent is a BYE.
+  const byeNumbers = Array.from({ length: half }, (_, i) => i + 1).filter((k) => k + half > n);
+  const fightNumbers = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !byeNumbers.includes(k));
+  return { size, byes, firstRoundFights: (n - byes) / 2, byeNumbers, fightNumbers };
+}
+
+const shuffled = <T,>(a: T[]) => { const c = [...a]; for (let i = c.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [c[i], c[j]] = [c[j], c[i]]; } return c; };
+
+/**
+ * Bracket places for a draw: `byeIds` (exactly the number of byes) go straight to round 2; pass null
+ * to pick them at random. Everyone else is drawn at random into the fight numbers, re-drawing a few
+ * times to keep players of the same club apart in round 1 where possible.
+ */
+export function slotsFromDrawSetup(players: RegisteredPlayer[], byeIds: string[] | null): (RegisteredPlayer | "BYE")[] {
+  const { size, byes, byeNumbers, fightNumbers } = drawSetupFor(players.length);
+  const half = size / 2;
+  const chosen = byeIds && byeIds.length === byes ? new Set(byeIds) : new Set(shuffled(players).slice(0, byes).map((p) => p.id));
+  const byePlayers = shuffled(players.filter((p) => chosen.has(p.id)));
+  const fighters = players.filter((p) => !chosen.has(p.id));
+
+  const byNumber = new Map<number, RegisteredPlayer>();
+  byeNumbers.forEach((num, i) => { if (byePlayers[i]) byNumber.set(num, byePlayers[i]); });
+
+  // Random fighter order, keeping the arrangement with the fewest same-club first-round pairs.
+  let best: RegisteredPlayer[] = fighters;
+  let bestClash = Infinity;
+  for (let attempt = 0; attempt < 60 && bestClash > 0; attempt++) {
+    const order = shuffled(fighters);
+    const at = new Map(fightNumbers.map((num, i) => [num, order[i]]));
+    let clash = 0;
+    for (const num of fightNumbers) {
+      if (num > half) continue;
+      const a = at.get(num), b = at.get(num + half);
+      if (a?.club && b?.club && a.club === b.club) clash++;
+    }
+    if (clash < bestClash) { bestClash = clash; best = order; }
+  }
+  fightNumbers.forEach((num, i) => byNumber.set(num, best[i]));
+
+  return drawNumberOrder(size).map((num) => byNumber.get(num) ?? "BYE");
+}
