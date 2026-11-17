@@ -5,6 +5,8 @@ import {
   AlertCircle, ArrowDown, ArrowUp, Award, CheckCircle2, Eye, ImagePlus, Loader2, Plus, RotateCcw, Save, Trash2, Upload, X,
 } from "lucide-react";
 
+import { EmailCertificatesPanel } from "./EmailCertificatesPanel";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 const MAX_SIGNATORIES = 6;
 /** PDF certificates can only embed PNG and JPG pictures. */
@@ -422,6 +424,9 @@ export function CertificateTab({ tournamentId }: { tournamentId: string }) {
           </button>
         </div>
       )}
+
+      {/* Send certificates to players by email */}
+      <EmailCertificatesPanel tournamentId={tournamentId} settingsDirty={dirty} />
     </div>
   );
 }
