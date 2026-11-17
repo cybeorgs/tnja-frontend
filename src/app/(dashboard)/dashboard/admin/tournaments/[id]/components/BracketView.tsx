@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Monitor, Printer, Trophy, Download } from "lucide-react";
+import { Monitor, Printer, Trophy, Download, GripVertical } from "lucide-react";
 import type { BracketMatch, DrawCategory, RegisteredPlayer, Tournament } from "../types";
 import { getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel } from "../lib/bracketEngine";
 import { exportRoundRobinPoolSheet, exportCategoryReport, exportCategoryChartPDF } from "../lib/pdfExport";
@@ -27,14 +28,20 @@ export function BracketView({
   tournament,
   currentKey,
   currentDraw,
+  onSwapFirstRound,
 }: {
   rounds: BracketMatch[][];
   onOpenScoreboard: (match: BracketMatch) => void;
+  /** When given, first-round places can be dragged onto each other to swap them (BYEs included).
+   *  Places are numbered match 1 A = 0, match 1 B = 1, match 2 A = 2, … */
+  onSwapFirstRound?: (from: number, to: number) => void;
   players: RegisteredPlayer[];
   tournament?: Tournament | null;
   currentKey?: string;
   currentDraw?: DrawCategory;
 }) {
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
   if (!rounds || rounds.length === 0) return null;
 
   const isRoundRobin = rounds[0].length > 0 && rounds[0][0].matchId.startsWith("rr_");
@@ -67,6 +74,30 @@ export function BracketView({
   };
   const mCenterY = (ri: number, mi: number) => mTop(ri, mi) + MATCH_H / 2;
 
+  const canDrag = !!onSwapFirstRound;
+  const dnd = (ri: number, place: number) => {
+    if (!canDrag || ri !== 0) return {};
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => { setDragFrom(place); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(place)); },
+      onDragEnd: () => { setDragFrom(null); setDragOver(null); },
+      onDragOver: (e: React.DragEvent) => { if (dragFrom !== null && dragFrom !== place) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOver !== place) setDragOver(place); } },
+      onDragLeave: () => { if (dragOver === place) setDragOver(null); },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        const from = dragFrom ?? Number(e.dataTransfer.getData("text/plain"));
+        setDragFrom(null); setDragOver(null);
+        if (Number.isInteger(from) && from !== place) onSwapFirstRound!(from, place);
+      },
+    };
+  };
+  const dndCls = (ri: number, place: number) => {
+    if (!canDrag || ri !== 0) return "";
+    if (dragOver === place) return " cursor-grab ring-2 ring-inset ring-[#FF7400] bg-orange-50";
+    if (dragFrom === place) return " cursor-grabbing opacity-40";
+    return " cursor-grab";
+  };
+
   const weightGroups = Array.from(new Set(players.map(p => p.weight))).sort((a, b) => a - b);
 
   return (
@@ -86,6 +117,11 @@ export function BracketView({
           </div>
         </div>
       </div>
+      {canDrag && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+          <GripVertical size={14} className="text-[#FF7400]" /> Drag a player in the first round onto another place to swap them — drop onto a BYE to move the BYE. Saves straight away; locked once the category starts.
+        </p>
+      )}
       <div className="flex gap-6">
       {/* ── Left: Player List ────────────────────────────────────────────── */}
       <div className="w-56 shrink-0">
@@ -234,7 +270,8 @@ export function BracketView({
                       </div>
                     )}
                     {/* Player A row */}
-                    <div className={`flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 min-h-[34px] ${match.slotA.isBye ? "opacity-25" : ""} ${isWinnerA ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors`}>
+                    <div {...dnd(ri, mi * 2)} title={canDrag && ri === 0 ? "Drag onto another place to swap" : undefined} className={`flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 min-h-[34px] ${match.slotA.isBye && dragOver !== mi * 2 ? "opacity-25" : ""} ${isWinnerA ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors${dndCls(ri, mi * 2)}`}>
+                      {canDrag && ri === 0 && <GripVertical size={11} className="shrink-0 -ml-1.5 text-slate-300" />}
                       {match.slotA.seedNumber && (
                         <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
                           {match.slotA.seedNumber}
@@ -250,7 +287,8 @@ export function BracketView({
                     </div>
 
                     {/* Player B row */}
-                    <div className={`flex items-center gap-1.5 px-3 py-2 min-h-[34px] ${match.slotB.isBye ? "opacity-25" : ""} ${isWinnerB ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors`}>
+                    <div {...dnd(ri, mi * 2 + 1)} title={canDrag && ri === 0 ? "Drag onto another place to swap" : undefined} className={`flex items-center gap-1.5 px-3 py-2 min-h-[34px] ${match.slotB.isBye && dragOver !== mi * 2 + 1 ? "opacity-25" : ""} ${isWinnerB ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors${dndCls(ri, mi * 2 + 1)}`}>
+                      {canDrag && ri === 0 && <GripVertical size={11} className="shrink-0 -ml-1.5 text-slate-300" />}
                       {match.slotB.seedNumber && (
                         <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
                           {match.slotB.seedNumber}

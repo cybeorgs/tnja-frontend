@@ -51,6 +51,28 @@ const CLOSED_CONFIRM: ConfirmModalState = { isOpen: false, title: "", message: "
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
+type DrawMethod = "round-robin" | "straight-elimination" | "single-repechage" | "double-repechage";
+/** Repechage is fed by quarter-final losers, so it needs a bracket with a quarter-final (5+ players). */
+const REPECHAGE_MIN_PLAYERS = 5;
+const isRepechage = (m: string) => m === "single-repechage" || m === "double-repechage";
+
+/** The format a saved draw was actually made in. */
+const drawMethodOf = (rounds: BracketMatch[][]): DrawMethod => {
+  if (rounds[0]?.[0]?.matchId.startsWith("rr_")) return "round-robin";
+  const kind = repechageKindOf(rounds);
+  return kind === "double" ? "double-repechage" : kind === "single" ? "single-repechage" : "straight-elimination";
+};
+
+/**
+ * What the format dropdown shows: the organiser's pick (if it is possible for this many players),
+ * otherwise the format the draw was really made in, otherwise the default for the category size.
+ */
+const shownDrawMethod = (chosen: string | undefined | null, playerCount: number, rounds?: BracketMatch[][]): DrawMethod => {
+  if (chosen && !(isRepechage(chosen) && playerCount < REPECHAGE_MIN_PLAYERS)) return chosen as DrawMethod;
+  if (rounds?.length) return drawMethodOf(rounds);
+  return playerCount <= 5 ? "round-robin" : "straight-elimination";
+};
+
 /** Weight categories are stored as "-60kg" or "60"; never print "kg kg". */
 const fmtKg = (w: unknown) => { const v = String(w ?? "").trim(); return !v ? "" : /kg/i.test(v) ? v : `${v} kg`; };
 
@@ -765,6 +787,23 @@ export default function TournamentDetailPage() {
     if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
     setDraws((p) => ({ ...p, [key]: { ...d, rounds: backfillBronzeMatches(processByeMatches(saved)), generated: true, saved: true } }));
     showToast("Draw updated", true);
+  };
+
+  /** Drag-and-drop on the bracket: swap two first-round places (BYEs included) and save. */
+  const swapFirstRound = async (key: string, d: DrawCategory, from: number, to: number) => {
+    const slots = slotsFromRounds(d.rounds);
+    if (from < 0 || to < 0 || from >= slots.length || to >= slots.length) return;
+    [slots[from], slots[to]] = [slots[to], slots[from]];
+    const doubleBye = Array.from({ length: slots.length / 2 }, (_, m) => m).find((m) => slots[m * 2] === null && slots[m * 2 + 1] === null);
+    if (doubleBye !== undefined) {
+      showToast(`That would leave match ${doubleBye + 1} with two BYEs. Every first-round match needs a player.`, false);
+      return;
+    }
+    try {
+      await saveEditedDraw(key, d, slots);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not save the draw", false);
+    }
   };
 
   // ── Start / stop one category (the organiser decides which categories run) ──
@@ -2151,14 +2190,14 @@ export default function TournamentDetailPage() {
                             <div className="flex items-center gap-2">
                               {catDrawPlayers.length > 1 && (
                                 <select
-                                  value={categoryDrawMethod[key] || (catDrawPlayers.length <= 5 ? "round-robin" : "straight-elimination")}
-                                  onChange={(e) => setCategoryDrawMethod(prev => ({ ...prev, [key]: e.target.value as any }))}
+                                  value={shownDrawMethod(categoryDrawMethod[key], catDrawPlayers.length, draw?.generated ? draw.rounds : undefined)}
+                                  onChange={(e) => setCategoryDrawMethod(prev => ({ ...prev, [key]: e.target.value as DrawMethod }))}
                                   className="px-2.5 py-1.5 text-[11px] font-bold bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#FF7400]/20 transition-all cursor-pointer"
                                 >
                                   <option value="round-robin">1.Round Robin</option>
                                   <option value="straight-elimination">2.Straight elimination</option>
-                                  <option value="single-repechage">3.Single Repechage</option>
-                                  <option value="double-repechage">4.Double Repechage</option>
+                                  <option value="single-repechage" disabled={catDrawPlayers.length < REPECHAGE_MIN_PLAYERS}>3.Single Repechage{catDrawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
+                                  <option value="double-repechage" disabled={catDrawPlayers.length < REPECHAGE_MIN_PLAYERS}>4.Double Repechage{catDrawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
                                 </select>
                               )}
                               <button
@@ -2322,6 +2361,7 @@ export default function TournamentDetailPage() {
                               <BracketView
                                 rounds={draw.rounds}
                                 onOpenScoreboard={openScoreboard}
+                                onSwapFirstRound={draw.saved && !draw.startedAt && !draw.isConcluded && canEditBracket(draw.rounds) ? (a, b) => swapFirstRound(key, draw, a, b) : undefined}
                                 players={catDrawPlayers}
                                 tournament={tournament}
                                 currentKey={key}
@@ -2485,15 +2525,15 @@ export default function TournamentDetailPage() {
                         {!locked && drawPlayers.length > 1 && (
                           <span className="relative">
                             <select
-                              value={detailDrawMethod || (drawPlayers.length <= 5 ? "round-robin" : "straight-elimination")}
+                              value={shownDrawMethod(detailDrawMethod, drawPlayers.length, generated ? currentDraw?.rounds : undefined)}
                               onChange={(e) => setDetailDrawMethod(e.target.value as DrawMethodType)}
                               aria-label="Draw format"
                               className="h-9 pl-3 pr-8 text-sm font-bold bg-white border border-slate-200 text-slate-700 rounded-lg outline-none focus:border-[#FF7400] hover:border-slate-300 cursor-pointer appearance-none"
                             >
                               <option value="round-robin">Round Robin</option>
                               <option value="straight-elimination">Straight Elimination</option>
-                              <option value="single-repechage">Single Repechage</option>
-                              <option value="double-repechage">Double Repechage</option>
+                              <option value="single-repechage" disabled={drawPlayers.length < REPECHAGE_MIN_PLAYERS}>Single Repechage{drawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
+                              <option value="double-repechage" disabled={drawPlayers.length < REPECHAGE_MIN_PLAYERS}>Double Repechage{drawPlayers.length < REPECHAGE_MIN_PLAYERS ? " (5+ players)" : ""}</option>
                             </select>
                             <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </span>
@@ -2519,6 +2559,18 @@ export default function TournamentDetailPage() {
                             className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400]"
                           >
                             <Edit2 size={14} /> Edit draw
+                          </button>
+                        )}
+
+                        {/* Start this category right here (also on the Category start board above) */}
+                        {generated && currentDraw?.saved && !locked && !currentDraw.isConcluded && (
+                          <button
+                            onClick={() => toggleCategoryStart(currentKey, currentDraw, true)}
+                            disabled={startingKey === currentKey || busy || !tournament?.registrationClosed}
+                            title={!tournament?.registrationClosed ? "Close registration first, then start categories" : "Start this category — the draw locks and its scoreboards open"}
+                            className="h-9 inline-flex items-center gap-1.5 px-4 rounded-lg text-sm font-black text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {startingKey === currentKey ? <Loader2 size={15} className="animate-spin" /> : <PlayCircle size={15} />} Start
                           </button>
                         )}
 
@@ -2692,6 +2744,7 @@ export default function TournamentDetailPage() {
                       key={currentKey}
                       rounds={currentDraw.rounds}
                       onOpenScoreboard={openScoreboard}
+                      onSwapFirstRound={currentDraw.saved && !currentDraw.startedAt && !currentDraw.isConcluded && canEditBracket(currentDraw.rounds) ? (a, b) => swapFirstRound(currentKey, currentDraw, a, b) : undefined}
                       players={filteredPlayers}
                       tournament={tournament}
                       currentKey={currentKey}
