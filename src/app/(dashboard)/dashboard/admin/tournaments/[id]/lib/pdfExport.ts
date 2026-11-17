@@ -161,6 +161,194 @@ function renderRepechageBracket(repRounds: BracketMatch[][], numberStart: number
   };
 }
 
+
+// ─── Mirrored ("both sides") draw sheet ───────────────────────────────────────
+// The bracket's top half runs left → centre and its bottom half runs right → centre, meeting at the
+// Final in the middle, so a whole category fits one landscape page (like the paper draw sheets).
+
+type MirrorDims = { row: number; boxW: number; boxH: number; gap: number; font: number; pos: number };
+const mirrorDims = (slotsPerSide: number): MirrorDims =>
+  slotsPerSide > 8
+    ? { row: 27, boxW: 150, boxH: 21, gap: 40, font: 8.5, pos: 22 }
+    : { row: 40, boxW: 180, boxH: 28, gap: 56, font: 10, pos: 26 };
+
+const slotBlank = (s: BracketSlot) => s.isBye || s.playerName === "TBD" || (!s.playerId && /^(Loser|Winner|Finalist)/.test(s.playerName));
+
+function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass = ""): string {
+  const blank = slot.isBye || slot.playerName === "TBD";
+  const placeholder = !blank && !slot.playerId;
+  return `
+    <div class="bx-box ${extraClass}" style="left:${x}px; top:${y}px; width:${d.boxW}px; height:${d.boxH}px; font-size:${d.font}px;">
+      ${blank ? "" : placeholder
+        ? `<span class="bx-ph">${slot.playerName}</span>`
+        : `${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
+           <span class="bx-name-wrap">
+             <span class="bx-name">${slot.playerName}</span>
+             ${slot.club ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
+           </span>`}
+    </div>`;
+}
+
+const winnerOf = (m: BracketMatch) =>
+  m.status === "COMPLETED" && m.winnerId ? (m.winnerId === m.slotA.playerId ? m.slotA : m.slotB) : null;
+
+function renderMirroredMainBracket(mainRounds: BracketMatch[][]): { html: string; width: number; height: number; matchCount: number; dims: MirrorDims } | null {
+  const F = mainRounds.length - 1; // index of the final round
+  if (F < 1 || mainRounds[0].length < 2) return null;
+  const perSide0 = mainRounds[0].length / 2; // first-round matches per side
+  const d = mirrorDims(perSide0 * 2);
+  const colW = d.boxW + d.gap;
+  const centreGap = 40;
+  const sideW = d.pos + F * colW + d.boxW;
+  const W = 2 * sideW + centreGap;
+
+  // Vertical centres per side (same for both): round 0 evenly spaced, later rounds midway between feeders.
+  const centres: number[][] = [];
+  centres[0] = Array.from({ length: perSide0 }, (_, j) => j * 2 * d.row + d.row);
+  for (let r = 1; r < F; r++) {
+    const n = mainRounds[r].length / 2;
+    centres[r] = Array.from({ length: n }, (_, j) => (centres[r - 1][2 * j] + centres[r - 1][2 * j + 1]) / 2);
+  }
+  const slotY = (r: number, j: number, which: 0 | 1) => (r === 0 ? (2 * j + which) * d.row : centres[r - 1][2 * j + which]);
+  const rootY = F >= 2 ? centres[F - 1][0] : centres[0][0];
+
+  let lines = "";
+  let boxes = "";
+  let num = 1;
+
+  const xLeft = (r: number) => d.pos + r * colW;
+  const xRight = (r: number) => W - d.pos - d.boxW - r * colW;
+
+  for (let r = 0; r < F; r++) {
+    const round = mainRounds[r];
+    const half = round.length / 2;
+    round.forEach((m, i) => {
+      const side = i < half ? 0 : 1;
+      const j = side === 0 ? i : i - half;
+      const x = side === 0 ? xLeft(r) : xRight(r);
+      const yA = slotY(r, j, 0);
+      const yB = slotY(r, j, 1);
+      boxes += mBox(m.slotA, x, yA, d) + mBox(m.slotB, x, yB, d);
+
+      if (r === 0) {
+        const pa = 2 * i + 1, pb = 2 * i + 2;
+        const gx = side === 0 ? 0 : W - d.pos + 2;
+        boxes += `<div class="bx-pos" style="left:${gx}px; top:${yA}px; width:${d.pos - 4}px; height:${d.boxH}px; font-size:${d.font}px;">${slotBlank(m.slotA) ? "" : pa}</div>`;
+        boxes += `<div class="bx-pos" style="left:${gx}px; top:${yB}px; width:${d.pos - 4}px; height:${d.boxH}px; font-size:${d.font}px;">${slotBlank(m.slotB) ? "" : pb}</div>`;
+      }
+
+      const a = yA + d.boxH / 2, b = yB + d.boxH / 2, cy = (a + b) / 2;
+      const edge = side === 0 ? x + d.boxW : x;
+      const mid = side === 0 ? edge + d.gap / 2 : edge - d.gap / 2;
+      const next = side === 0 ? x + colW : x - colW + d.boxW; // edge of the next column's box
+      lines += bxLine(edge, a, mid, a) + bxLine(edge, b, mid, b) + bxLine(mid, a, mid, b) + bxLine(mid, cy, next, cy);
+
+      // Winner written on the line only for real bouts — a bye winner already shows in the next box.
+      const w = m.slotA.isBye || m.slotB.isBye ? null : winnerOf(m);
+      if (side === 0) {
+        boxes += `<div class="bx-num" style="left:${edge + 2}px; top:${cy - 15}px; font-size:${d.font - 1}px;">${num}</div>`;
+        if (w && w.playerId) boxes += `<div class="bx-winline" style="left:${mid + 3}px; top:${cy - 13}px; width:${d.gap / 2 + 4}px; font-size:${d.font - 1}px;">${w.playerName}</div>`;
+      } else {
+        boxes += `<div class="bx-num" style="left:${edge - 16}px; top:${cy - 15}px; font-size:${d.font - 1}px;">${num}</div>`;
+        if (w && w.playerId) boxes += `<div class="bx-winline" style="left:${next + 1}px; top:${cy - 13}px; width:${d.gap / 2 + 4}px; text-align:right; font-size:${d.font - 1}px;">${w.playerName}</div>`;
+      }
+      num++;
+    });
+  }
+
+  // Final: left finalist box | right finalist box, joined in the centre, with the places underneath.
+  const fin = mainRounds[F][0];
+  const fy = rootY - d.boxH / 2 + (F === 1 ? 0 : 0);
+  const lfx = xLeft(F), rfx = xRight(F);
+  boxes += mBox(fin.slotA, lfx, fy, d, "bx-final") + mBox(fin.slotB, rfx, fy, d, "bx-final");
+  const fcy = fy + d.boxH / 2;
+  lines += bxLine(lfx + d.boxW, fcy, rfx, fcy);
+  const cx = W / 2;
+  boxes += `<div class="bx-final-tag" style="left:${cx - 30}px; width:60px; text-align:center; top:${fy - 20}px; font-size:${d.font + 2}px;">FINAL</div>`;
+  boxes += `<div class="bx-num" style="left:${cx - 6}px; top:${fcy - 14}px; font-size:${d.font - 1}px;">${num}</div>`;
+  num++;
+
+  const champ = winnerOf(fin);
+  const runnerUp = champ ? (champ === fin.slotA ? fin.slotB : fin.slotA) : null;
+  const placesTop = fy + d.boxH + 22;
+  lines += bxLine(cx, fcy, cx, placesTop);
+  const placeW = Math.min(d.boxW, 170);
+  const places: [string, string][] = [["1.", champ?.playerName ?? ""], ["2.", runnerUp?.playerName ?? ""], ["3.", ""], ["3.", ""]];
+  places.forEach(([label, name], k) => {
+    const y = placesTop + k * (d.boxH + 6);
+    boxes += `<div class="bx-place" style="left:${cx - placeW / 2 - 22}px; top:${y + 3}px; font-size:${d.font}px;">${label}</div>`;
+    boxes += `<div class="bx-box ${k === 0 ? "bx-final" : ""}" style="left:${cx - placeW / 2}px; top:${y}px; width:${placeW}px; height:${d.boxH}px; font-size:${d.font}px; justify-content:center;"><span class="bx-name">${name}</span></div>`;
+  });
+  let H = Math.max(perSide0 * 2 * d.row + d.boxH, placesTop + 4 * (d.boxH + 6));
+
+  // Straight elimination: the final round also carries the bronze match — draw it under the places.
+  const bronze = mainRounds[F].find((m) => m.matchId.startsWith("M_BRONZE_"));
+  if (bronze) {
+    const by = H + 26;
+    const bx = cx - d.boxW / 2;
+    boxes += `<div class="bx-final-tag" style="left:${cx - 50}px; width:100px; text-align:center; top:${by - 20}px; font-size:${d.font + 1}px;">BRONZE</div>`;
+    boxes += mBox(bronze.slotA, bx, by, d) + mBox(bronze.slotB, bx, by + d.row, d);
+    boxes += `<div class="bx-num" style="left:${bx + d.boxW + 4}px; top:${by + d.row / 2}px; font-size:${d.font - 1}px;">${num}</div>`;
+    num++;
+    H = by + d.row + d.boxH + 6;
+  }
+
+  return {
+    html: `<div class="bracket-canvas" style="width:${W}px; height:${H}px;"><svg width="${W}" height="${H}" class="bx-svg">${lines}</svg>${boxes}</div>`,
+    width: W,
+    height: H,
+    matchCount: num - 1,
+    dims: d,
+  };
+}
+
+/** Repechage under the main bracket, mirrored: side A on the left, side B on the right, bronze in the centre. */
+function renderMirroredRepechage(repRounds: BracketMatch[][], numberStart: number, width: number, d: MirrorDims): { html: string; height: number } | null {
+  if (repRounds.length !== 2) return null;
+  const [rep, bronzeRound] = repRounds;
+  const perCol = rep.length;
+  if (perCol < 1 || perCol > 2 || bronzeRound.length !== perCol) return null;
+
+  const colW = d.boxW + d.gap;
+  const W = width;
+  let lines = "";
+  let boxes = "";
+  let num = numberStart;
+
+  for (let side = 0; side < perCol; side++) {
+    const r = rep[side];
+    const br = bronzeRound[side];
+    const x0 = side === 0 ? d.pos : W - d.pos - d.boxW;
+    const x1 = side === 0 ? x0 + colW : x0 - colW;
+    const yA = 0, yB = d.row;
+    // Repechage match
+    boxes += mBox(r.slotA, x0, yA, d) + mBox(r.slotB, x0, yB, d);
+    const a = yA + d.boxH / 2, b = yB + d.boxH / 2, cy = (a + b) / 2;
+    const edge = side === 0 ? x0 + d.boxW : x0;
+    const mid = side === 0 ? edge + d.gap / 2 : edge - d.gap / 2;
+    const toBronze = side === 0 ? x1 : x1 + d.boxW;
+    lines += bxLine(edge, a, mid, a) + bxLine(edge, b, mid, b) + bxLine(mid, a, mid, b) + bxLine(mid, cy, toBronze, cy);
+    boxes += `<div class="bx-num" style="left:${side === 0 ? edge + 2 : edge - 16}px; top:${cy - 15}px; font-size:${d.font - 1}px;">${num++}</div>`;
+
+    // Bronze match: repechage winner (aligned with the repechage centre) vs the semi-final loser below.
+    const byA = cy - d.boxH / 2, byB = byA + 1.5 * d.row;
+    boxes += mBox(br.slotA, x1, byA, d) + mBox(br.slotB, x1, byB, d);
+    const a2 = byA + d.boxH / 2, b2 = byB + d.boxH / 2, cy2 = (a2 + b2) / 2;
+    const edge2 = side === 0 ? x1 + d.boxW : x1;
+    const mid2 = side === 0 ? edge2 + d.gap / 2 : edge2 - d.gap / 2;
+    lines += bxLine(edge2, a2, mid2, a2) + bxLine(edge2, b2, mid2, b2) + bxLine(mid2, a2, mid2, b2);
+    const tagX = side === 0 ? mid2 + 6 : mid2 - 96;
+    lines += bxLine(mid2, cy2, side === 0 ? mid2 + 4 : mid2 - 4, cy2);
+    const w = winnerOf(br);
+    boxes += `<div class="bx-num" style="left:${side === 0 ? edge2 + 2 : edge2 - 16}px; top:${cy2 - 15}px; font-size:${d.font - 1}px;">${num++}</div>`;
+    boxes += `<div class="bx-final-tag" style="left:${tagX}px; width:90px; top:${cy2 - 8}px; font-size:${d.font}px; text-align:${side === 0 ? "left" : "right"};">3rd place</div>`;
+    if (w && w.playerId) boxes += `<div class="bx-winline" style="left:${tagX}px; width:90px; top:${cy2 + 8}px; font-size:${d.font - 1}px; text-align:${side === 0 ? "left" : "right"};">${w.playerName}</div>`;
+  }
+
+  const H = 1.5 * d.row + d.row + d.boxH + 8;
+  return { html: `<div class="bracket-canvas" style="width:${W}px; height:${H}px;"><svg width="${W}" height="${H}" class="bx-svg">${lines}</svg>${boxes}</div>`, height: H };
+}
+
 const BX_STYLES = `
   .bracket-canvas { position: relative; margin: 0 auto 20px auto; }
   .bx-svg { position: absolute; top: 0; left: 0; overflow: visible; }
@@ -185,6 +373,8 @@ const BX_STYLES = `
   .bx-winline { position: absolute; font-size: 10px; font-weight: 900; color: #15803d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bx-final-tag { position: absolute; font-size: 12px; font-weight: 900; color: #0f172a; text-decoration: underline; }
   .bx-place { position: absolute; font-size: 10px; font-weight: 800; color: #334155; }
+  .bx-ph { color: #94a3b8; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bx-final { border-width: 2px; }
 `;
 
 export function printRegistrationSlip(player: RegisteredPlayer, tournament: Tournament | null) {
@@ -1708,8 +1898,12 @@ export function exportEliminationChartPDF(
   const mainRounds = draw.rounds.slice(0, mainCount);
   const repechageRounds = draw.rounds.slice(mainCount);
 
-  const mainTree = renderMainBracketTree(mainRounds);
-  const repTree = renderRepechageBracket(repechageRounds, mainTree.matchCount + 1);
+  // Both-sides layout (top half on the left, bottom half on the right, final in the centre) so the
+  // category fits one landscape page; the single-column layout is the fallback.
+  const mirrored = renderMirroredMainBracket(mainRounds);
+  const mainTree = mirrored ?? renderMainBracketTree(mainRounds);
+  const mirroredRep = mirrored ? renderMirroredRepechage(repechageRounds, mainTree.matchCount + 1, mirrored.width, mirrored.dims) : null;
+  const repTree = mirroredRep ?? renderRepechageBracket(repechageRounds, mainTree.matchCount + 1);
 
   const html = `
     <!DOCTYPE html>
@@ -1720,7 +1914,7 @@ export function exportEliminationChartPDF(
       <style>
         @page {
           size: A4 landscape;
-          margin: 10mm;
+          margin: 7mm;
         }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #fff; color: #0f172a; margin: 0; padding: 15px; }
@@ -1757,11 +1951,11 @@ export function exportEliminationChartPDF(
         .header-table {
           width: 100%;
           border-collapse: collapse;
-          margin-bottom: 15px;
+          margin-bottom: 8px;
           border: 2px solid #0f172a;
         }
         .header-table td {
-          padding: 10px 14px;
+          padding: 5px 10px;
           border: 1px solid #cbd5e1;
           vertical-align: middle;
         }
@@ -1773,13 +1967,13 @@ export function exportEliminationChartPDF(
         .podium-bar {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
-          margin-bottom: 20px;
+          gap: 10px;
+          margin-bottom: 8px;
         }
         .podium-box {
           border: 2px solid #0f172a;
           border-radius: 8px;
-          padding: 10px 14px;
+          padding: 4px 10px;
           text-align: center;
         }
         .podium-box.gold { background: #fffbeb; border-color: #d97706; }
@@ -1798,8 +1992,8 @@ export function exportEliminationChartPDF(
           text-transform: uppercase;
           color: #0f172a;
           border-bottom: 2px solid #0f172a;
-          padding-bottom: 6px;
-          margin: 24px 0 16px 0;
+          padding-bottom: 3px;
+          margin: 8px 0 10px 0;
           display: flex;
           align-items: center;
           gap: 8px;
@@ -1808,31 +2002,32 @@ export function exportEliminationChartPDF(
         .repechage-divider {
           border: none;
           border-top: 2px dashed #cbd5e1;
-          margin: 30px 0;
+          margin: 10px 0;
         }
         ${BX_STYLES}
 
         .signatures-section {
-          margin-top: 40px;
-          padding-top: 25px;
+          margin-top: 14px;
+          padding-top: 6px;
           border-top: 1px solid #cbd5e1;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 30px;
           text-align: center;
         }
+        .sheet { width: max-content; min-width: 100%; }
         .sig-line {
           border-top: 1px solid #0f172a;
           padding-top: 6px;
           font-size: 11px;
           font-weight: 800;
           color: #334155;
-          margin-top: 35px;
+          margin-top: 22px;
         }
         .footer-note {
-          margin-top: 25px;
+          margin-top: 6px;
           text-align: center;
-          font-size: 10px;
+          font-size: 9px;
           color: #94a3b8;
         }
       </style>
@@ -1846,6 +2041,7 @@ export function exportEliminationChartPDF(
         <button class="print-btn" onclick="window.print()">🖨️ Download / Save as PDF</button>
       </div>
 
+      <div class="sheet" id="sheet">
       <table class="header-table">
         <tr>
           <td style="width: 25%;">
@@ -1911,6 +2107,19 @@ export function exportEliminationChartPDF(
       <div class="footer-note">
         TNJA Tournament Management System — Generated on ${new Date().toLocaleString("en-IN")} — Official Competition Bracket Chart
       </div>
+      </div>
+      <script>
+        // Fit the whole sheet on one A4 landscape page (about 1065 × 740 CSS px inside 7 mm margins).
+        function fitSheet() {
+          var el = document.getElementById('sheet');
+          if (!el) return;
+          el.style.zoom = 1;
+          var z = Math.min(1, 1050 / el.scrollWidth, 725 / el.scrollHeight);
+          el.style.zoom = z;
+        }
+        fitSheet();
+        window.addEventListener('beforeprint', fitSheet);
+      </script>
     </body>
     </html>
   `;
