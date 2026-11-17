@@ -927,7 +927,9 @@ export default function TournamentDetailPage() {
         // no repechage round is added (its slots could never fill); the semi-final losers' bronze match
         // stands in for it and the draw is tagged with the chosen format.
         rounds = tagSmallRepechage(rounds, selectedMethod as "single-repechage" | "double-repechage");
-        drawNote = `${activePlayers.length} players: no quarter-finals, so the repechage is played as a bronze match between the semi-final losers.`;
+        drawNote = selectedMethod === "double-repechage"
+          ? `${activePlayers.length} players: no quarter-finals, so both semi-final losers take bronze (no bronze match).`
+          : `${activePlayers.length} players: no quarter-finals, so the repechage is one bronze match between the semi-final losers.`;
       } else if (wantsRepechage) {
         // Repechage + bronze rounds come from the shared builder, so an edited draw rebuilds identically.
         rounds = appendRepechageRounds(rounds, selectedMethod === "double-repechage" ? "double" : "single");

@@ -490,18 +490,27 @@ export function appendRepechageRounds(main: BracketMatch[][], kind: RepechageKin
 
 /**
  * A 3–4 player bracket has no quarter-final, so a repechage format can't add a repechage round.
- * It is played as the main bracket plus the semi-final losers' bronze match, tagged with the
- * chosen format so the draw keeps its name (and keeps it when edited).
+ * Double repechage: both semi-final losers get bronze (no bronze match). Single repechage: one
+ * bronze match between the semi-final losers. Tagged with the chosen format so the draw keeps
+ * its name (and keeps it when edited).
  */
 export function tagSmallRepechage(rounds: BracketMatch[][], method: "single-repechage" | "double-repechage"): BracketMatch[][] {
   if (!rounds[0]?.[0]) return rounds;
   const copy = rounds.map((r) => [...r]);
   copy[0][0] = { ...copy[0][0], formatHint: method };
 
-  // Semi-finals that are byes produce no loser: mark that side of the bronze match as a BYE so the
-  // other semi-final's loser takes bronze by walkover instead of waiting on "TBD" forever.
   const last = copy.length - 1;
   const bronzeIdx = copy[last].findIndex((m) => m.matchId.startsWith("M_BRONZE_"));
+
+  // Double repechage awards two bronze medals: with no quarter-finals, both semi-final losers take
+  // 3rd place directly, so there is no bronze match (placements treat a bracket without one that way).
+  if (method === "double-repechage") {
+    if (bronzeIdx >= 0) copy[last] = copy[last].filter((_, i) => i !== bronzeIdx);
+    return copy;
+  }
+
+  // Single repechage: one bronze match between the semi-final losers. A semi-final that is a bye
+  // produces no loser, so that side is a BYE and the other loser takes bronze by walkover.
   if (copy.length === 2 && bronzeIdx >= 0) {
     const bronze = { ...copy[last][bronzeIdx] };
     copy[0].forEach((semi, mi) => {
