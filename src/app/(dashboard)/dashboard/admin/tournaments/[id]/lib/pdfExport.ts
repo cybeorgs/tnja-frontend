@@ -363,12 +363,14 @@ function renderMirroredRepechage(repRounds: BracketMatch[][], numberStart: numbe
     const edge2 = side === 0 ? x1 + d.boxW : x1;
     const mid2 = side === 0 ? edge2 + d.gap / 2 : edge2 - d.gap / 2;
     lines += bxLine(edge2, a2, mid2, a2) + bxLine(edge2, b2, mid2, b2) + bxLine(mid2, a2, mid2, b2);
-    const tagX = side === 0 ? mid2 + 6 : mid2 - 96;
-    lines += bxLine(mid2, cy2, side === 0 ? mid2 + 4 : mid2 - 4, cy2);
+    // 3rd place: a box in the next column, fed by the bronze match, holding its winner once decided.
+    const x2 = side === 0 ? x1 + colW : x1 - colW;
+    const placeY = cy2 - d.boxH / 2;
+    lines += bxLine(mid2, cy2, side === 0 ? x2 : x2 + d.boxW, cy2);
     const w = winnerOf(br);
     boxes += `<div class="bx-num" style="left:${side === 0 ? edge2 + 2 : edge2 - 16}px; top:${cy2 - 15}px; font-size:${d.font - 1}px;">${num++}</div>`;
-    boxes += `<div class="bx-final-tag" style="left:${tagX}px; width:90px; top:${cy2 - 8}px; font-size:${d.font}px; text-align:${side === 0 ? "left" : "right"};">3rd place</div>`;
-    if (w && w.playerId) boxes += `<div class="bx-winline" style="left:${tagX}px; width:90px; top:${cy2 + 8}px; font-size:${d.font - 1}px; text-align:${side === 0 ? "left" : "right"};">${w.playerName}</div>`;
+    boxes += `<div class="bx-final-tag" style="left:${x2}px; width:${d.boxW}px; top:${placeY - d.font - 8}px; font-size:${d.font}px; text-align:center;">3rd place</div>`;
+    boxes += mBox(w && w.playerId ? w : { playerId: null, playerName: "TBD", club: "", isBye: false }, x2, placeY, d, "bx-final");
   }
 
   const H = 1.5 * d.row + d.row + d.boxH + 8;
