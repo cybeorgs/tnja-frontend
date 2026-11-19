@@ -3,10 +3,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useSearchParams } from "next/navigation";
-import { Loader2, Minus, Plus, Trophy, Users, Grid3x3, AlertCircle, Play, SkipForward } from "lucide-react";
+import { Loader2, Minus, Plus, Trophy, Users, Grid3x3, AlertCircle, Play, SkipForward, Printer } from "lucide-react";
 import type { DrawCategory, RegisteredPlayer, Tournament } from "../types";
 import { backfillBronzeMatches, processByeMatches, getEliminationFormatLabel, isDrawRoundRobin } from "../lib/bracketEngine";
 import { BracketView, RoundRobinLeaderboard } from "../components/BracketView";
+import { ContestSheet, contestSheetWidth } from "../components/ContestSheet";
 import { TNJA_LOGO } from "@/constants/brand";
 import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
@@ -43,11 +44,13 @@ function DrawViewInner() {
   const sp = useSearchParams();
   const tournamentId = params?.id as string;
   const want = { age: sp.get("age") || "", gender: sp.get("gender") || "", weight: sp.get("weight") || "" };
+  /** Opened from "Print sheet": skip the ceremony and open the print dialog once loaded. */
+  const printMode = sp.get("print") === "1";
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [draws, setDraws] = useState<DrawCategory[] | null>(null);
   const [error, setError] = useState("");
-  const [zoom, setZoom] = useState(1.25);
+  const [zoom, setZoom] = useState(1);
   const [reps, setReps] = useState<Record<string, Representation>>({});
 
   const load = useCallback(async () => {
@@ -120,10 +123,19 @@ function DrawViewInner() {
 
   // Play once when the draw first loads (not on the 10s live refresh)
   useEffect(() => {
-    if (!catKey) return;
+    if (!catKey || printMode) return;
     const t = setTimeout(startCeremony, 400);
     return () => clearTimeout(t);
-  }, [catKey, startCeremony]);
+  }, [catKey, startCeremony, printMode]);
+
+  // Print once, as soon as the draw is on screen
+  const printedRef = useRef(false);
+  useEffect(() => {
+    if (!printMode || !catKey || printedRef.current) return;
+    printedRef.current = true;
+    const t = setTimeout(() => window.print(), 700);
+    return () => clearTimeout(t);
+  }, [printMode, catKey]);
 
   // Advance one name at a time; clear the ceremony a moment after the last one lands
   useEffect(() => {
@@ -148,13 +160,29 @@ function DrawViewInner() {
   const latestFrom = latestRep ? `[${latestRep.code}] ${latestRep.name}` : latestSlot?.club || "";
 
   const isRR = draw ? isDrawRoundRobin(draw) : false;
+  const printZoom = draw && !isRR ? Math.min(1, 1040 / contestSheetWidth(draw.rounds)).toFixed(3) : "1";
   const title = draw
     ? `${titleCase(draw.ageGroup)} · ${genderLabel(draw.gender)} · ${fmtKg(draw.weightCategory)}`
     : [titleCase(want.age), want.gender && genderLabel(want.gender), fmtKg(want.weight)].filter(Boolean).join(" · ");
   const drawKey = draw ? `${draw.ageGroup}-${draw.gender}-${draw.weightCategory}` : "";
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-slate-100 overflow-y-auto text-slate-900">
+    <div className="draw-print-root fixed inset-0 z-[9999] bg-slate-100 overflow-y-auto text-slate-900" style={{ ["--print-zoom" as string]: printZoom }}>
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 8mm; }
+          body * { visibility: hidden !important; }
+          .draw-print-root, .draw-print-root * { visibility: visible !important; }
+          .draw-print-root { position: absolute !important; left: 0 !important; top: 0 !important; right: auto !important; bottom: auto !important;
+            width: 100% !important; overflow: visible !important; background: #fff !important; }
+          .draw-print-root header { position: static !important; box-shadow: none !important; }
+          .draw-print-root .print-hide { display: none !important; }
+          .draw-print-root .print-flat { border: 0 !important; padding: 0 !important; overflow: visible !important; }
+          .draw-print-root .print-zoom { zoom: var(--print-zoom) !important; }
+          .draw-print-root main { padding: 0 !important; }
+          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
       {/* ── Header: the selected draw + controls; the ceremony spotlight docks here so it is always in view ── */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -176,13 +204,19 @@ function DrawViewInner() {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="print-hide flex items-center gap-3">
+            {draw && !isRR && (
+              <button onClick={() => { setAnim(null); setTimeout(() => window.print(), 50); }} title="Print the contest sheet (one landscape page)"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600 hover:bg-slate-50">
+                <Printer size={15} /> Print
+              </button>
+            )}
             <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live
             </span>
             <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-1" aria-label="Zoom">
               <button onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.15).toFixed(2)))} className="p-1.5 rounded-md hover:bg-white text-slate-600" aria-label="Zoom out"><Minus size={14} /></button>
-              <button onClick={() => setZoom(1.25)} className="px-1 text-xs font-black text-slate-700 tabular-nums w-11" title="Reset zoom">{Math.round(zoom * 100)}%</button>
+              <button onClick={() => setZoom(1)} className="px-1 text-xs font-black text-slate-700 tabular-nums w-11" title="Reset zoom">{Math.round(zoom * 100)}%</button>
               <button onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)))} className="p-1.5 rounded-md hover:bg-white text-slate-600" aria-label="Zoom in"><Plus size={14} /></button>
             </div>
             {draw && (anim ? (
@@ -199,7 +233,7 @@ function DrawViewInner() {
 
         {/* Spotlight: the name being drawn right now */}
         <AnimatePresence>
-          {anim && draw && (
+          {anim && draw && !printMode && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
@@ -260,10 +294,12 @@ function DrawViewInner() {
             <p className="text-sm text-slate-500">It may not be generated yet. Open it again from the tournament&apos;s Draw Generation tab.</p>
           </div>
         ) : (
-          <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <div className="p-4 sm:p-6 overflow-x-auto">
-              <div style={{ zoom }}>
-                <BracketView hideHeader rounds={draw.rounds} players={players} tournament={tournament} currentKey={drawKey} currentDraw={draw} reveal={reveal} />
+          <section className="print-flat bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="print-flat p-4 sm:p-6 overflow-x-auto">
+              <div style={{ zoom }} className="print-zoom">
+                {isRR
+                  ? <BracketView hideHeader rounds={draw.rounds} players={players} tournament={tournament} currentKey={drawKey} currentDraw={draw} reveal={reveal} />
+                  : <ContestSheet rounds={draw.rounds} players={players} reveal={reveal} />}
               </div>
             </div>
             {isRR && !anim && (

@@ -29,6 +29,7 @@ import { DisqualifyTab } from "./components/DisqualifyTab";
 import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
 import { CertificateTab } from "./components/CertificateTab";
+import { ContestSheet } from "./components/ContestSheet";
 import { BestPerformanceTab } from "./components/BestPerformanceTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
@@ -834,7 +835,7 @@ export default function TournamentDetailPage() {
     }
   };
   const isCurrentRoundRobin = !!currentDraw?.rounds[0]?.[0]?.matchId.startsWith("rr_");
-  const effectiveViewMode: ViewMode = viewMode === "leaderboard" && !isCurrentRoundRobin ? "bracket" : viewMode;
+  const effectiveViewMode: ViewMode = (viewMode === "leaderboard" && !isCurrentRoundRobin) || (viewMode === "sheet" && isCurrentRoundRobin) ? "bracket" : viewMode;
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const handleAssignSeed = (seedNum: 1 | 2 | 3 | 4, player: RegisteredPlayer) => {
@@ -1006,8 +1007,8 @@ export default function TournamentDetailPage() {
 
 
   /** Open a category's draw on its own view-only page in a new browser tab. */
-  const openDrawView = (d: DrawCategory) => {
-    const q = new URLSearchParams({ age: d.ageGroup, gender: d.gender, weight: d.weightCategory });
+  const openDrawView = (d: DrawCategory, print = false) => {
+    const q = new URLSearchParams({ age: d.ageGroup, gender: d.gender, weight: d.weightCategory, ...(print && { print: "1" }) });
     window.open(`/dashboard/admin/tournaments/${tournamentId}/draw-view?${q.toString()}`, "_blank", "noopener");
   };
 
@@ -2320,12 +2321,12 @@ export default function TournamentDetailPage() {
                         {draw?.generated && (() => {
                           const isCatRoundRobin = !!draw.rounds[0]?.[0]?.matchId.startsWith("rr_");
                           const catViewMode: ViewMode = categoryViewMode[key] || "bracket";
-                          const effectiveCatViewMode: ViewMode = catViewMode === "leaderboard" && !isCatRoundRobin ? "bracket" : catViewMode;
+                          const effectiveCatViewMode: ViewMode = (catViewMode === "leaderboard" && !isCatRoundRobin) || (catViewMode === "sheet" && isCatRoundRobin) ? "bracket" : catViewMode;
                           return (
                           <div className="border-t border-slate-50">
                             <div className="flex items-center justify-between px-5 pt-4">
                               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                {effectiveCatViewMode === "bracket" ? "Bracket" : effectiveCatViewMode === "list" ? "Match List" : "Leaderboard"}
+                                {effectiveCatViewMode === "bracket" ? "Bracket" : effectiveCatViewMode === "sheet" ? "Contest Sheet" : effectiveCatViewMode === "list" ? "Match List" : "Leaderboard"}
                               </h4>
                               <div className="flex items-center gap-2">
                                 {draw.saved && !draw.startedAt && !draw.isConcluded && canEditBracket(draw.rounds) && (
@@ -2354,10 +2355,11 @@ export default function TournamentDetailPage() {
                                   <Printer size={16} />
                                 </button>
                                 <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
-                                  {(isCatRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "list"] as ViewMode[])).map((v) => (
+                                  {(isCatRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "sheet", "list"] as ViewMode[])).map((v) => (
                                     <button key={v} onClick={() => setCategoryViewMode(prev => ({ ...prev, [key]: v }))}
                                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${effectiveCatViewMode === v ? "bg-white text-[#FF7400] shadow-sm" : "text-slate-400"}`}>
                                       {v === "bracket" ? <><Grid size={12} className="inline mr-1" />Bracket</>
+                                        : v === "sheet" ? <><LayoutList size={12} className="inline mr-1" />Sheet</>
                                         : v === "list" ? <><List size={12} className="inline mr-1" />List</>
                                         : <><BarChart3 size={12} className="inline mr-1" />Leaderboard</>}
                                     </button>
@@ -2376,6 +2378,12 @@ export default function TournamentDetailPage() {
                                 currentKey={key}
                                 currentDraw={draw}
                               />
+                            </div>
+                            ) : effectiveCatViewMode === "sheet" ? (
+                            /* Contest Sheet View */
+                            <div className="p-5 pb-8 bg-white">
+                              <SheetPrintBar onPrint={() => openDrawView(draw, true)} />
+                              <ContestSheet rounds={draw.rounds} players={catDrawPlayers} />
                             </div>
                             ) : effectiveCatViewMode === "bracket" ? (
                             /* Bracket View */
@@ -2629,13 +2637,13 @@ export default function TournamentDetailPage() {
                               <Printer size={16} />
                             </button>
                             <div className="flex gap-0.5 bg-slate-100 p-0.5 rounded-lg ml-1">
-                              {(isCurrentRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "list"] as ViewMode[])).map((v) => (
+                              {(isCurrentRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "sheet", "list"] as ViewMode[])).map((v) => (
                                 <button
                                   key={v}
                                   onClick={() => setViewMode(v)}
                                   className={`h-8 px-3 rounded-md text-xs font-bold inline-flex items-center gap-1 transition-colors ${effectiveViewMode === v ? "bg-white text-[#FF7400] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                                 >
-                                  {v === "bracket" ? <><Grid size={12} />Bracket</> : v === "list" ? <><List size={12} />List</> : <><BarChart3 size={12} />Standings</>}
+                                  {v === "bracket" ? <><Grid size={12} />Bracket</> : v === "sheet" ? <><LayoutList size={12} />Sheet</> : v === "list" ? <><List size={12} />List</> : <><BarChart3 size={12} />Standings</>}
                                 </button>
                               ))}
                             </div>
@@ -2703,6 +2711,11 @@ export default function TournamentDetailPage() {
                       currentKey={currentKey}
                       currentDraw={currentDraw}
                     />
+                  </div>
+                ) : effectiveViewMode === "sheet" ? (
+                  <div className="p-5 pb-8 bg-white">
+                    <SheetPrintBar onPrint={() => openDrawView(currentDraw, true)} />
+                    <ContestSheet rounds={currentDraw.rounds} players={filteredPlayers} />
                   </div>
                 ) : effectiveViewMode === "list" ? (
                   <div className="p-5">
@@ -3906,6 +3919,20 @@ export default function TournamentDetailPage() {
         />
       )}
 
+    </div>
+  );
+}
+
+/** Above the contest sheet: prints it on one landscape page (via the draw's view page). */
+function SheetPrintBar({ onPrint }: { onPrint: () => void }) {
+  return (
+    <div className="flex justify-end mb-3">
+      <button
+        onClick={onPrint}
+        className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
+      >
+        <Printer size={14} /> Print sheet
+      </button>
     </div>
   );
 }
