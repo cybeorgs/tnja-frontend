@@ -1904,6 +1904,21 @@ export function exportEliminationChartPDF(
   const mainTree = mirrored ?? renderMainBracketTree(mainRounds);
   const mirroredRep = mirrored ? renderMirroredRepechage(repechageRounds, mainTree.matchCount + 1, mirrored.width, mirrored.dims) : null;
   const repTree = mirroredRep ?? renderRepechageBracket(repechageRounds, mainTree.matchCount + 1);
+  // Portrait page: the classic one-direction bracket, which is tall rather than wide.
+  const portraitTree = renderMainBracketTree(mainRounds);
+  const portraitRep = renderRepechageBracket(repechageRounds, portraitTree.matchCount + 1);
+  const bracketSections = (main: string, rep: string) => `
+      <div class="section-header">
+        <span>🏆</span> MAIN CHAMPIONSHIP BRACKET (${formatLabel})
+      </div>
+      <div class="canvas-wrap">${main}</div>
+      ${repechageRounds.length > 0 ? `
+        <hr class="repechage-divider" />
+        <div class="section-header">
+          <span>🛡️</span> REPECHAGE & BRONZE MEDAL BRACKET
+        </div>
+        <div class="canvas-wrap">${rep}</div>
+      ` : ''}`;
 
   const html = `
     <!DOCTYPE html>
@@ -1911,11 +1926,9 @@ export function exportEliminationChartPDF(
     <head>
       <meta charset="UTF-8">
       <title>TNJA_Bracket_Chart_${catLabel.replace(/[^a-zA-Z0-9]/g, "_")}</title>
+      <style id="page-size">@page { size: A4 landscape; margin: 7mm; }</style>
       <style>
-        @page {
-          size: A4 landscape;
-          margin: 7mm;
-        }
+
         * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #fff; color: #0f172a; margin: 0; padding: 15px; }
         
@@ -2015,7 +2028,13 @@ export function exportEliminationChartPDF(
           gap: 30px;
           text-align: center;
         }
-        .sheet { width: max-content; min-width: 100%; }
+        .sheet { margin: 0 auto; background: #fff; }
+        .canvas-wrap { display: flex; justify-content: center; }
+        body[data-orient="landscape"] .view-portrait, body[data-orient="portrait"] .view-landscape { display: none; }
+        .orient { display: inline-flex; gap: 4px; background: #1e293b; padding: 4px; border-radius: 9px; margin-right: 10px; }
+        .orient button { border: 0; background: transparent; color: #cbd5e1; font-weight: 800; font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+        .orient button.on { background: #fff; color: #0f172a; }
+        @media screen { .sheet { box-shadow: 0 0 0 1px #e2e8f0, 0 6px 24px rgba(15,23,42,.08); padding: 10px; } }
         .sig-line {
           border-top: 1px solid #0f172a;
           padding-top: 6px;
@@ -2032,13 +2051,19 @@ export function exportEliminationChartPDF(
         }
       </style>
     </head>
-    <body>
+    <body data-orient="landscape">
       <div class="no-print">
         <div>
           <span class="banner-title">✨ Official TNJA Visual Competition Bracket Chart</span>
           <span class="banner-subtitle">Click "Save as PDF" in your browser's print dialog to download this official chart as a PDF file.</span>
         </div>
-        <button class="print-btn" onclick="window.print()">🖨️ Download / Save as PDF</button>
+        <div style="display:flex; align-items:center;">
+          <div class="orient" role="radiogroup" aria-label="Page orientation">
+            <button type="button" data-o="landscape" class="on" onclick="setOrient('landscape')">▭ Landscape</button>
+            <button type="button" data-o="portrait" onclick="setOrient('portrait')">▯ Portrait</button>
+          </div>
+          <button class="print-btn" onclick="window.print()">🖨️ Download / Save as PDF</button>
+        </div>
       </div>
 
       <div class="sheet" id="sheet">
@@ -2079,18 +2104,8 @@ export function exportEliminationChartPDF(
         </div>
       </div>
 
-      <div class="section-header">
-        <span>🏆</span> MAIN CHAMPIONSHIP BRACKET (${formatLabel})
-      </div>
-      ${mainTree.html}
-
-      ${repechageRounds.length > 0 ? `
-        <hr class="repechage-divider" />
-        <div class="section-header">
-          <span>🛡️</span> REPECHAGE & BRONZE MEDAL BRACKET
-        </div>
-        ${repTree.html}
-      ` : ''}
+      <div class="view view-landscape">${bracketSections(mainTree.html, repTree.html)}</div>
+      <div class="view view-portrait">${bracketSections(portraitTree.html, portraitRep.html)}</div>
 
       <div class="signatures-section">
         <div>
@@ -2109,15 +2124,39 @@ export function exportEliminationChartPDF(
       </div>
       </div>
       <script>
-        // Fit the whole sheet on one A4 landscape page (about 1065 × 740 CSS px inside 7 mm margins).
+        // A4 inside 7 mm margins is about 1065 × 740 CSS px (landscape) or 740 × 1065 (portrait).
+        var PAGE = { landscape: [1050, 725], portrait: [728, 1050] };
+        var orient = 'landscape';
+        try { orient = localStorage.getItem('tnjaChartOrient') === 'portrait' ? 'portrait' : 'landscape'; } catch (e) {}
+
+        // The sheet is laid out at the page width; the bracket is then enlarged to fill that width
+        // (so it uses the page instead of sitting small in the middle), and only if the whole sheet
+        // is then taller than the page is everything shrunk to fit one page.
         function fitSheet() {
           var el = document.getElementById('sheet');
           if (!el) return;
+          var pw = PAGE[orient][0], ph = PAGE[orient][1];
           el.style.zoom = 1;
-          var z = Math.min(1, 1050 / el.scrollWidth, 725 / el.scrollHeight);
+          el.style.width = pw + 'px';
+          var canvases = el.querySelectorAll('.view-' + orient + ' .bracket-canvas');
+          var widest = 0;
+          canvases.forEach(function (c) { c.style.zoom = 1; widest = Math.max(widest, c.offsetWidth); });
+          var up = widest ? Math.min(1.8, (pw - 20) / widest) : 1;
+          canvases.forEach(function (c) { c.style.zoom = up; });
+          var z = Math.min(1, ph / el.scrollHeight);
           el.style.zoom = z;
         }
-        fitSheet();
+
+        function setOrient(o) {
+          orient = o;
+          document.body.setAttribute('data-orient', o);
+          document.getElementById('page-size').textContent = '@page { size: A4 ' + o + '; margin: 7mm; }';
+          document.querySelectorAll('.orient button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-o') === o); });
+          try { localStorage.setItem('tnjaChartOrient', o); } catch (e) {}
+          fitSheet();
+        }
+
+        setOrient(orient);
         window.addEventListener('beforeprint', fitSheet);
       </script>
     </body>
