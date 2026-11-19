@@ -275,7 +275,9 @@ export function getByeMatchOrder(M: number): number[] {
     add(i);
   }
 
-  return order;
+  // The association wants the opening match to be a real fight, so match 1 takes a bye last.
+  // A bracket always has fewer byes than first-round matches, so in practice it never gets one.
+  return M > 1 ? [...order.filter((i) => i !== 0), 0] : order;
 }
 
 // ─── IJF Bracket Generator ────────────────────────────────────────────────────

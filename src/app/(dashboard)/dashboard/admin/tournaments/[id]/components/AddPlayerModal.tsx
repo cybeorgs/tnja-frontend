@@ -203,7 +203,7 @@ export function AddPlayerModal({
 
   return createPortal(
     <div className="tnja-dashboard fixed inset-0 w-screen h-screen bg-slate-900/70 z-[999999] flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl flex flex-col max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl flex flex-col h-[min(88vh,820px)] overflow-hidden">
 
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
@@ -271,7 +271,7 @@ export function AddPlayerModal({
                   {searching && <Loader2 size={17} className="animate-spin absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />}
                 </div>
                 {dropdownOpen && (
-                  <div className="absolute z-10 top-[calc(100%+6px)] left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+                  <div className="absolute z-10 top-[calc(100%+6px)] left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[min(55vh,480px)] overflow-y-auto">
                     {results.length === 0 ? (
                       <div className="px-4 py-3.5 text-[13px] font-bold text-slate-400">
                         {searching ? "Searching…" : `No player matches "${query}"`}
