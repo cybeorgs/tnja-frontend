@@ -1001,6 +1001,12 @@ export default function TournamentDetailPage() {
 
 
 
+  /** Open a category's draw on its own view-only page in a new browser tab. */
+  const openDrawView = (d: DrawCategory) => {
+    const q = new URLSearchParams({ age: d.ageGroup, gender: d.gender, weight: d.weightCategory });
+    window.open(`/dashboard/admin/tournaments/${tournamentId}/draw-view?${q.toString()}`, "_blank", "noopener");
+  };
+
   const openScoreboard = (match: BracketMatch) => {
     const owner = Object.values(draws).find((d) => d.rounds.some((r) => r.some((m) => m.matchId === match.matchId)));
     if (owner && !owner.startedAt) {
@@ -2238,6 +2244,15 @@ export default function TournamentDetailPage() {
                                   ? <><Trophy size={13} /> {draw?.generated ? "Winner Declared" : "Direct Win"}</>
                                   : <><Shuffle size={13} /> {draw?.generated ? "Shuffle Bracket" : "Generate Draw"}</>}
                               </button>
+                              {draw?.generated && (
+                                <button
+                                  onClick={() => openDrawView(draw)}
+                                  title="Open this draw in a new tab, view only"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#FF7400] text-[#FF7400] rounded-lg font-bold text-xs hover:bg-orange-50 transition-colors"
+                                >
+                                  <Eye size={13} /> View Draw ↗
+                                </button>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Assign:</span>
@@ -2593,6 +2608,13 @@ export default function TournamentDetailPage() {
                         {/* Output + view */}
                         {generated && currentDraw && (
                           <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
+                            <button
+                              onClick={() => openDrawView(currentDraw)}
+                              title="Open this draw in a new tab, view only"
+                              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-[#FF7400] text-[#FF7400] text-xs font-bold hover:bg-orange-50 transition-colors"
+                            >
+                              <Eye size={14} /> View Draw ↗
+                            </button>
                             <button
                               onClick={() => exportCategoryChartPDF(tournament, currentKey, currentDraw, filteredPlayers)}
                               title="Download bracket chart (PDF)"

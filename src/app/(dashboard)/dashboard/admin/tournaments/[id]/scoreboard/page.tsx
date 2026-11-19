@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, StopCircle, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
+import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
 
 interface Score { ippon: number; wazaAri: number; yuko: number; shido: number; awaseteIppon?: boolean }
 type Fighter = "A" | "B";
@@ -1042,8 +1042,8 @@ function ScoreboardInner() {
               <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); }} className="bg-[#f1c40f] hover:bg-[#d4ac0d] text-black pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(241,196,15,0.3)]">
                 <PauseCircle size={16} strokeWidth={2.5}/> PAUSE
               </button>
-              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); setTimeLeft(0); }} className="bg-[#e74c3c] hover:bg-[#c0392b] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(231,76,60,0.3)]">
-                <StopCircle size={16} strokeWidth={2.5}/> STOP
+              <button onClick={handleResetClick} title="Reset the match (asks for a reason)" className="bg-[#e74c3c] hover:bg-[#c0392b] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(231,76,60,0.3)]">
+                <RotateCcw size={16} strokeWidth={2.5}/> RESET
               </button>
             </div>
           </div>

@@ -29,9 +29,14 @@ export function BracketView({
   currentKey,
   currentDraw,
   onSwapFirstRound,
+  reveal,
 }: {
   rounds: BracketMatch[][];
-  onOpenScoreboard: (match: BracketMatch) => void;
+  /** Draw-ceremony mode: only the first-round places in `shown` show their name (BYEs always show);
+   *  `latest` is animated dropping into its box. Later rounds and results stay hidden meanwhile. */
+  reveal?: { shown: Set<number>; latest: number | null } | null;
+  /** Omit for a view-only bracket (no Scoreboard buttons). */
+  onOpenScoreboard?: (match: BracketMatch) => void;
   /** When given, first-round places can be dragged onto each other to swap them (BYEs included).
    *  Places are numbered match 1 A = 0, match 1 B = 1, match 2 A = 2, … */
   onSwapFirstRound?: (from: number, to: number) => void;
@@ -100,6 +105,56 @@ export function BracketView({
 
   const weightGroups = Array.from(new Set(players.map(p => p.weight))).sort((a, b) => a - b);
 
+  // ── Draw-ceremony reveal ──
+  const revealing = !!reveal;
+  const isHidden = (ri: number, place: number, slot: BracketMatch["slotA"]) =>
+    revealing && !slot.isBye && (ri > 0 || !reveal!.shown.has(place));
+  const isLatest = (ri: number, place: number) => revealing && ri === 0 && reveal!.latest === place;
+  /** Players already drawn into a box (the rest are still "in the pot"). */
+  const drawnIds = new Set<string>();
+  if (revealing) {
+    rounds[0].forEach((m, mi) => {
+      if (reveal!.shown.has(mi * 2) && m.slotA.playerId) drawnIds.add(m.slotA.playerId);
+      if (reveal!.shown.has(mi * 2 + 1) && m.slotB.playerId) drawnIds.add(m.slotB.playerId);
+    });
+  }
+
+  /** One player line inside a match box. */
+  const slotContent = (ri: number, place: number, slot: BracketMatch["slotA"], isWinner: boolean) => {
+    if (isHidden(ri, place, slot)) {
+      return <span className="h-2.5 w-28 rounded-full bg-slate-100" aria-hidden />;
+    }
+    const inner = (
+      <>
+        {slot.seedNumber && (
+          <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
+            {slot.seedNumber}
+          </span>
+        )}
+        {!slot.isBye && slot.club && (
+          <span className="shrink-0 text-[9px] font-black text-blue-600">[{clubCode(slot.club)}]</span>
+        )}
+        <span className={`text-[11px] font-bold truncate leading-tight ${slot.isBye ? "text-slate-300 italic" : isWinner ? "text-emerald-700" : "text-slate-800"}`}>
+          {slot.playerName}
+        </span>
+        {isWinner && <span className="ml-auto text-emerald-500 text-[9px] shrink-0">✓</span>}
+      </>
+    );
+    if (!isLatest(ri, place)) return inner;
+    return (
+      <motion.span
+        key={`drop-${place}`}
+        initial={{ opacity: 0, y: -26, scale: 1.7 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: "spring", stiffness: 320, damping: 18 }}
+        className="flex items-center gap-1.5 min-w-0 origin-left"
+      >
+        {inner}
+      </motion.span>
+    );
+  };
+  const latestRowCls = (ri: number, place: number) => (isLatest(ri, place) ? " ring-2 ring-inset ring-[#FF7400] bg-orange-50" : "");
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100">
@@ -134,7 +189,7 @@ export function BracketView({
               </p>
               <div className="space-y-1">
                 {wPlayers.map((p) => (
-                  <div key={p.id} className="flex items-center gap-2 py-1">
+                  <div key={p.id} className={`flex items-center gap-2 py-1 transition-opacity duration-500 ${revealing && !drawnIds.has(p.id) ? "opacity-25" : ""}`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black text-white ${p.gender === "FEMALE" ? "bg-pink-400" : "bg-blue-500"}`}>
                       {p.name.charAt(0)}
                     </div>
@@ -224,7 +279,7 @@ export function BracketView({
               {!isRoundRobin && (() => {
                 if (mainRoundsCount === 0) return null;
                 const finalMatch = rounds[mainRoundsCount - 1][0];
-                if (finalMatch && finalMatch.status === "COMPLETED" && finalMatch.winnerId) {
+                if (!revealing && finalMatch && finalMatch.status === "COMPLETED" && finalMatch.winnerId) {
                   const xBase = (mainRoundsCount - 1) * (MATCH_W + CONN_W) + MATCH_W;
                   const y1 = mCenterY(mainRoundsCount - 1, 0);
                   return (
@@ -249,8 +304,8 @@ export function BracketView({
                   top = mTop(ri, 0) + MATCH_H + 40; // 40px gap
                 }
 
-                const isWinnerA = match.winnerId && match.winnerId === match.slotA.playerId;
-                const isWinnerB = match.winnerId && match.winnerId === match.slotB.playerId;
+                const isWinnerA = !revealing && match.winnerId && match.winnerId === match.slotA.playerId;
+                const isWinnerB = !revealing && match.winnerId && match.winnerId === match.slotB.playerId;
                 const staggerDelay = ri * 0.18 + mi * 0.07;
 
                 return (
@@ -270,45 +325,23 @@ export function BracketView({
                       </div>
                     )}
                     {/* Player A row */}
-                    <div {...dnd(ri, mi * 2)} title={canDrag && ri === 0 ? "Drag onto another place to swap" : undefined} className={`flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 min-h-[34px] ${match.slotA.isBye && dragOver !== mi * 2 ? "opacity-25" : ""} ${isWinnerA ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors${dndCls(ri, mi * 2)}`}>
+                    <div {...dnd(ri, mi * 2)} title={canDrag && ri === 0 ? "Drag onto another place to swap" : undefined} className={`flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 min-h-[34px] ${match.slotA.isBye && dragOver !== mi * 2 ? "opacity-25" : ""} ${isWinnerA ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors${dndCls(ri, mi * 2)}${latestRowCls(ri, mi * 2)}`}>
                       {canDrag && ri === 0 && <GripVertical size={11} className="shrink-0 -ml-1.5 text-slate-300" />}
-                      {match.slotA.seedNumber && (
-                        <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
-                          {match.slotA.seedNumber}
-                        </span>
-                      )}
-                      {!match.slotA.isBye && match.slotA.club && (
-                        <span className="shrink-0 text-[9px] font-black text-blue-600">[{clubCode(match.slotA.club)}]</span>
-                      )}
-                      <span className={`text-[11px] font-bold truncate leading-tight ${match.slotA.isBye ? "text-slate-300 italic" : isWinnerA ? "text-emerald-700" : "text-slate-800"}`}>
-                        {match.slotA.playerName}
-                      </span>
-                      {isWinnerA && <span className="ml-auto text-emerald-500 text-[9px] shrink-0">✓</span>}
+                      {slotContent(ri, mi * 2, match.slotA, !!isWinnerA)}
                     </div>
 
                     {/* Player B row */}
-                    <div {...dnd(ri, mi * 2 + 1)} title={canDrag && ri === 0 ? "Drag onto another place to swap" : undefined} className={`flex items-center gap-1.5 px-3 py-2 min-h-[34px] ${match.slotB.isBye && dragOver !== mi * 2 + 1 ? "opacity-25" : ""} ${isWinnerB ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors${dndCls(ri, mi * 2 + 1)}`}>
+                    <div {...dnd(ri, mi * 2 + 1)} title={canDrag && ri === 0 ? "Drag onto another place to swap" : undefined} className={`flex items-center gap-1.5 px-3 py-2 min-h-[34px] ${match.slotB.isBye && dragOver !== mi * 2 + 1 ? "opacity-25" : ""} ${isWinnerB ? "bg-emerald-50" : "hover:bg-blue-50/50"} transition-colors${dndCls(ri, mi * 2 + 1)}${latestRowCls(ri, mi * 2 + 1)}`}>
                       {canDrag && ri === 0 && <GripVertical size={11} className="shrink-0 -ml-1.5 text-slate-300" />}
-                      {match.slotB.seedNumber && (
-                        <span className="shrink-0 text-[8px] font-black text-amber-600 bg-amber-100 w-4 h-4 rounded-sm flex items-center justify-center">
-                          {match.slotB.seedNumber}
-                        </span>
-                      )}
-                      {!match.slotB.isBye && match.slotB.club && (
-                        <span className="shrink-0 text-[9px] font-black text-blue-600">[{clubCode(match.slotB.club)}]</span>
-                      )}
-                      <span className={`text-[11px] font-bold truncate leading-tight ${match.slotB.isBye ? "text-slate-300 italic" : isWinnerB ? "text-emerald-700" : "text-slate-800"}`}>
-                        {match.slotB.playerName}
-                      </span>
-                      {isWinnerB && <span className="ml-auto text-emerald-500 text-[9px] shrink-0">✓</span>}
+                      {slotContent(ri, mi * 2 + 1, match.slotB, !!isWinnerB)}
                     </div>
 
                     {/* Match info + Scoreboard button */}
                     <div className="flex items-center justify-between px-2 py-0.5 bg-slate-50 border-t border-slate-100">
                       <span className="text-[8px] text-slate-400 font-semibold">
-                        {match.status === "COMPLETED" ? "✓ Done" : `Mat ${match.matNumber} · #${match.matchNumber}`}
+                        {match.status === "COMPLETED" && !revealing ? "✓ Done" : `Mat ${match.matNumber} · #${match.matchNumber}`}
                       </span>
-                      {!match.slotA.isBye && !match.slotB.isBye &&
+                      {onOpenScoreboard && !match.slotA.isBye && !match.slotB.isBye &&
                        match.slotA.playerName !== "TBD" && match.slotB.playerName !== "TBD" &&
                        match.status !== "COMPLETED" && (
                         <button
@@ -333,7 +366,7 @@ export function BracketView({
             {!isRoundRobin && (() => {
               if (mainRoundsCount === 0) return null;
               const finalMatch = rounds[mainRoundsCount - 1][0];
-              if (!finalMatch || finalMatch.status !== "COMPLETED" || !finalMatch.winnerId) return null;
+              if (revealing || !finalMatch || finalMatch.status !== "COMPLETED" || !finalMatch.winnerId) return null;
 
               const isSlotAWinner = finalMatch.winnerId === finalMatch.slotA.playerId;
               const championName = isSlotAWinner ? finalMatch.slotA.playerName : finalMatch.slotB.playerName;
