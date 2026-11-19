@@ -8,6 +8,7 @@ import type { DrawCategory, RegisteredPlayer, Tournament } from "../types";
 import { backfillBronzeMatches, processByeMatches, getEliminationFormatLabel, isDrawRoundRobin } from "../lib/bracketEngine";
 import { BracketView, RoundRobinLeaderboard } from "../components/BracketView";
 import { TNJA_LOGO } from "@/constants/brand";
+import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
@@ -15,6 +16,8 @@ const fmtKg = (w: string) => { const v = String(w ?? "").trim(); return !v ? "" 
 const genderLabel = (g: string) => (g === "FEMALE" ? "Girls" : "Boys");
 const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+type Representation = Pick<RegisteredPlayer, "representing" | "representingDistrict" | "representingUnit" | "district">;
 
 /** Every competitor named in a draw, taken from its match slots (BYE / TBD left out). */
 function drawPlayers(d: DrawCategory): RegisteredPlayer[] {
@@ -45,16 +48,35 @@ function DrawViewInner() {
   const [draws, setDraws] = useState<DrawCategory[] | null>(null);
   const [error, setError] = useState("");
   const [zoom, setZoom] = useState(1.25);
+  const [reps, setReps] = useState<Record<string, Representation>>({});
 
   const load = useCallback(async () => {
     const headers = { Authorization: `Bearer ${localStorage.getItem("token")}` };
     try {
-      const [tRes, dRes] = await Promise.all([
+      const [tRes, dRes, rRes] = await Promise.all([
         fetch(`${API_BASE}/tournaments/${tournamentId}`, { headers }),
         fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, { headers }),
+        fetch(`${API_BASE}/tournaments/${tournamentId}/registrations`, { headers }),
       ]);
       if (!dRes.ok) throw new Error(dRes.status === 401 ? "Please log in to view the draw." : "Could not load the draw.");
       if (tRes.ok) setTournament(await tRes.json());
+      if (rRes.ok) {
+        // Who each player represents (district confirmed at weigh-in, else home district)
+        const raw = await rRes.json();
+        const regs: Record<string, unknown>[] = Array.isArray(raw) ? raw : raw?.registrations || [];
+        const map: Record<string, Representation> = {};
+        for (const r of regs as Record<string, any>[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
+          const id = r.playerId || r.player?.id || r.id;
+          if (!id) continue;
+          map[id] = {
+            representing: r.representing || "",
+            representingDistrict: r.representingDistrict || "",
+            representingUnit: r.representingUnit || "",
+            district: r.player?.district?.name || r.district || "",
+          };
+        }
+        setReps(map);
+      }
       const data = await dRes.json();
       const list: DrawCategory[] = (Array.isArray(data) ? data : []).map((d: DrawCategory) => {
         let rounds: unknown = d.rounds;
@@ -77,7 +99,7 @@ function DrawViewInner() {
   }, [load]);
 
   const draw = (draws ?? []).find((d) => same(d.ageGroup, want.age) && same(d.gender, want.gender) && same(d.weightCategory, want.weight));
-  const players = draw ? drawPlayers(draw) : [];
+  const players = draw ? drawPlayers(draw).map((p) => ({ ...p, ...reps[p.id] })) : [];
 
   // ── Draw ceremony: names drop into their first-round boxes one at a time ──
   const catKey = draw ? `${draw.ageGroup}|${draw.gender}|${draw.weightCategory}` : "";
@@ -121,6 +143,9 @@ function DrawViewInner() {
   const latestPlace = reveal?.latest ?? null;
   const latestMatch = draw && latestPlace !== null ? draw.rounds[0][Math.floor(latestPlace / 2)] : null;
   const latestSlot = latestMatch ? (latestPlace! % 2 === 0 ? latestMatch.slotA : latestMatch.slotB) : null;
+  const districtCodes = useDistrictCodes();
+  const latestRep = latestSlot?.playerId && reps[latestSlot.playerId] ? representingOf(reps[latestSlot.playerId], districtCodes) : null;
+  const latestFrom = latestRep ? `[${latestRep.code}] ${latestRep.name}` : latestSlot?.club || "";
 
   const isRR = draw ? isDrawRoundRobin(draw) : false;
   const title = draw
@@ -202,7 +227,7 @@ function DrawViewInner() {
                           <span className="w-12 h-12 shrink-0 rounded-full bg-[#FF7400] text-white flex items-center justify-center text-xl font-black">{latestSlot.playerName.charAt(0)}</span>
                           <span className="min-w-0">
                             <span className="block text-2xl sm:text-3xl font-black text-white truncate leading-tight">{latestSlot.playerName}</span>
-                            {latestSlot.club && <span className="block text-sm font-semibold text-white/60 truncate">{latestSlot.club}</span>}
+                            {latestFrom && <span className="block text-sm font-semibold text-white/60 truncate">{latestFrom}</span>}
                           </span>
                         </>
                       )}

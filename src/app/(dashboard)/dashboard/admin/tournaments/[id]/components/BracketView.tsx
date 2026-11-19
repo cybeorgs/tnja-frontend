@@ -6,6 +6,7 @@ import { Monitor, Printer, Trophy, Download, GripVertical } from "lucide-react";
 import type { BracketMatch, DrawCategory, RegisteredPlayer, Tournament } from "../types";
 import { getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel } from "../lib/bracketEngine";
 import { exportRoundRobinPoolSheet, exportCategoryReport, exportCategoryChartPDF } from "../lib/pdfExport";
+import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 // Abbreviates a club name to its first 3 uppercase letters for compact match cards.
 function clubCode(name: string): string {
@@ -50,6 +51,7 @@ export function BracketView({
 }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const districtCodes = useDistrictCodes();
   if (!rounds || rounds.length === 0) return null;
 
   const isRoundRobin = rounds[0].length > 0 && rounds[0][0].matchId.startsWith("rr_");
@@ -108,6 +110,11 @@ export function BracketView({
 
   const weightGroups = Array.from(new Set(players.map(p => p.weight))).sort((a, b) => a - b);
 
+  /** Representing district (or unit) per player, shown as e.g. "[CBE] HARIKRISHNA G". */
+  const repById = new Map(players.map((p) => [p.id, representingOf(p, districtCodes)]));
+  const slotCode = (slot: BracketMatch["slotA"]) =>
+    (slot.playerId && repById.get(slot.playerId)?.code) || (slot.club ? clubCode(slot.club) : "");
+
   // ── Draw-ceremony reveal ──
   const revealing = !!reveal;
   const isHidden = (ri: number, place: number, slot: BracketMatch["slotA"]) =>
@@ -134,8 +141,8 @@ export function BracketView({
             {slot.seedNumber}
           </span>
         )}
-        {!slot.isBye && slot.club && (
-          <span className="shrink-0 text-[9px] font-black text-blue-600">[{clubCode(slot.club)}]</span>
+        {!slot.isBye && slotCode(slot) && (
+          <span className="shrink-0 text-[9px] font-black text-blue-600" title={(slot.playerId && repById.get(slot.playerId)?.name) || slot.club}>[{slotCode(slot)}]</span>
         )}
         <span className={`text-[11px] font-bold truncate leading-tight ${slot.isBye ? "text-slate-300 italic" : isWinner ? "text-emerald-700" : "text-slate-800"}`}>
           {slot.playerName}
@@ -200,7 +207,7 @@ export function BracketView({
                     </div>
                     <div className="overflow-hidden">
                       <p className="text-[11px] font-bold text-slate-800 truncate leading-tight">{p.name}</p>
-                      <p className="text-[9px] text-slate-400 truncate">{p.gender === "FEMALE" ? "Female" : "Male"} · {p.district || p.club}</p>
+                      <p className="text-[9px] text-slate-400 truncate">{p.gender === "FEMALE" ? "Female" : "Male"} · {repById.get(p.id) ? `${repById.get(p.id)!.code} · ${repById.get(p.id)!.name}` : p.club}</p>
                     </div>
                   </div>
                 ))}
