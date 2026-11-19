@@ -29,6 +29,7 @@ import { DisqualifyTab } from "./components/DisqualifyTab";
 import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
 import { CertificateTab } from "./components/CertificateTab";
+import { BestPerformanceTab } from "./components/BestPerformanceTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
 import { CategoryStartBoard } from "./components/CategoryStartBoard";
@@ -89,6 +90,7 @@ const TAB_META: Record<Tab, { label: string; icon: LucideIcon }> = {
   results: { label: "Results", icon: BarChart3 },
   certificate: { label: "Certificates", icon: Award },
   points: { label: "Points", icon: Medal },
+  "best-performance": { label: "Best Performance", icon: Trophy },
   disqualify: { label: "Disqualify", icon: Ban },
 };
 
@@ -1502,7 +1504,7 @@ export default function TournamentDetailPage() {
         {/* Tabs */}
         <nav aria-label="Tournament sections" className="px-8 print:hidden">
           <div className="flex gap-1 overflow-x-auto scrollbar-hide -mb-px">
-            {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "certificate", "points", "disqualify"] as Tab[]).map((tab) => {
+            {(["overview", "players", "mats", "weigh-in", "draws", "matches", "results", "certificate", "points", "best-performance", "disqualify"] as Tab[]).map((tab) => {
               // Results tab is ALWAYS accessible — even for expired/CLOSED tournaments
               // Draws and matches are locked once the tournament date has passed
               const lockedByExpiry = expired && (tab === "draws" || tab === "matches");
@@ -3844,6 +3846,9 @@ export default function TournamentDetailPage() {
 
       {/* ══ POINTS (sportsmanship + volunteers) ═════════════════════════════════ */}
       {activeTab === "points" && <PointsTab tournamentId={tournamentId} />}
+
+      {/* ══ BEST PERFORMANCE (district championship) ═════════════════════════ */}
+      {activeTab === "best-performance" && <BestPerformanceTab players={players} />}
 
       {/* ══ CERTIFICATES ══════════════════════════════════════════════════════ */}
       {activeTab === "certificate" && <CertificateTab tournamentId={tournamentId} />}

@@ -11,6 +11,33 @@ type Fighter = "A" | "B";
 const OSAEKOMI_IPPON_S   = 20;
 const OSAEKOMI_WAZAARI_S = 10;
 const OSAEKOMI_YUKO_S    = 5;
+
+/** Score a single osaekomi hold can earn. */
+type OsaAward = "yuko" | "wazaAri" | "ippon";
+const OSA_LABEL: Record<OsaAward, string> = { yuko: "YUKO", wazaAri: "WAZA-ARI", ippon: "IPPON" };
+/** Highest score reached after `sec` seconds of hold. */
+const osaLevelAt = (sec: number): OsaAward | null =>
+  sec >= OSAEKOMI_IPPON_S ? "ippon" : sec >= OSAEKOMI_WAZAARI_S ? "wazaAri" : sec >= OSAEKOMI_YUKO_S ? "yuko" : null;
+const addOsaAward = (s: Score, a: OsaAward): Score => {
+  const n = { ...s };
+  if (a === "yuko") n.yuko += 1;
+  else if (a === "ippon") n.ippon += 1;
+  else {
+    n.wazaAri += 1;
+    if (n.wazaAri === 2) { n.wazaAri = 0; n.ippon += 1; n.awaseteIppon = true; }
+  }
+  return n;
+};
+const removeOsaAward = (s: Score, a: OsaAward): Score => {
+  const n = { ...s };
+  if (a === "yuko") n.yuko = Math.max(0, n.yuko - 1);
+  else if (a === "ippon") n.ippon = Math.max(0, n.ippon - 1);
+  else if (n.awaseteIppon) { n.awaseteIppon = false; n.ippon = Math.max(0, n.ippon - 1); n.wazaAri = 1; }
+  else n.wazaAri = Math.max(0, n.wazaAri - 1);
+  return n;
+};
+/** Score log written by the hold `holdId` (replaced when that hold's score upgrades or swaps). */
+const isHoldScoreLog = (l: { id: string; type: string }, holdId: string) => !!holdId && l.type === "score" && l.id.startsWith(`${holdId}_osa_`);
 const emptyScore = (): Score => ({ ippon: 0, wazaAri: 0, yuko: 0, shido: 0 });
 const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")} : ${String(s % 60).padStart(2, "0")}`;
 
@@ -102,7 +129,8 @@ function ScoreboardInner() {
   const [osaFor, setOsaFor]       = useState<Fighter | null>(null);
   const [osaTime, setOsaTime]     = useState(0);
   const osaRef        = useRef<ReturnType<typeof setInterval> | null>(null);
-  const osaMilestones = useRef({ wazaAri: false, yuko: false });
+  const osaAward      = useRef<OsaAward | null>(null); // what the current hold has scored so far
+  const osaHoldId     = useRef(""); // tags the current hold's score log
 
   const [confirmWinner, setConfirmWinner] = useState<Fighter | null>(null);
 
@@ -682,6 +710,24 @@ function ScoreboardInner() {
 
   const osaTimeRef = useRef(0);
 
+  /**
+   * Move the current hold's score up to `level` for `fighter`. The hold's score is the highest
+   * mark reached, not a sum: at 10s the 5s Yuko becomes Waza-ari, at 20s that becomes Ippon.
+   */
+  const upgradeOsaekomi = (fighter: Fighter, level: OsaAward, sec: number) => {
+    const prev = osaAward.current;
+    osaAward.current = level;
+    const fighterName = fighter === "A" ? fighterAName : fighterBName;
+    const holdLog = { id: `${osaHoldId.current}_osa_${fighter}_${level}`, timestamp: Date.now(), text: `${fighterName} scored ${OSA_LABEL[level]} (Osaekomi ${sec}s)`, type: "score" as const, fighter };
+    const nL = [...logsRef.current.filter((l) => !isHoldScoreLog(l, osaHoldId.current)), holdLog];
+    setLogs(nL); logsRef.current = nL;
+    const apply = (p: Score) => addOsaAward(prev ? removeOsaAward(p, prev) : p, level);
+    if (fighter === "A") setScoreA((p) => { const nx = apply(p); setTimeout(() => saveMatchToDBRef.current(nx, undefined, undefined, undefined, nL), 0); return nx; });
+    else                 setScoreB((p) => { const nx = apply(p); setTimeout(() => saveMatchToDBRef.current(undefined, nx, undefined, undefined, nL), 0); return nx; });
+  };
+  const upgradeOsaekomiRef = useRef(upgradeOsaekomi);
+  useEffect(() => { upgradeOsaekomiRef.current = upgradeOsaekomi; });
+
   useEffect(() => {
     if (osaActive && osaFor) {
       osaRef.current = setInterval(() => {
@@ -689,68 +735,10 @@ function ScoreboardInner() {
         const next = osaTimeRef.current;
         setOsaTime(next);
 
-        if (next === OSAEKOMI_YUKO_S && !osaMilestones.current.yuko) {
-          osaMilestones.current.yuko = true;
-          const fighterName = osaFor === "A" ? fighterAName : fighterBName;
-          const newLog = { id: `${Date.now()}_osa_${osaFor}_yuko`, timestamp: Date.now(), text: `${fighterName} scored YUKO (Osaekomi)`, type: "score" as const, fighter: osaFor };
-          const nL = [...logsRef.current, newLog];
-          setLogs(nL); logsRef.current = nL;
-          
-          if (osaFor === "A") {
-            setScoreA(p => { 
-              const nx = { ...p, yuko: p.yuko + 1 }; 
-              setTimeout(() => saveMatchToDBRef.current(nx, undefined, undefined, undefined, nL), 0); 
-              return nx; 
-            });
-          } else {
-            setScoreB(p => { 
-              const nx = { ...p, yuko: p.yuko + 1 }; 
-              setTimeout(() => saveMatchToDBRef.current(undefined, nx, undefined, undefined, nL), 0); 
-              return nx; 
-            });
-          }
-        }
-
-        if (next === OSAEKOMI_WAZAARI_S && !osaMilestones.current.wazaAri) {
-          osaMilestones.current.wazaAri = true;
-          const fighterName = osaFor === "A" ? fighterAName : fighterBName;
-          const newLog = { id: `${Date.now()}_osa_${osaFor}_wazaari`, timestamp: Date.now(), text: `${fighterName} scored WAZA-ARI (Osaekomi)`, type: "score" as const, fighter: osaFor };
-          const nL = [...logsRef.current, newLog];
-          setLogs(nL); logsRef.current = nL;
-          
-          if (osaFor === "A") {
-            setScoreA(p => { 
-              const nx = { ...p, wazaAri: p.wazaAri + 1 }; 
-              if (nx.wazaAri === 2) {
-                nx.wazaAri = 0;
-                nx.ippon = 1;
-                nx.awaseteIppon = true;
-              }
-              setTimeout(() => saveMatchToDBRef.current(nx, undefined, undefined, undefined, nL), 0); 
-              return nx; 
-            });
-          } else {
-            setScoreB(p => { 
-              const nx = { ...p, wazaAri: p.wazaAri + 1 }; 
-              if (nx.wazaAri === 2) {
-                nx.wazaAri = 0;
-                nx.ippon = 1;
-                nx.awaseteIppon = true;
-              }
-              setTimeout(() => saveMatchToDBRef.current(undefined, nx, undefined, undefined, nL), 0); 
-              return nx; 
-            });
-          }
-        }
-        if (next >= OSAEKOMI_IPPON_S) {
+        const level = osaLevelAt(next);
+        if (level && level !== osaAward.current) upgradeOsaekomiRef.current(osaFor, level, next);
+        if (level === "ippon") {
           clearInterval(osaRef.current!); setOsaActive(false); setRunning(false);
-          const fighterName = osaFor === "A" ? fighterAName : fighterBName;
-          const newLog = { id: `${Date.now()}_osa_${osaFor}_ippon`, timestamp: Date.now(), text: `${fighterName} scored IPPON (Osaekomi)`, type: "score" as const, fighter: osaFor };
-          const nL = [...logsRef.current, newLog];
-          setLogs(nL); logsRef.current = nL;
-          
-          if (osaFor === "A") { setScoreA(p => { const nx = { ...p, ippon: p.ippon + 1 }; setTimeout(() => saveMatchToDBRef.current(nx, undefined, undefined, undefined, nL), 0); return nx; }); }
-          else                { setScoreB(p => { const nx = { ...p, ippon: p.ippon + 1 }; setTimeout(() => saveMatchToDBRef.current(undefined, nx, undefined, undefined, nL), 0); return nx; }); }
         }
       }, 1000);
     } else {
@@ -781,19 +769,36 @@ function ScoreboardInner() {
     osaTimeRef.current = 0;
     setOsaTime(0);
     setOsaActive(true); setOsaFor(fighter);
-    osaMilestones.current = { wazaAri: false, yuko: false };
+    osaAward.current = null;
+    osaHoldId.current = String(Date.now());
     if (!running) setRunning(true);
   };
 
-  const toketa = () => {
+  /** The held player escaped (Toketa): stop the hold and keep whatever it has scored so far. */
+  const cancelOsaekomi = () => {
     if (dbMatchStatus === "COMPLETED") {
       showToast("This match is already completed and locked. You cannot change the winner.");
       return;
     }
-    setOsaActive(false); setOsaFor(null); 
+    if (!osaActive || !osaFor) return;
+    if (osaRef.current) clearInterval(osaRef.current);
+    const sec = osaTimeRef.current;
+    const award = osaAward.current;
+    const name = osaFor === "A" ? fighterAName : fighterBName;
+    const cancelLog = {
+      id: `${Date.now()}_osa_cancel`,
+      timestamp: Date.now(),
+      text: `Osaekomi cancelled at ${sec}s — ${award ? `${name} keeps ${OSA_LABEL[award]}` : "no score"}`,
+      type: "system" as const,
+    };
+    const nL = [...logsRef.current, cancelLog];
+    setLogs(nL); logsRef.current = nL;
+    saveMatchToDBRef.current(undefined, undefined, undefined, undefined, nL);
+    showToast(award ? `Osaekomi cancelled — ${OSA_LABEL[award]} kept` : "Osaekomi cancelled — no score");
+    setOsaActive(false); setOsaFor(null);
     osaTimeRef.current = 0;
     setOsaTime(0);
-    if (osaRef.current) clearInterval(osaRef.current);
+    osaAward.current = null;
   };
 
   const swapOsaekomi = () => {
@@ -807,98 +812,28 @@ function ScoreboardInner() {
     }
 
     const oldFighter = osaFor;
-    const newFighter = oldFighter === "A" ? "B" : "A";
+    const newFighter: Fighter = oldFighter === "A" ? "B" : "A";
+    const award = osaAward.current;
 
-    // Switch holder
+    // Switch holder; the hold time carries over
     setOsaFor(newFighter);
 
-    // Adjust scores if milestones were hit during this active hold
+    // Move whatever this hold has scored from the old holder to the new one
     let nextScoreA = { ...scoreA };
     let nextScoreB = { ...scoreB };
-
-    const hasYuko = osaMilestones.current.yuko;
-    const hasWazaAri = osaMilestones.current.wazaAri;
-
-    if (oldFighter === "A") {
-      if (hasYuko) {
-        nextScoreA.yuko = Math.max(0, nextScoreA.yuko - 1);
-        nextScoreB.yuko = nextScoreB.yuko + 1;
-      }
-      if (hasWazaAri) {
-        if (nextScoreA.awaseteIppon) {
-          nextScoreA.awaseteIppon = false;
-          nextScoreA.ippon = Math.max(0, nextScoreA.ippon - 1);
-          nextScoreA.wazaAri = 1;
-        } else {
-          nextScoreA.wazaAri = Math.max(0, nextScoreA.wazaAri - 1);
-        }
-        nextScoreB.wazaAri = nextScoreB.wazaAri + 1;
-        if (nextScoreB.wazaAri === 2) {
-          nextScoreB.wazaAri = 0;
-          nextScoreB.ippon = nextScoreB.ippon + 1;
-          nextScoreB.awaseteIppon = true;
-        }
-      }
-    } else {
-      if (hasYuko) {
-        nextScoreB.yuko = Math.max(0, nextScoreB.yuko - 1);
-        nextScoreA.yuko = nextScoreA.yuko + 1;
-      }
-      if (hasWazaAri) {
-        if (nextScoreB.awaseteIppon) {
-          nextScoreB.awaseteIppon = false;
-          nextScoreB.ippon = Math.max(0, nextScoreB.ippon - 1);
-          nextScoreB.wazaAri = 1;
-        } else {
-          nextScoreB.wazaAri = Math.max(0, nextScoreB.wazaAri - 1);
-        }
-        nextScoreA.wazaAri = nextScoreA.wazaAri + 1;
-        if (nextScoreA.wazaAri === 2) {
-          nextScoreA.wazaAri = 0;
-          nextScoreA.ippon = nextScoreA.ippon + 1;
-          nextScoreA.awaseteIppon = true;
-        }
-      }
+    if (award) {
+      if (oldFighter === "A") { nextScoreA = removeOsaAward(nextScoreA, award); nextScoreB = addOsaAward(nextScoreB, award); }
+      else                    { nextScoreB = removeOsaAward(nextScoreB, award); nextScoreA = addOsaAward(nextScoreA, award); }
     }
 
-    // Update logs
     const oldName = oldFighter === "A" ? fighterAName : fighterBName;
     const newName = newFighter === "A" ? fighterAName : fighterBName;
-
-    const filteredLogs = logs.filter(log => {
-      // Remove the score logs generated during this session for the old fighter
-      if (log.type === "score" && log.id.includes(`_osa_${oldFighter}_`)) {
-        return false;
-      }
-      return true;
-    });
-
-    const swapLog = {
-      id: `${Date.now()}_osa_swap`,
-      timestamp: Date.now(),
-      text: `Osaekomi swapped from ${oldName} to ${newName} at ${osaTime}s`,
-      type: "system" as const
-    };
-
-    const newLogs = [...filteredLogs, swapLog];
-
-    if (hasYuko) {
-      newLogs.push({
-        id: `${Date.now()}_osa_${newFighter}_yuko`,
-        timestamp: Date.now(),
-        text: `${newName} scored YUKO (Osaekomi)`,
-        type: "score" as const,
-        fighter: newFighter
-      });
-    }
-    if (hasWazaAri) {
-      newLogs.push({
-        id: `${Date.now()}_osa_${newFighter}_wazaari`,
-        timestamp: Date.now(),
-        text: `${newName} scored WAZA-ARI (Osaekomi)`,
-        type: "score" as const,
-        fighter: newFighter
-      });
+    const newLogs = [
+      ...logsRef.current.filter((l) => !isHoldScoreLog(l, osaHoldId.current)),
+      { id: `${Date.now()}_osa_swap`, timestamp: Date.now(), text: `Osaekomi swapped from ${oldName} to ${newName} at ${osaTimeRef.current}s`, type: "system" as const },
+    ];
+    if (award) {
+      newLogs.push({ id: `${osaHoldId.current}_osa_${newFighter}_${award}`, timestamp: Date.now(), text: `${newName} scored ${OSA_LABEL[award]} (Osaekomi ${osaTimeRef.current}s)`, type: "score" as const, fighter: newFighter });
     }
 
     setScoreA(nextScoreA);
@@ -1110,6 +1045,7 @@ function ScoreboardInner() {
               {osaActive && (
                 <span className={`text-xl font-black animate-pulse ${osaFor === "A" ? "text-white" : "text-blue-400"}`}>
                   {osaTime}s
+                  {osaLevelAt(osaTime) && <span className="ml-2 text-xs align-middle">{OSA_LABEL[osaLevelAt(osaTime)!]}</span>}
                 </span>
               )}
             </div>
@@ -1119,7 +1055,7 @@ function ScoreboardInner() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={swapOsaekomi} disabled={!osaActive} className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Swap P1 ⇄ P2 (Keep Time)</button>
-              <button onClick={toketa} className="bg-transparent border border-gray-600 hover:bg-gray-800 text-gray-300 text-[10px] font-bold py-2 rounded-sm transition-all">Toketa (Stop Hold)</button>
+              <button onClick={cancelOsaekomi} disabled={!osaActive} title="Player escaped the hold — stop the timer and keep the points earned" className="bg-transparent border border-red-500/60 hover:bg-red-600/20 text-red-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Cancel (Toketa)</button>
             </div>
           </div>
 
