@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
-import { normaliseRounds } from "../lib/bracketEngine";
+import { normaliseRounds, applyMatchResult } from "../lib/bracketEngine";
 import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 interface Score { ippon: number; wazaAri: number; yuko: number; shido: number; awaseteIppon?: boolean }
@@ -214,48 +214,16 @@ function ScoreboardInner() {
       for (const draw of draws) {
         // BYE winners moved on first, so the saved draw has them in the next round too
         const storedRounds = normaliseRounds(draw.rounds);
-        if (!storedRounds.length) continue;
-        let matchFound = false;
-        const newRounds = storedRounds.map((r: any[]) => r.map((m: any) => {
-          if (m.matchId === matchId) {
-            matchFound = true;
-            const winnerIdVal = currentWinner ? (currentWinner === "A" ? sp.get("fighterAId") : sp.get("fighterBId")) : null;
-            const elapsedSeconds = goldenScore ? (durationInput * 60) + timeLeft : (durationInput * 60) - timeLeft;
-            return { ...m, winnerId: winnerIdVal, status: statusVal, scoreA: currentScoreA, scoreB: currentScoreB, winMethod: currentWinMethod, logs: currentLogs, timeLeft, elapsedSeconds };
-          }
-          return m;
-        }));
-
-        if (matchFound) {
-          for (let ri = 0; ri < newRounds.length; ri++) {
-            for (let mi = 0; mi < newRounds[ri].length; mi++) {
-              if (newRounds[ri][mi].matchId === matchId && currentWinner) {
-                const nextRi = ri + 1;
-                if (nextRi < newRounds.length) {
-                  const nextMi = Math.floor(mi / 2);
-                  const winnerIdVal = currentWinner === "A" ? sp.get("fighterAId") : sp.get("fighterBId");
-                  const winnerSlot = { playerId: winnerIdVal, playerName: currentWinner === "A" ? fighterAName : fighterBName, club: currentWinner === "A" ? fighterAClub : fighterBClub, isBye: false };
-                  
-                  // Route winner to the next standard match slot
-                  if (mi % 2 === 0) newRounds[nextRi][nextMi].slotA = winnerSlot;
-                  else              newRounds[nextRi][nextMi].slotB = winnerSlot;
-
-                  // Bronze Match Logic: If this is the semi-final and a bronze match exists
-                  if (ri === newRounds.length - 2 && newRounds[nextRi].length > 1) {
-                    const loserIdVal = currentWinner === "A" ? sp.get("fighterBId") : sp.get("fighterAId");
-                    const loserSlot = { playerId: loserIdVal, playerName: currentWinner === "A" ? fighterBName : fighterAName, club: currentWinner === "A" ? fighterBClub : fighterAClub, isBye: false };
-                    
-                    // Route loser to the Bronze Match (which is at index 1 of the final round)
-                    if (mi % 2 === 0) newRounds[nextRi][1].slotA = loserSlot;
-                    else              newRounds[nextRi][1].slotB = loserSlot;
-                  }
-                }
-              }
-            }
-          }
-          targetDraw = { ...draw, rounds: newRounds };
-          break;
-        }
+        if (!storedRounds.some((r) => r.some((m) => m.matchId === matchId))) continue;
+        const winnerIdVal = currentWinner ? (currentWinner === "A" ? sp.get("fighterAId") : sp.get("fighterBId")) : null;
+        const elapsedSeconds = goldenScore ? (durationInput * 60) + timeLeft : (durationInput * 60) - timeLeft;
+        // Same progression as the admin tab: winner on, QF / SF losers into the repechage and bronze rounds
+        const newRounds = applyMatchResult(storedRounds, matchId, {
+          winnerId: winnerIdVal, status: statusVal, scoreA: currentScoreA, scoreB: currentScoreB,
+          winMethod: currentWinMethod, logs: currentLogs, timeLeft, elapsedSeconds,
+        } as Parameters<typeof applyMatchResult>[2]);
+        targetDraw = { ...draw, rounds: newRounds };
+        break;
       }
 
       if (!targetDraw) return;

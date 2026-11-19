@@ -18,6 +18,7 @@ import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
   getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup,
+  applyMatchResult, mainBracketRoundCount, normaliseRounds,
 } from "./lib/bracketEngine";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -328,6 +329,12 @@ export default function TournamentDetailPage() {
         const hasDoubleRepechage = rounds.some(r => r.some(m => m.matchId.startsWith("rr_rep1_m2")));
         const hasSingleRepechage = !hasDoubleRepechage && rounds.some(r => r.some(m => m.matchId.startsWith("rr_rep")));
         const totalMainRounds = (hasDoubleRepechage || hasSingleRepechage) ? rounds.length - 2 : rounds.length;
+        // A bronze result only counts if its winner actually fought in that match, and never
+        // overrides a medal already won in the final.
+        const isBronzeWin = (m: BracketMatch) =>
+          m.status === "COMPLETED" && !!m.winnerId &&
+          (m.winnerId === m.slotA.playerId || m.winnerId === m.slotB.playerId) &&
+          detected[m.winnerId] !== "FIRST" && detected[m.winnerId] !== "SECOND";
 
         // Gold & Silver from the final match
         if (totalMainRounds >= 1) {
@@ -347,19 +354,14 @@ export default function TournamentDetailPage() {
           const bronzeRound = rounds[rounds.length - 1];
           if (bronzeRound && bronzeRound.length >= 2) {
             bronzeRound.forEach(m => {
-              if (m.status === "COMPLETED" && m.winnerId) {
-                detected[m.winnerId] = "THIRD";
-              }
+              if (isBronzeWin(m)) detected[m.winnerId!] = "THIRD";
             });
           }
         } else if (hasSingleRepechage) {
           // Winner of the single Bronze Match in the last round gets 3rd place (Bronze)
           const bronzeRound = rounds[rounds.length - 1];
           if (bronzeRound && bronzeRound.length >= 1) {
-            const bronzeMatch = bronzeRound[0];
-            if (bronzeMatch.status === "COMPLETED" && bronzeMatch.winnerId) {
-              detected[bronzeMatch.winnerId] = "THIRD";
-            }
+            if (isBronzeWin(bronzeRound[0])) detected[bronzeRound[0].winnerId!] = "THIRD";
           }
         } else {
           // Standard Single Elimination (final + semi logic)
@@ -721,7 +723,7 @@ export default function TournamentDetailPage() {
           const ageStr = d.exactAge === 0 ? "ALL" : String(d.exactAge);
           drawMap[categoryKey(d.ageGroup, ageStr, d.gender, d.weightCategory)] = {
             ...d,
-            rounds: backfillBronzeMatches(processByeMatches(roundsArr)),
+            rounds: normaliseRounds(roundsArr),
             generated: roundsArr.length > 0,
             saved: true,
           };
@@ -798,7 +800,7 @@ export default function TournamentDetailPage() {
     if (!res.ok) throw new Error(data?.error || "Could not save the draw");
     let saved = data?.draw?.rounds ?? rounds;
     if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
-    setDraws((p) => ({ ...p, [key]: { ...d, rounds: backfillBronzeMatches(processByeMatches(saved)), generated: true, saved: true } }));
+    setDraws((p) => ({ ...p, [key]: { ...d, rounds: normaliseRounds(saved), generated: true, saved: true } }));
     showToast("Draw updated", true);
   };
 
@@ -1089,143 +1091,11 @@ export default function TournamentDetailPage() {
       const isRR = isDrawRoundRobin(cat);
       const allRoundsCompleted = newRounds.every(r => r.every(m => m.status === "COMPLETED"));
 
-      const hasDoubleRepechage = newRounds.some(r => r.some(m => m.matchId.startsWith("rr_rep1_m2")));
-      const hasSingleRepechage = !hasDoubleRepechage && newRounds.some(r => r.some(m => m.matchId.startsWith("rr_rep")));
-      const totalMainRounds = (hasDoubleRepechage || hasSingleRepechage) ? newRounds.length - 2 : newRounds.length;
+      const totalMainRounds = mainBracketRoundCount(newRounds);
 
       if (!isRR) {
-        // Main single-elimination bracket progression:
-        if (foundRi + 1 < totalMainRounds) {
-          const nextMatchIdx = Math.floor(foundMi / 2);
-          const winnerSlot: BracketSlot = { playerId: winnerId, playerName: winnerName, club: winnerClub, isBye: false, coachName: "" };
-          const nextMatch = { ...newRounds[foundRi + 1][nextMatchIdx] };
-          if (foundMi % 2 === 0) nextMatch.slotA = winnerSlot;
-          else                   nextMatch.slotB = winnerSlot;
-          newRounds[foundRi + 1][nextMatchIdx] = nextMatch;
-
-          // Semifinal losers feed the auto-generated Bronze (3rd place) match,
-          // which sits as the 2nd match of the Final round in plain elimination brackets.
-          if (
-            !hasDoubleRepechage && !hasSingleRepechage &&
-            foundRi + 2 === totalMainRounds &&
-            newRounds[foundRi + 1].length === 2
-          ) {
-            const currentMatch = newRounds[foundRi][foundMi];
-            const loserId = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerId : currentMatch.slotA.playerId;
-            const loserName = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerName : currentMatch.slotA.playerName;
-            const loserClub = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.club : currentMatch.slotA.club;
-
-            if (loserId) {
-              const loserSlot: BracketSlot = { playerId: loserId, playerName: loserName, club: loserClub, isBye: false, coachName: "" };
-              const bronzeMatch = { ...newRounds[foundRi + 1][1] };
-              if (foundMi % 2 === 0) bronzeMatch.slotA = loserSlot;
-              else                   bronzeMatch.slotB = loserSlot;
-              newRounds[foundRi + 1][1] = bronzeMatch;
-            }
-          }
-        }
-
-        // --- Double Repechage Progressions ---
-        if (hasDoubleRepechage) {
-          // Quarterfinals Loser -> Repechage Match
-          if (foundRi === totalMainRounds - 3) {
-            const repRoundIdx = totalMainRounds;
-            const repMatchIdx = Math.floor(foundMi / 2);
-            const currentMatch = newRounds[foundRi][foundMi];
-            const loserId = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerId : currentMatch.slotA.playerId;
-            const loserName = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerName : currentMatch.slotA.playerName;
-            const loserClub = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.club : currentMatch.slotA.club;
-
-            if (loserId) {
-              const loserSlot = { playerId: loserId, playerName: loserName, club: loserClub, isBye: false };
-              const targetMatch = { ...newRounds[repRoundIdx][repMatchIdx] };
-              if (foundMi % 2 === 0) targetMatch.slotA = loserSlot;
-              else                   targetMatch.slotB = loserSlot;
-              newRounds[repRoundIdx][repMatchIdx] = targetMatch;
-            }
-          }
-
-          // Semifinals Loser -> Crossover Bronze Match
-          if (foundRi === totalMainRounds - 2) {
-            const bronzeRoundIdx = totalMainRounds + 1;
-            const targetBronzeMatchIdx = foundMi === 0 ? 1 : 0;
-            const currentMatch = newRounds[foundRi][foundMi];
-            const loserId = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerId : currentMatch.slotA.playerId;
-            const loserName = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerName : currentMatch.slotA.playerName;
-            const loserClub = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.club : currentMatch.slotA.club;
-
-            if (loserId) {
-              const loserSlot = { playerId: loserId, playerName: loserName, club: loserClub, isBye: false };
-              const targetMatch = { ...newRounds[bronzeRoundIdx][targetBronzeMatchIdx] };
-              targetMatch.slotB = loserSlot;
-              newRounds[bronzeRoundIdx][targetBronzeMatchIdx] = targetMatch;
-            }
-          }
-
-          // Repechage Round 1 Winner -> Bronze Match slotA
-          if (foundRi === totalMainRounds) {
-            const bronzeRoundIdx = totalMainRounds + 1;
-            const targetBronzeMatchIdx = foundMi;
-            const winnerSlot = { playerId: winnerId, playerName: winnerName, club: winnerClub, isBye: false };
-            const targetMatch = { ...newRounds[bronzeRoundIdx][targetBronzeMatchIdx] };
-            targetMatch.slotA = winnerSlot;
-            newRounds[bronzeRoundIdx][targetBronzeMatchIdx] = targetMatch;
-          }
-        }
-
-        // --- Single Repechage Progressions ---
-        if (hasSingleRepechage) {
-          // Finals Completed -> Traces Champion's path for Repechage and runner-up for Bronze slotB
-          if (foundRi === totalMainRounds - 1) {
-            const currentMatch = newRounds[foundRi][foundMi];
-            const runnerUpId = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerId : currentMatch.slotA.playerId;
-            const runnerUpName = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.playerName : currentMatch.slotA.playerName;
-            const runnerUpClub = winnerId === currentMatch.slotA.playerId ? currentMatch.slotB.club : currentMatch.slotA.club;
-
-            const bronzeRoundIdx = totalMainRounds + 1;
-            const bronzeMatch = { ...newRounds[bronzeRoundIdx][0] };
-            bronzeMatch.slotB = { playerId: runnerUpId, playerName: runnerUpName, club: runnerUpClub, isBye: false };
-            newRounds[bronzeRoundIdx][0] = bronzeMatch;
-
-            // Trace SF Loser
-            const sfRoundIdx = totalMainRounds - 2;
-            const sfMatch = newRounds[sfRoundIdx].find(m => m.slotA.playerId === winnerId || m.slotB.playerId === winnerId);
-            if (sfMatch) {
-              const sfLoserId = winnerId === sfMatch.slotA.playerId ? sfMatch.slotB.playerId : sfMatch.slotA.playerId;
-              const sfLoserName = winnerId === sfMatch.slotA.playerId ? sfMatch.slotB.playerName : sfMatch.slotA.playerName;
-              const sfLoserClub = winnerId === sfMatch.slotA.playerId ? sfMatch.slotB.club : sfMatch.slotA.club;
-
-              const repRoundIdx = totalMainRounds;
-              const repMatch = { ...newRounds[repRoundIdx][0] };
-              repMatch.slotB = { playerId: sfLoserId, playerName: sfLoserName, club: sfLoserClub, isBye: false };
-              newRounds[repRoundIdx][0] = repMatch;
-            }
-
-            // Trace QF Loser
-            const qfRoundIdx = totalMainRounds - 3;
-            if (qfRoundIdx >= 0) {
-              const qfMatch = newRounds[qfRoundIdx].find(m => m.slotA.playerId === winnerId || m.slotB.playerId === winnerId);
-              if (qfMatch) {
-                const qfLoserId = winnerId === qfMatch.slotA.playerId ? qfMatch.slotB.playerId : qfMatch.slotA.playerId;
-                const qfLoserName = winnerId === qfMatch.slotA.playerId ? qfMatch.slotB.playerName : qfMatch.slotA.playerName;
-                const qfLoserClub = winnerId === qfMatch.slotA.playerId ? qfMatch.slotB.club : qfMatch.slotA.club;
-
-                const repRoundIdx = totalMainRounds;
-                const repMatch = { ...newRounds[repRoundIdx][0] };
-                repMatch.slotA = { playerId: qfLoserId, playerName: qfLoserName, club: qfLoserClub, isBye: false };
-                newRounds[repRoundIdx][0] = repMatch;
-              }
-            }
-          }
-
-          // Repechage Round 1 Winner -> Bronze Match slotA
-          if (foundRi === totalMainRounds) {
-            const bronzeRoundIdx = totalMainRounds + 1;
-            const targetMatch = { ...newRounds[bronzeRoundIdx][0] };
-            targetMatch.slotA = { playerId: winnerId, playerName: winnerName, club: winnerClub, isBye: false };
-            newRounds[bronzeRoundIdx][0] = targetMatch;
-          }
-        }
+        // Winner on to the next match, repechage and bronze rounds rebuilt (shared with the scoreboard)
+        applyMatchResult(newRounds, matchId, newRounds[foundRi][foundMi]).forEach((row, i) => { newRounds[i] = row; });
       }
 
       if (isRR) {
@@ -1321,7 +1191,7 @@ export default function TournamentDetailPage() {
         }
       } else {
         // Single Elimination final round winner is champion
-        if (foundRi === newRounds.length - 1) {
+        if (foundRi === totalMainRounds - 1 && foundMi === 0) {
           setTimeout(() => setChampion({ name: winnerName, club: winnerClub, categoryKey: catKey }), 0);
         }
       }

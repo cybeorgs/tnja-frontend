@@ -10,7 +10,10 @@ export function nextPow2(n: number): number { let p = 1; while (p < n) p <<= 1; 
 // Auto-advance non-BYE players through any BYE match (cascades through all rounds)
 export function processByeMatches(rounds: BracketMatch[][]): BracketMatch[][] {
   const r = rounds.map(row => row.map(m => ({ ...m })));
-  for (let ri = 0; ri < r.length; ri++) {
+  // Repechage / bronze rounds are filled by syncRepechage: their "Loser of QF 1" placeholders
+  // are players still to come, not BYEs, and the main bracket's "next round" rule doesn't apply.
+  const mainCount = mainBracketRoundCount(r);
+  for (let ri = 0; ri < mainCount; ri++) {
     for (let mi = 0; mi < r[ri].length; mi++) {
       const m = r[ri][mi];
       if (m.status === "COMPLETED") continue;
@@ -24,7 +27,7 @@ export function processByeMatches(rounds: BracketMatch[][]): BracketMatch[][] {
       else if (m.slotA.isBye && m.slotB.isBye) winner = { playerId: null, playerName: "BYE", club: "", isBye: true, coachName: "" };
       if (!winner) continue;
       r[ri][mi] = { ...m, winnerId: winner.playerId, status: "COMPLETED" };
-      if (ri + 1 < r.length) {
+      if (ri + 1 < mainCount) {
         const nextIdx = Math.floor(mi / 2);
         const next = { ...r[ri + 1][nextIdx] };
         if (mi % 2 === 0) next.slotA = { ...winner };
@@ -48,7 +51,125 @@ export function normaliseRounds(raw: unknown): BracketMatch[][] {
     try { rounds = JSON.parse(rounds); } catch { rounds = []; }
   }
   if (!Array.isArray(rounds) || rounds.length === 0) return [];
-  return backfillBronzeMatches(processByeMatches(rounds as BracketMatch[][]));
+  return backfillBronzeMatches(syncRepechage(processByeMatches(rounds as BracketMatch[][])));
+}
+
+// ─── Repechage progression ───────────────────────────────────────────────────
+const BYE_SLOT: BracketSlot = { playerId: null, playerName: "BYE", club: "", isBye: true, coachName: "" };
+const placeholderSlot = (label: string): BracketSlot => ({ playerId: null, playerName: label, club: "", isBye: false });
+const copySlot = (s: BracketSlot): BracketSlot =>
+  ({ playerId: s.playerId, playerName: s.playerName, club: s.club, isBye: !!s.isBye, coachName: s.coachName, seedNumber: s.seedNumber });
+const VOID_RESULT = { winnerId: null, status: "PENDING" as const, scoreA: undefined, scoreB: undefined, winMethod: undefined, elapsedSeconds: undefined };
+const winnerInMatch = (m: BracketMatch) => !m.winnerId || m.winnerId === m.slotA.playerId || m.winnerId === m.slotB.playerId;
+
+/** Winner / loser slot of a finished match, or null while it hasn't been decided. */
+function decided(m: BracketMatch | undefined, want: "winner" | "loser"): BracketSlot | null {
+  if (!m || m.status !== "COMPLETED") return null;
+  const aWon = m.winnerId ? m.winnerId === m.slotA.playerId : false;
+  const bWon = m.winnerId ? m.winnerId === m.slotB.playerId : false;
+  if (!aWon && !bWon) return m.slotA.isBye && m.slotB.isBye ? BYE_SLOT : null;
+  const pick = (want === "winner") === aWon ? m.slotA : m.slotB;
+  return pick.playerId ? copySlot(pick) : BYE_SLOT;
+}
+
+const sameSlot = (a: BracketSlot, b: BracketSlot) =>
+  a.playerId === b.playerId && !!a.isBye === !!b.isBye && (!!a.playerId || !!a.isBye || a.playerName === b.playerName);
+
+/** Puts a slot into a repechage / bronze match. */
+function setSlot(m: BracketMatch, side: "slotA" | "slotB", want: BracketSlot): BracketMatch {
+  return sameSlot(m[side], want) ? m : { ...m, [side]: want };
+}
+
+/**
+ * A repechage / bronze match decided between players who are no longer in it (a wrongly routed or
+ * stale result) is void; one with a BYE on one side is won by the other player once they arrive.
+ */
+function settle(m: BracketMatch): BracketMatch {
+  if (!winnerInMatch(m)) return { ...m, ...VOID_RESULT };
+  if (m.status === "COMPLETED") {
+    // "completed" while a side is still a placeholder (old BYE bug) is not a real result
+    const open = (x: BracketSlot) => !x.playerId && !x.isBye;
+    return open(m.slotA) || open(m.slotB) ? { ...m, ...VOID_RESULT } : m;
+  }
+  if (m.slotA.isBye && m.slotB.playerId) return { ...m, winnerId: m.slotB.playerId, status: "COMPLETED" };
+  if (m.slotB.isBye && m.slotA.playerId) return { ...m, winnerId: m.slotA.playerId, status: "COMPLETED" };
+  if (m.slotA.isBye && m.slotB.isBye) return { ...m, winnerId: null, status: "COMPLETED" };
+  return m;
+}
+
+/**
+ * Fills the repechage and bronze rounds from the main bracket's results, so every page and every
+ * writer (admin tab, referee scoreboard, coach panel) sees the same, correct progression.
+ *   Double repechage: Rep k = losers of QF 2k-1 & 2k; Bronze 1 = Rep 1 winner v SF 2 loser,
+ *   Bronze 2 = Rep 2 winner v SF 1 loser.
+ *   Single repechage: Rep = champion's QF victim v champion's SF victim; Bronze = Rep winner v runner-up.
+ * A slot whose source match isn't decided yet shows its placeholder again.
+ */
+export function syncRepechage(rounds: BracketMatch[][]): BracketMatch[][] {
+  const kind = repechageKindOf(rounds);
+  if (!kind) return rounds;
+  const main = mainBracketRoundCount(rounds);
+  const qfIdx = main - 3, sfIdx = main - 2, finalIdx = main - 1;
+  const repIdx = main, bronzeIdx = main + 1;
+  if (finalIdx < 0 || !rounds[repIdx]?.length || !rounds[bronzeIdx]?.length) return rounds;
+  const r = rounds.map((row) => row.map((m) => ({ ...m })));
+  const or = (s: BracketSlot | null, label: string) => s ?? placeholderSlot(label);
+
+  if (kind === "double") {
+    r[repIdx].forEach((m, k) => {
+      const qfA = qfIdx >= 0 ? r[qfIdx][2 * k] : undefined, qfB = qfIdx >= 0 ? r[qfIdx][2 * k + 1] : undefined;
+      let next = setSlot(m, "slotA", or(decided(qfA, "loser"), `Loser of QF ${2 * k + 1}`));
+      next = setSlot(next, "slotB", or(decided(qfB, "loser"), `Loser of QF ${2 * k + 2}`));
+      r[repIdx][k] = settle(next);
+    });
+    r[bronzeIdx].forEach((m, k) => {
+      const sf = r[sfIdx]?.[k === 0 ? 1 : 0];
+      let next = setSlot(m, "slotA", or(decided(r[repIdx][k], "winner"), `Winner of Rep ${k + 1}`));
+      next = setSlot(next, "slotB", or(decided(sf, "loser"), `Loser of Semifinal ${k === 0 ? 2 : 1}`));
+      r[bronzeIdx][k] = settle(next);
+    });
+  } else {
+    const fin = r[finalIdx][0];
+    const champ = decided(fin, "winner");
+    const beatenBy = (ri: number) => {
+      if (ri < 0 || !champ?.playerId) return null;
+      const m = r[ri].find((x) => x.slotA.playerId === champ.playerId || x.slotB.playerId === champ.playerId);
+      return decided(m, "loser");
+    };
+    let rep0 = setSlot(r[repIdx][0], "slotA", or(beatenBy(qfIdx), "Finalist's QF Loser"));
+    rep0 = setSlot(rep0, "slotB", or(beatenBy(sfIdx), "Finalist's SF Loser"));
+    r[repIdx][0] = settle(rep0);
+    let br = setSlot(r[bronzeIdx][0], "slotA", or(decided(r[repIdx][0], "winner"), "Winner of Rep 1"));
+    br = setSlot(br, "slotB", or(decided(fin, "loser"), "Loser of Finals (Runner-up)"));
+    r[bronzeIdx][0] = settle(br);
+  }
+  return r;
+}
+
+/**
+ * Records a result and moves players on: the winner to the next main-bracket match (a plain
+ * bracket's semi-final loser to its bronze match), and the repechage / bronze rounds rebuilt.
+ * Shared by the admin tab and the scoreboard so they can never disagree.
+ */
+export function applyMatchResult(
+  raw: BracketMatch[][],
+  matchId: string,
+  result: Partial<BracketMatch> & { winnerId: string | null; status: BracketMatch["status"] }
+): BracketMatch[][] {
+  const r = raw.map((row) => row.map((m) => ({ ...m })));
+  const ri = r.findIndex((row) => row.some((m) => m.matchId === matchId));
+  if (ri < 0) return raw;
+  const mi = r[ri].findIndex((m) => m.matchId === matchId);
+  r[ri][mi] = { ...r[ri][mi], ...result };
+  const m = r[ri][mi];
+  const main = mainBracketRoundCount(r);
+  if (m.status === "COMPLETED" && m.winnerId && ri + 1 < main && !m.matchId.startsWith("M_BRONZE_")) {
+    const win = m.winnerId === m.slotA.playerId ? m.slotA : m.slotB;
+    const ni = Math.floor(mi / 2);
+    const target = r[ri + 1][ni];
+    if (target) r[ri + 1][ni] = { ...target, [mi % 2 === 0 ? "slotA" : "slotB"]: copySlot(win) };
+  }
+  return backfillBronzeMatches(syncRepechage(processByeMatches(r)));
 }
 
 // Backfill the auto-generated Bronze (3rd place) match with semifinal losers.

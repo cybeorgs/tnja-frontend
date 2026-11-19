@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useSearchParams } from "next/navigation";
 import { Loader2, Minus, Plus, Trophy, Users, Grid3x3, AlertCircle, Play, SkipForward, Printer } from "lucide-react";
 import type { DrawCategory, RegisteredPlayer, Tournament } from "../types";
-import { backfillBronzeMatches, processByeMatches, getEliminationFormatLabel, isDrawRoundRobin } from "../lib/bracketEngine";
+import { normaliseRounds, getEliminationFormatLabel, isDrawRoundRobin } from "../lib/bracketEngine";
 import { BracketView, RoundRobinLeaderboard } from "../components/BracketView";
 import { ContestSheet, contestSheetWidth } from "../components/ContestSheet";
 import { TNJA_LOGO } from "@/constants/brand";
@@ -85,7 +85,7 @@ function DrawViewInner() {
         let rounds: unknown = d.rounds;
         if (typeof rounds === "string") { try { rounds = JSON.parse(rounds); } catch { rounds = []; } }
         const arr = Array.isArray(rounds) ? (rounds as DrawCategory["rounds"]) : [];
-        return { ...d, rounds: backfillBronzeMatches(processByeMatches(arr)), generated: arr.length > 0, saved: true };
+        return { ...d, rounds: normaliseRounds(arr), generated: arr.length > 0, saved: true };
       });
       setDraws(list.filter((d) => d.generated));
       setError("");
