@@ -188,12 +188,12 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
  */
 function fitMirrorDims(F: number, slotsPerSide: number, page: SheetPage, extraRows: number): MirrorDims {
   const pos = page.portrait ? 16 : 22;
-  const gap = page.portrait ? 14 : 34;
+  const gap = page.portrait ? 10 : 30;      // a little narrower so the boxes get ~4px wider
   const centre = page.portrait ? 18 : 40;
   // W = 2 × (pos + F × (boxW + gap) + boxW) + centre  →  solve for boxW
   const boxW = Math.floor((page.width - centre - 2 * pos - 2 * F * gap) / (2 * (F + 1)));
-  const font = clamp(boxW / 12.5, 6.5, 10.5);
-  const boxH = Math.round(font * 2.7);
+  const font = clamp(boxW / 12.5, 6.5, 10.5) + 4; // 4px larger text than the base size
+  const boxH = Math.round((font - 4) * 2.7) + 4;  // base box height + 4px
   const row = clamp((page.bracketHeight - boxH * 2) / (slotsPerSide + extraRows), boxH + 4, boxH * 3.2);
   return { row, boxW, boxH, gap, font, pos, centre };
 }
@@ -210,7 +210,7 @@ function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass
         : `${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
            <span class="bx-name-wrap">
              <span class="bx-name">${codeTag(slot)}${slot.playerName}</span>
-             ${slot.club && d.font >= 7.5 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
+             ${slot.club && d.font - 4 >= 7.5 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
            </span>`}
     </div>`;
 }
