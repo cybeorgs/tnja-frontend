@@ -30,11 +30,14 @@ export function BracketView({
   currentDraw,
   onSwapFirstRound,
   reveal,
+  hideHeader,
 }: {
   rounds: BracketMatch[][];
   /** Draw-ceremony mode: only the first-round places in `shown` show their name (BYEs always show);
    *  `latest` is animated dropping into its box. Later rounds and results stay hidden meanwhile. */
   reveal?: { shown: Set<number>; latest: number | null } | null;
+  /** Leave out the format / competitors bar (when the page header already shows it). */
+  hideHeader?: boolean;
   /** Omit for a view-only bracket (no Scoreboard buttons). */
   onOpenScoreboard?: (match: BracketMatch) => void;
   /** When given, first-round places can be dragged onto each other to swap them (BYEs included).
@@ -157,6 +160,7 @@ export function BracketView({
 
   return (
     <div className="space-y-4">
+      {!hideHeader && (
       <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center font-black text-[#FF7400] text-[10px]">
@@ -172,6 +176,7 @@ export function BracketView({
           </div>
         </div>
       </div>
+      )}
       {canDrag && (
         <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
           <GripVertical size={14} className="text-[#FF7400]" /> Drag a player in the first round onto another place to swap them — drop onto a BYE to move the BYE. Saves straight away; locked once the category starts.

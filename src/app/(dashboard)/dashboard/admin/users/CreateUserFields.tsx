@@ -127,18 +127,21 @@ export function CreateUserFields({
     </FieldShell>
   );
 
+  /** Coaches created by an admin need only name, email, mobile and district; the rest is optional. */
+  const req = createType !== "COACH";
+
   const dobMax = new Date(new Date().setFullYear(new Date().getFullYear() - (createType === "STUDENT" ? 3 : 18))).toISOString().split("T")[0];
 
   /** Pincode, district and taluk share one row so the lookup's effect is visible. */
   const locationRow = (
     <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
-      {text(pincodeKey, "Pincode", { required: true, placeholder: "6-digit pincode", digits: 6, hint: <PincodeHint hint={pincodeHint} /> })}
-      {select("districtId", "District", districts.map((d) => ({ value: d.id, label: d.name })), {
+      {text(pincodeKey, "Pincode", { required: req, placeholder: "6-digit pincode", digits: 6, hint: <PincodeHint hint={pincodeHint} /> })}
+      {select("districtId", createType === "COACH" ? "Representing district" : "District", districts.map((d) => ({ value: d.id, label: d.name })), {
         required: true, placeholder: "Select district",
         onChange: (v) => { setField("districtId", v); setField("talukId", ""); },
       })}
       {select("talukId", "Taluk", taluks.map((t) => ({ value: t.id, label: t.name })), {
-        required: true, placeholder: form.districtId ? "Select taluk" : "Select district first", disabled: !form.districtId,
+        required: req, placeholder: form.districtId ? "Select taluk" : "Select district first", disabled: !form.districtId,
       })}
     </div>
   );
@@ -174,9 +177,9 @@ export function CreateUserFields({
       ) : (
         <Section title="Personal details">
           {text("fullName", "Full name", { required: true, placeholder: "As on Aadhaar", span: createType === "STUDENT" ? 2 : 1 })}
-          {(createType === "COACH" || createType === "MEMBER") && text("fatherName", "Father's name", { required: true, placeholder: "Full name" })}
-          {select("gender", "Gender", [{ value: "MALE", label: "Male" }, { value: "FEMALE", label: "Female" }, { value: "OTHER", label: "Other" }], { required: true })}
-          <FieldShell label="Date of birth" required error={err("dob")}>
+          {(createType === "COACH" || createType === "MEMBER") && text("fatherName", "Father's name", { required: req, placeholder: "Full name" })}
+          {select("gender", "Gender", [{ value: "MALE", label: "Male" }, { value: "FEMALE", label: "Female" }, { value: "OTHER", label: "Other" }], { required: req })}
+          <FieldShell label="Date of birth" required={req} error={err("dob")}>
             <input
               type="date"
               max={dobMax}
@@ -186,8 +189,8 @@ export function CreateUserFields({
               className={`${inputBase} ${err("dob") ? inputBad : inputOk} ${!form.dob ? "text-slate-400" : ""}`}
             />
           </FieldShell>
-          {select("bloodGroup", "Blood group", BLOOD_GROUPS.map((g) => ({ value: g, label: g })), { required: true, placeholder: "Select" })}
-          {text("aadhaarNumber", "Aadhaar number", { required: true, placeholder: "12-digit Aadhaar", digits: 12 })}
+          {select("bloodGroup", "Blood group", BLOOD_GROUPS.map((g) => ({ value: g, label: g })), { required: req, placeholder: "Select" })}
+          {text("aadhaarNumber", "Aadhaar number", { required: req, placeholder: "12-digit Aadhaar", digits: 12 })}
         </Section>
       )}
 
@@ -236,9 +239,9 @@ export function CreateUserFields({
       )}
       {createType === "COACH" && (
         <Section title="Judo background">
-          {text("presentGradeInJudo", "Present grade in Judo", { required: true, placeholder: "e.g. Black Belt 1st Dan", span: 2 })}
-          {text("historyInJudo", "Highest achievement in Judo", { required: true, placeholder: "e.g. State Champion 2018" })}
-          {text("historyInOtherMartial", "Highest achievement in other martial arts", { required: true, placeholder: "Type None if not applicable" })}
+          {text("presentGradeInJudo", "Present grade in Judo", { placeholder: "e.g. Black Belt 1st Dan", span: 2 })}
+          {text("historyInJudo", "Highest achievement in Judo", { placeholder: "e.g. State Champion 2018" })}
+          {text("historyInOtherMartial", "Highest achievement in other martial arts", { placeholder: "Type None if not applicable" })}
         </Section>
       )}
     </div>

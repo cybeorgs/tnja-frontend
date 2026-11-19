@@ -54,19 +54,15 @@ export const adminMemberSchema = z.object({
   addressPincode: z.string().length(6, "Pincode must be exactly 6 digits"),
 });
 
+/** Blank is allowed; anything typed must still be valid. */
+const blankOr = (schema: z.ZodString) => z.union([z.literal(""), schema]).optional();
+
+/** Admin-created coach: only name, email, mobile and representing district are required. */
 export const adminCoachSchema = z.object({
-  fullName: z.string().min(3, "Full name is required (min 3 chars)"),
+  fullName: z.string().trim().min(3, "Full name is required (min 3 chars)"),
   email: z.string().trim().email("Enter a valid email address"),
   mobileNumber: z.string().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number starting with 6-9"),
-  districtId: z.string().min(1, "District is required"),
-  talukId: z.string().min(1, "Taluk is required"),
-  gender: z.enum(["MALE", "FEMALE", "OTHER"]),
-  dob: z.string().min(1, "Date of Birth is required"),
-  aadhaarNumber: z.string().regex(/^[2-9][0-9]{11}$/, "Enter a valid 12-digit Aadhaar number"),
-  fatherName: z.string().min(3, "Father's name is required"),
-  bloodGroup: z.string().min(1, "Blood Group is required"),
-  addressPincode: z.string().length(6, "Pincode must be exactly 6 digits"),
-  historyInJudo: z.string().min(1, "Highest achievement in Judo is required"),
-  historyInOtherMartial: z.string().min(1, "Highest achievement in other martial arts is required"),
-  presentGradeInJudo: z.string().min(1, "Present grade in Judo is required"),
+  districtId: z.string().min(1, "Representing district is required"),
+  aadhaarNumber: blankOr(z.string().regex(/^[2-9][0-9]{11}$/, "Enter a valid 12-digit Aadhaar number")),
+  addressPincode: blankOr(z.string().regex(/^[0-9]{6}$/, "Pincode must be exactly 6 digits")),
 });
