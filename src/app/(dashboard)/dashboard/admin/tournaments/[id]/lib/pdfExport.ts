@@ -35,8 +35,8 @@ function bxBox(slot: BracketSlot, x: number, y: number): string {
       ${blank ? "" : `
         ${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
         <span class="bx-name-wrap">
-          <span class="bx-name">${codeTag(slot)}${slot.playerName}</span>
-          ${slot.club ? `<span class="bx-club">${slot.club}</span>` : ""}
+          <span class="bx-name">${slot.playerName}</span>
+          ${codeTag(slot).replace('class="bx-code"', 'class="bx-code bx-code-line" style="font-size:8px;"') || (slot.club ? `<span class="bx-club">${slot.club}</span>` : "")}
         </span>
       `}
     </div>`;
@@ -205,17 +205,45 @@ function fitMirrorDims(F: number, slotsPerSide: number, page: SheetPage, extraRo
 
 const slotBlank = (s: BracketSlot) => s.isBye || s.playerName === "TBD" || (!s.playerId && /^(Loser|Winner|Finalist)/.test(s.playerName));
 
+/**
+ * Font size and line mode that show a whole name in a box: one line if it fits, else two lines,
+ * else two lines at a smaller size. Widths are estimated (bold capitals ≈ 0.64 em per letter).
+ */
+function fitName(text: string, d: MirrorDims, seeded: boolean): { size: number; wrap: boolean } {
+  const avail = d.boxW - 14 - (seeded ? 18 : 0);   // box padding + border (+ seed badge)
+  const em = text.length * 0.64;                    // name (with code) width in em
+  const twoLines = (d.boxH - 4) / 2 / 1.05;         // largest size at which two lines fit the height
+  if (em * d.font <= avail) return { size: d.font, wrap: false };
+  const wrapSize = Math.min(d.font, twoLines);
+  if ((em * wrapSize) / 2 <= avail * 0.92) return { size: wrapSize, wrap: true };
+  return { size: Math.max(6, Math.min(wrapSize, (avail * 0.92 * 2) / em)), wrap: true };
+}
+
 function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass = ""): string {
   const blank = slot.isBye || slot.playerName === "TBD";
   const placeholder = !blank && !slot.playerId;
+  // Name on the top line (whole name, shrunk only if it is too long for one line), district code below.
+  const code = slot.playerId ? sheetCodes.get(slot.playerId) : undefined;
+  const avail = d.boxW - 14 - (slot.seedNumber ? 18 : 0);
+  const em = slot.playerName.length * 0.64;              // estimated name width in em (bold capitals)
+  const codeSize = Math.max(6, d.font - 4);
+  let nameSize = Math.max(6, Math.min(d.font, avail / em)); // one line
+  let twoLines = false;
+  // A long name with spaces reads better on two lines (above the code) than squeezed onto one.
+  if (nameSize < d.font * 0.8 && slot.playerName.includes(" ")) {
+    const byHeight = (d.boxH - 4 - codeSize * 1.05) / (2 * 1.05);
+    const byWidth = (avail * 0.92 * 2) / em;
+    const s2 = Math.min(d.font, byHeight, byWidth);
+    if (s2 > nameSize) { nameSize = Math.max(6, s2); twoLines = true; }
+  }
   return `
     <div class="bx-box ${extraClass}" style="left:${x}px; top:${y}px; width:${d.boxW}px; height:${d.boxH}px; font-size:${d.font}px;">
       ${blank ? "" : placeholder
         ? `<span class="bx-ph">${slot.playerName}</span>`
         : `${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
            <span class="bx-name-wrap">
-             <span class="bx-name">${codeTag(slot)}${slot.playerName}</span>
-             ${slot.club && d.boxW >= 100 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
+             <span class="bx-name${twoLines ? " bx-name-2" : ""}" style="font-size:${nameSize.toFixed(1)}px; text-overflow:clip;">${slot.playerName}</span>
+             ${code ? `<span class="bx-code bx-code-line" style="font-size:${codeSize.toFixed(1)}px;">${code}</span>` : ""}
            </span>`}
     </div>`;
 }
@@ -308,7 +336,7 @@ function renderMirroredMainBracket(mainRounds: BracketMatch[][], page: SheetPage
   places.forEach(([label, name], k) => {
     const y = placesTop + k * (d.boxH + 6);
     boxes += `<div class="bx-place" style="left:${cx - placeW / 2 - 22}px; top:${y + 3}px; font-size:${d.font}px;">${label}</div>`;
-    boxes += `<div class="bx-box ${k === 0 ? "bx-final" : ""}" style="left:${cx - placeW / 2}px; top:${y}px; width:${placeW}px; height:${d.boxH}px; font-size:${d.font}px; justify-content:center;"><span class="bx-name">${name}</span></div>`;
+    boxes += `<div class="bx-box ${k === 0 ? "bx-final" : ""}" style="left:${cx - placeW / 2}px; top:${y}px; width:${placeW}px; height:${d.boxH}px; font-size:${d.font}px; justify-content:center;">${(() => { const f = fitName(name, { ...d, boxW: placeW }, false); return `<span class="bx-name${f.wrap ? " bx-name-2" : ""}" style="font-size:${f.size.toFixed(1)}px; text-align:center;">${name}</span>`; })()}</div>`;
   });
   let H = Math.max(perSide0 * 2 * d.row + d.boxH, placesTop + 4 * (d.boxH + 6));
 
@@ -401,6 +429,9 @@ const BX_STYLES = `
   .bx-name-wrap { display: flex; flex-direction: column; justify-content: center; overflow: hidden; min-width: 0; line-height: 1.15; }
   .bx-name { font-weight: 800; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bx-code { font-weight: 900; color: #1d4ed8; margin-right: 4px; }
+  .bx-code-line { margin-right: 0; line-height: 1; letter-spacing: 0.5px; }
+  /* Long names: two lines inside the box instead of being cut off */
+  .bx-name.bx-name-2 { white-space: normal; text-overflow: clip; line-height: 1.05; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .bx-club { color: #64748b; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bx-pos { position: absolute; text-align: right; padding-right: 4px; font-size: 10px; font-weight: 900; color: #1d4ed8; display: flex; align-items: center; justify-content: flex-end; }
   .bx-num { position: absolute; font-size: 9px; font-weight: 900; color: #475569; background: #fff; padding: 0 2px; }
