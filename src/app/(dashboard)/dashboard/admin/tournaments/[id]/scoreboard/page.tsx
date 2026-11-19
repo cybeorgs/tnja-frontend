@@ -816,6 +816,12 @@ function ScoreboardInner() {
       showToast("Match has ended! Cannot start Osaekomi.");
       return;
     }
+    // A hold is already running: never restart it from 0. Pressing the other player's Osaekomi
+    // turns the hold over to them (same as Swap: the time and the score reached so far carry over).
+    if (osaActive && osaFor) {
+      if (osaFor !== fighter) swapOsaekomi();
+      return;
+    }
     osaTimeRef.current = 0;
     osaMsRef.current = 0;
     setOsaMs(0);
@@ -1063,8 +1069,8 @@ function ScoreboardInner() {
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => startOsaekomi("A")} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30">Osaekomi (P1)</button>
-              <button onClick={() => startOsaekomi("B")} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700">Osaekomi (P2)</button>
+              <button onClick={() => startOsaekomi("A")} disabled={osaActive && osaFor === "A"} title={osaActive && osaFor === "B" ? "Turn the hold over to P1 (keeps the time)" : undefined} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30 disabled:opacity-40">{osaActive && osaFor === "B" ? "Swap to P1" : "Osaekomi (P1)"}</button>
+              <button onClick={() => startOsaekomi("B")} disabled={osaActive && osaFor === "B"} title={osaActive && osaFor === "A" ? "Turn the hold over to P2 (keeps the time)" : undefined} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700 disabled:opacity-40">{osaActive && osaFor === "A" ? "Swap to P2" : "Osaekomi (P2)"}</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={swapOsaekomi} disabled={!osaActive} className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Swap P1 ⇄ P2 (Keep Time)</button>
