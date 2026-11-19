@@ -5,6 +5,7 @@ import { useSearchParams, useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
 import { normaliseRounds } from "../lib/bracketEngine";
+import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 interface Score { ippon: number; wazaAri: number; yuko: number; shido: number; awaseteIppon?: boolean }
 type Fighter = "A" | "B";
@@ -81,6 +82,30 @@ function ScoreboardInner() {
   const matchNumber     = sp.get("matchNumber")     || "1";
   const matNumber       = sp.get("matNumber")       || "1";
   const tournamentTitle = sp.get("tournamentTitle") || "TNJA Championship";
+
+  // Who each fighter represents (district confirmed at weigh-in, else home district)
+  const districtCodes = useDistrictCodes();
+  type Rep = { representing?: string; representingDistrict?: string; representingUnit?: string; district?: string };
+  const [reps, setReps] = useState<{ A?: Rep; B?: Rep }>({});
+  useEffect(() => {
+    const idA = sp.get("fighterAId"), idB = sp.get("fighterBId");
+    if (!tournamentId || (!idA && !idB)) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api"}/tournaments/${tournamentId}/registrations`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(raw => {
+        const regs: Record<string, any>[] = Array.isArray(raw) ? raw : raw?.registrations || []; // eslint-disable-line @typescript-eslint/no-explicit-any
+        const find = (id: string | null): Rep | undefined => {
+          const r = id ? regs.find(x => (x.playerId || x.player?.id) === id) : undefined;
+          return r ? { representing: r.representing || "", representingDistrict: r.representingDistrict || "", representingUnit: r.representingUnit || "", district: r.player?.district?.name || r.district || "" } : undefined;
+        };
+        setReps({ A: find(idA), B: find(idB) });
+      })
+      .catch(() => {});
+  }, [tournamentId, sp]);
+  const repA = reps.A ? representingOf(reps.A, districtCodes) : null;
+  const repB = reps.B ? representingOf(reps.B, districtCodes) : null;
 
   const [techniques, setTechniques] = useState<string[]>(FALLBACK_techniques);
   const [penalties, setPenalties]   = useState<string[]>(FALLBACK_penalties);
@@ -912,8 +937,8 @@ function ScoreboardInner() {
 
   return (
     <>
-      <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] flex justify-center xl:items-center font-sans select-none overflow-y-auto text-white print:hidden">
-        <div className="w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[820px] flex flex-col bg-[#111111] relative border border-white/10 rounded-none xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4">
+      <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-[#7a5a12] via-[#c9a227] to-[#7a5a12] flex justify-center xl:items-center font-sans select-none overflow-y-auto text-white print:hidden">
+        <div className="w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[820px] flex flex-col bg-gradient-to-br from-[#8f6b14] via-[#d4af37] to-[#8f6b14] relative border border-[#f5d76e]/40 rounded-none xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4">
         
         {/* ══ HEADER ════════════════════════════════════════════════════════ */}
         {/* 3-column grid keeps the title centred whatever the side widths; z-10 keeps the panels' glow underneath */}
@@ -966,6 +991,7 @@ function ScoreboardInner() {
           className="order-2 xl:order-1"
           name={fighterAName}
           club={fighterAClub}
+          rep={repA}
           coach={fighterACoach}
           score={scoreA}
           total={totalScore(scoreA)}
@@ -1145,6 +1171,7 @@ function ScoreboardInner() {
           className="order-3 xl:order-3"
           name={fighterBName}
           club={fighterBClub}
+          rep={repB}
           coach={fighterBCoach}
           score={scoreB}
           total={totalScore(scoreB)}
@@ -1268,7 +1295,7 @@ function ScoreboardInner() {
                 {winner === "A" ? fighterAName : fighterBName}
               </h1>
               <h3 className="text-xl sm:text-2xl font-bold text-gray-400 mb-6 sm:mb-10">
-                {winner === "A" ? fighterAClub : fighterBClub}
+                {(() => { const r = winner === "A" ? repA : repB; const club = winner === "A" ? fighterAClub : fighterBClub; return [r && `[${r.code}] ${r.name}`, club && club !== r?.name ? club : ""].filter(Boolean).join(" · "); })()}
               </h3>
               
               <div className="bg-[#111] px-6 py-4 rounded-2xl border border-[#333] mb-8 sm:mb-10 w-full shadow-inner">
@@ -1569,7 +1596,7 @@ type ScoreField = "ippon" | "wazaAri" | "yuko" | "shido";
 /** One competitor's card: name, score, lock timer and the referee controls. */
 function PlayerPanel(props: {
   theme: PanelTheme; className?: string;
-  name: string; club: string; coach?: string; score: Score; total: number;
+  name: string; club: string; coach?: string; rep?: { name: string; code: string } | null; score: Score; total: number;
   osaActive: boolean; osaOtherActive: boolean; osaMs: number; onStartOsa: () => void; onCancelOsa: () => void;
   onAdd: (f: ScoreField) => void; onUndo: (f: ScoreField) => void; onHansoku: () => void; onUndoLast: () => void; onWinner: () => void;
   techniques: string[]; penalties: string[];
@@ -1593,6 +1620,12 @@ function PlayerPanel(props: {
             {theme === "white" ? "PLAYER 1 · WHITE" : "PLAYER 2 · BLUE"}
           </span>
           <h2 className="text-lg lg:text-xl font-black leading-tight truncate">{props.name}</h2>
+          {props.rep && (
+            <p className="flex items-center gap-1.5 mt-0.5 min-w-0">
+              <span className={`shrink-0 text-[10px] font-black tracking-wider px-1.5 py-0.5 rounded ${t.chip}`}>{props.rep.code}</span>
+              <span className="text-sm font-bold truncate">{props.rep.name}</span>
+            </p>
+          )}
           {(props.club || props.coach) && (
             <p className={`text-xs truncate ${t.muted}`}>{[props.club, props.coach && `Coach: ${props.coach}`].filter(Boolean).join(" · ")}</p>
           )}
@@ -1747,7 +1780,7 @@ function ActionBtn({ t, icon, label, onClick }: { t: PanelTokens; icon?: React.R
 
 export default function ScoreboardPage() {
   return (
-    <Suspense fallback={<div className="fixed inset-0 z-[9999] bg-[#111] flex items-center justify-center text-white/50 font-bold">Loading Scoreboard...</div>}>
+    <Suspense fallback={<div className="fixed inset-0 z-[9999] bg-gradient-to-br from-[#7a5a12] via-[#c9a227] to-[#7a5a12] flex items-center justify-center text-white/80 font-bold">Loading Scoreboard...</div>}>
       <ScoreboardInner />
     </Suspense>
   );
