@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Monitor, Printer, Trophy, Download, GripVertical } from "lucide-react";
+import { Monitor, Printer, Download, GripVertical } from "lucide-react";
 import type { BracketMatch, DrawCategory, RegisteredPlayer, Tournament } from "../types";
-import { getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel } from "../lib/bracketEngine";
+import { getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel, detectDrawPlacements, PLACEMENT_ORDER, type Placement } from "../lib/bracketEngine";
 import { exportRoundRobinPoolSheet, exportCategoryReport, exportCategoryChartPDF } from "../lib/pdfExport";
 import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
@@ -15,6 +15,12 @@ function clubCode(name: string): string {
   const upper = name.toUpperCase().replace(/[^A-Z]/g, "");
   return upper.slice(0, 3) || "---";
 }
+
+const MEDAL_STYLE: Record<string, { title: string; icon: string; card: string; label: string }> = {
+  FIRST:  { title: "Gold",   icon: "🥇", card: "bg-gradient-to-r from-yellow-50 to-amber-100 border-yellow-300", label: "text-yellow-700" },
+  SECOND: { title: "Silver", icon: "🥈", card: "bg-gradient-to-r from-slate-50 to-slate-100 border-slate-300",   label: "text-slate-600" },
+  THIRD:  { title: "Bronze", icon: "🥉", card: "bg-gradient-to-r from-orange-50 to-orange-100 border-orange-300", label: "text-orange-700" },
+};
 
 // ─── Bracket View Component (reference-style with SVG connectors) ─────────────
 const MATCH_H = 84;
@@ -114,6 +120,28 @@ export function BracketView({
   const repById = new Map(players.map((p) => [p.id, representingOf(p, districtCodes)]));
   const slotCode = (slot: BracketMatch["slotA"]) =>
     (slot.playerId && repById.get(slot.playerId)?.code) || (slot.club ? clubCode(slot.club) : "");
+
+  /** Everyone in this bracket with their placement, Gold → Silver → Bronze → Participants.
+   *  Uses the saved placements once the category is concluded, else what the results so far give.
+   *  Null until at least one medal is decided. */
+  const placementList = (): { id: string; name: string; from: string; placement: Placement }[] | null => {
+    const slotById = new Map<string, BracketMatch["slotA"]>();
+    rounds.forEach((r) => r.forEach((m) => [m.slotA, m.slotB].forEach((s) => {
+      if (s.playerId && !s.isBye && !slotById.has(s.playerId)) slotById.set(s.playerId, s);
+    })));
+    const ids = [...slotById.keys()];
+    const playerById = new Map(players.map((p) => [p.id, p]));
+    const saved = ids.some((id) => ["FIRST", "SECOND", "THIRD"].includes(playerById.get(id)?.placement || ""));
+    const detected = saved ? null : detectDrawPlacements(rounds, ids);
+    const list = ids.map((id) => {
+      const p = playerById.get(id);
+      const slot = slotById.get(id)!;
+      const placement = (saved ? (p?.placement as Placement) || "PARTICIPATION" : detected![id]) ?? "PARTICIPATION";
+      return { id, name: p?.name || slot.playerName, from: repById.get(id)?.name || p?.club || slot.club || "", placement };
+    });
+    if (!list.some((r) => r.placement !== "PARTICIPATION")) return null;
+    return list.sort((a, b) => (PLACEMENT_ORDER[a.placement] ?? 99) - (PLACEMENT_ORDER[b.placement] ?? 99));
+  };
 
   // ── Draw-ceremony reveal ──
   const revealing = !!reveal;
@@ -287,21 +315,6 @@ export function BracketView({
                 });
               })}
 
-              {/* Final Winner Connector */}
-              {!isRoundRobin && (() => {
-                if (mainRoundsCount === 0) return null;
-                const finalMatch = rounds[mainRoundsCount - 1][0];
-                if (!revealing && finalMatch && finalMatch.status === "COMPLETED" && finalMatch.winnerId) {
-                  const xBase = (mainRoundsCount - 1) * (MATCH_W + CONN_W) + MATCH_W;
-                  const y1 = mCenterY(mainRoundsCount - 1, 0);
-                  return (
-                    <motion.g key="winner-line" initial={{ opacity: 0, pathLength: 0 }} animate={{ opacity: 1, pathLength: 1 }} transition={{ delay: 0.5, duration: 0.8 }} stroke="#FF7400" strokeWidth={2.5} fill="none">
-                      <line x1={xBase} y1={y1} x2={xBase + CONN_W} y2={y1} />
-                    </motion.g>
-                  );
-                }
-                return null;
-              })()}
             </svg>
 
             {/* Match cards */}
@@ -374,39 +387,49 @@ export function BracketView({
               });
             })}
 
-            {/* Champion Node */}
-            {!isRoundRobin && (() => {
-              if (mainRoundsCount === 0) return null;
-              const finalMatch = rounds[mainRoundsCount - 1][0];
-              if (revealing || !finalMatch || finalMatch.status !== "COMPLETED" || !finalMatch.winnerId) return null;
-
-              const isSlotAWinner = finalMatch.winnerId === finalMatch.slotA.playerId;
-              const championName = isSlotAWinner ? finalMatch.slotA.playerName : finalMatch.slotB.playerName;
-              const championClub = isSlotAWinner ? finalMatch.slotA.club : finalMatch.slotB.club;
-              const top = mCenterY(mainRoundsCount - 1, 0) - MATCH_H / 2;
+            {/* Winner column: Gold, Silver, Bronze (Merit), then Participants — same placements as the Results tab */}
+            {!isRoundRobin && !revealing && (() => {
+              const results = placementList();
+              if (!results) return null;
+              const medals = results.filter((r) => r.placement !== "PARTICIPATION");
+              const participants = results.filter((r) => r.placement === "PARTICIPATION");
               const xOffset = rounds.length * (MATCH_W + CONN_W);
 
               return (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.5, x: -20 }}
-                  animate={{ opacity: 1, scale: 1, x: 0 }}
-                  transition={{ delay: 0.7, type: "spring", stiffness: 200, damping: 15 }}
-                  style={{ position: "absolute", top, left: xOffset, width: MATCH_W - 20, height: MATCH_H, zIndex: 2 }}
-                  className="bg-gradient-to-r from-orange-500 to-[#FF7400] rounded-xl shadow-xl shadow-orange-500/30 overflow-hidden flex items-center justify-center border border-white"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5, type: "spring", stiffness: 200, damping: 18 }}
+                  style={{ position: "absolute", top: 0, left: xOffset, width: MATCH_W - 20, maxHeight: totalH, zIndex: 2 }}
+                  className="flex flex-col gap-1.5 overflow-y-auto pr-0.5"
                 >
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-white opacity-10 rounded-bl-full" />
-                  <div className="absolute bottom-0 left-0 w-10 h-10 bg-white opacity-10 rounded-tr-full" />
-                  
-                  <div className="flex items-center gap-3 w-full px-4 relative z-10">
-                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shrink-0 shadow-inner">
-                      <Trophy size={20} className="text-[#FF7400]" />
+                  {medals.map((r) => {
+                    const s = MEDAL_STYLE[r.placement];
+                    return (
+                      <div key={r.id} className={`rounded-xl border px-3 py-2 shadow-sm ${s.card}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[9px] font-black uppercase tracking-widest ${s.label}`}>{s.icon} {s.title}</span>
+                          <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/70 text-amber-700 border border-amber-200">Merit</span>
+                        </div>
+                        <p className="text-[12px] font-black text-slate-800 truncate leading-tight mt-0.5" title={r.name}>{r.name}</p>
+                        <p className="text-[9px] font-semibold text-slate-500 truncate">{r.from || "---"}</p>
+                      </div>
+                    );
+                  })}
+                  {participants.length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border-b border-slate-100">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-blue-600">Participants</span>
+                        <span className="text-[9px] font-bold text-slate-400">{participants.length}</span>
+                      </div>
+                      {participants.map((r) => (
+                        <div key={r.id} className="px-3 py-1 border-b border-slate-50 last:border-0">
+                          <p className="text-[11px] font-bold text-slate-700 truncate leading-tight" title={r.name}>{r.name}</p>
+                          <p className="text-[9px] text-slate-400 truncate">{r.from || "---"}</p>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex flex-col min-w-0 flex-grow">
-                      <span className="text-[9px] font-black text-orange-100 uppercase tracking-widest leading-none mb-0.5">Gold Medalist</span>
-                      <span className="text-sm font-black text-white truncate leading-tight">{championName}</span>
-                      <span className="text-[10px] font-bold text-orange-200 truncate leading-tight">{championClub || "---"}</span>
-                    </div>
-                  </div>
+                  )}
                 </motion.div>
               );
             })()}

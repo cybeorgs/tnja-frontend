@@ -19,7 +19,7 @@ import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
   getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup,
-  applyMatchResult, mainBracketRoundCount, normaliseRounds,
+  applyMatchResult, mainBracketRoundCount, normaliseRounds, detectDrawPlacements, PLACEMENT_ORDER,
 } from "./lib/bracketEngine";
 import TimingModal from "./components/TimingModal";
 import { fmtClock, timingOf } from "./lib/matchTiming";
@@ -246,167 +246,17 @@ export default function TournamentDetailPage() {
 
     // Iterate over every draw category to find final + semi-final losers/winners
     for (const draw of Object.values(draws)) {
-      const rounds = draw.rounds;
-      if (!rounds || rounds.length === 0) continue;
-
-      const catPlayers = players.filter(p => 
+      if (!draw.rounds || draw.rounds.length === 0) continue;
+      const catPlayers = players.filter(p =>
         p.status === "APPROVED" &&
         p.ageGroup === draw.ageGroup &&
         (draw.exactAge === 0 || p.exactAge === draw.exactAge) &&
         p.gender === draw.gender &&
         String(p.weight) === draw.weightCategory
       );
-
-      const isRR = isDrawRoundRobin(draw);
-
-      if (isRR) {
-        // Calculate Round Robin standings to detect Gold, Silver, Bronze
-        const standingsMap: Record<string, {
-          playerId: string;
-          name: string;
-          wins: number;
-          points: number;
-          totalWinningTime: number;
-        }> = {};
-
-        catPlayers.forEach(p => {
-          standingsMap[p.id] = { playerId: p.id, name: p.name, wins: 0, points: 0, totalWinningTime: 0 };
-        });
-
-        const allMatches: BracketMatch[] = [];
-        rounds.forEach(r => {
-          r.forEach(m => {
-            allMatches.push(m);
-            if (m.status === "COMPLETED") {
-              const elapsed = m.elapsedSeconds || 0;
-              const ptsA = m.scoreA ? ( (m.scoreA.ippon || 0) * 100 + (m.scoreA.wazaAri || 0) * 10 + (m.scoreA.yuko || 0) * 1 ) : 0;
-              const ptsB = m.scoreB ? ( (m.scoreB.ippon || 0) * 100 + (m.scoreB.wazaAri || 0) * 10 + (m.scoreB.yuko || 0) * 1 ) : 0;
-
-              if (m.slotA.playerId && standingsMap[m.slotA.playerId]) standingsMap[m.slotA.playerId].points += Math.min(ptsA, 100);
-              if (m.slotB.playerId && standingsMap[m.slotB.playerId]) standingsMap[m.slotB.playerId].points += Math.min(ptsB, 100);
-
-              if (m.winnerId && standingsMap[m.winnerId]) {
-                standingsMap[m.winnerId].wins += 1;
-                standingsMap[m.winnerId].totalWinningTime += elapsed;
-              }
-            }
-          });
-        });
-
-        const sortedPlayers = Object.values(standingsMap).sort((a, b) => {
-          if (b.wins !== a.wins) return b.wins - a.wins;
-          if (b.points !== a.points) return b.points - a.points;
-
-          const tiedGroup = Object.values(standingsMap).filter(p => p.wins === a.wins && p.points === a.points);
-          if (tiedGroup.length === 2) {
-            const headToHead = allMatches.find(m => 
-              m.status === "COMPLETED" && 
-              ((m.slotA.playerId === a.playerId && m.slotB.playerId === b.playerId) ||
-               (m.slotA.playerId === b.playerId && m.slotB.playerId === a.playerId))
-            );
-            if (headToHead && headToHead.winnerId) {
-              return headToHead.winnerId === a.playerId ? -1 : 1;
-            }
-          }
-
-          if (a.totalWinningTime !== b.totalWinningTime) {
-            return a.totalWinningTime - b.totalWinningTime;
-          }
-
-          const headToHead = allMatches.find(m => 
-            m.status === "COMPLETED" && 
-            ((m.slotA.playerId === a.playerId && m.slotB.playerId === b.playerId) ||
-             (m.slotA.playerId === b.playerId && m.slotB.playerId === a.playerId))
-          );
-          if (headToHead && headToHead.winnerId) {
-            return headToHead.winnerId === a.playerId ? -1 : 1;
-          }
-
-          return 0;
-        });
-
-        if (sortedPlayers.length > 0 && sortedPlayers[0].playerId) detected[sortedPlayers[0].playerId] = "FIRST";
-        if (sortedPlayers.length > 1 && sortedPlayers[1].playerId) detected[sortedPlayers[1].playerId] = "SECOND";
-        if (sortedPlayers.length > 2 && sortedPlayers[2].playerId) detected[sortedPlayers[2].playerId] = "THIRD";
-      } else {
-        const hasDoubleRepechage = rounds.some(r => r.some(m => m.matchId.startsWith("rr_rep1_m2")));
-        const hasSingleRepechage = !hasDoubleRepechage && rounds.some(r => r.some(m => m.matchId.startsWith("rr_rep")));
-        const totalMainRounds = (hasDoubleRepechage || hasSingleRepechage) ? rounds.length - 2 : rounds.length;
-        // A bronze result only counts if its winner actually fought in that match, and never
-        // overrides a medal already won in the final.
-        const isBronzeWin = (m: BracketMatch) =>
-          m.status === "COMPLETED" && !!m.winnerId &&
-          (m.winnerId === m.slotA.playerId || m.winnerId === m.slotB.playerId) &&
-          detected[m.winnerId] !== "FIRST" && detected[m.winnerId] !== "SECOND";
-
-        // Gold & Silver from the final match
-        if (totalMainRounds >= 1) {
-          const finalRound = rounds[totalMainRounds - 1];
-          if (finalRound && finalRound.length > 0) {
-            const finalMatch = finalRound[0];
-            if (finalMatch.status === "COMPLETED" && finalMatch.winnerId) {
-              detected[finalMatch.winnerId] = "FIRST";
-              const silverId = finalMatch.winnerId === finalMatch.slotA.playerId ? finalMatch.slotB.playerId : finalMatch.slotA.playerId;
-              if (silverId) detected[silverId] = "SECOND";
-            }
-          }
-        }
-
-        if (hasDoubleRepechage) {
-          // Both winners of the two Bronze Matches in the last round get 3rd place (Bronze)
-          const bronzeRound = rounds[rounds.length - 1];
-          if (bronzeRound && bronzeRound.length >= 2) {
-            bronzeRound.forEach(m => {
-              if (isBronzeWin(m)) detected[m.winnerId!] = "THIRD";
-            });
-          }
-        } else if (hasSingleRepechage) {
-          // Winner of the single Bronze Match in the last round gets 3rd place (Bronze)
-          const bronzeRound = rounds[rounds.length - 1];
-          if (bronzeRound && bronzeRound.length >= 1) {
-            if (isBronzeWin(bronzeRound[0])) detected[bronzeRound[0].winnerId!] = "THIRD";
-          }
-        } else {
-          // Standard Single Elimination (final + semi logic)
-          const totalRounds = rounds.length;
-          const finalRound = rounds[totalRounds - 1];
-          let hasBronzeMatch = false;
-
-          if (finalRound && finalRound.length > 0) {
-            const finalMatch = finalRound[0];
-            if (finalMatch.status === "COMPLETED" && finalMatch.winnerId) {
-              detected[finalMatch.winnerId] = "FIRST";
-              const silverPlayerId =
-                finalMatch.winnerId === finalMatch.slotA.playerId
-                  ? finalMatch.slotB.playerId
-                  : finalMatch.slotA.playerId;
-              if (silverPlayerId) detected[silverPlayerId] = "SECOND";
-            }
-
-            if (finalRound.length > 1) {
-              hasBronzeMatch = true;
-              const bronzeMatch = finalRound[1];
-              if (bronzeMatch.status === "COMPLETED" && bronzeMatch.winnerId) {
-                detected[bronzeMatch.winnerId] = "THIRD";
-              }
-            }
-          }
-
-          if (totalRounds >= 2 && !hasBronzeMatch) {
-            const semiRound = rounds[totalRounds - 2];
-            for (const match of semiRound) {
-              if (match.status === "COMPLETED" && match.winnerId) {
-                const bronzePlayerId =
-                  match.winnerId === match.slotA.playerId
-                    ? match.slotB.playerId
-                    : match.slotA.playerId;
-                if (bronzePlayerId && detected[bronzePlayerId] === "PARTICIPATION") {
-                  detected[bronzePlayerId] = "THIRD";
-                }
-              }
-            }
-          }
-        }
+      // Medals only: a medal won in one draw is never reset by another draw the same player is in.
+      for (const [id, placement] of Object.entries(detectDrawPlacements(draw.rounds, catPlayers.map(p => p.id)))) {
+        if (placement !== "PARTICIPATION") detected[id] = placement;
       }
     }
 
@@ -3051,7 +2901,10 @@ export default function TournamentDetailPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-                    {filteredPlayers.map((player) => {
+                    {/* Gold, Silver, Bronze, then participants (stable sort keeps their order otherwise). */}
+                    {[...filteredPlayers]
+                      .sort((a, b) => (PLACEMENT_ORDER[placements[a.id] || "PARTICIPATION"] ?? 99) - (PLACEMENT_ORDER[placements[b.id] || "PARTICIPATION"] ?? 99))
+                      .map((player) => {
                       const placement = placements[player.id] || "PARTICIPATION";
                       const placementColors: Record<string, string> = {
                         FIRST: "border-yellow-400 bg-yellow-50",
@@ -3185,10 +3038,7 @@ export default function TournamentDetailPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 relative z-10">
                     {filteredPlayers
                       .filter(p => p.placement)
-                      .sort((a, b) => {
-                        const order: Record<string, number> = { FIRST: 1, SECOND: 2, THIRD: 3, PARTICIPATION: 4 };
-                        return (order[a.placement || ""] || 99) - (order[b.placement || ""] || 99);
-                      })
+                      .sort((a, b) => (PLACEMENT_ORDER[a.placement || ""] || 99) - (PLACEMENT_ORDER[b.placement || ""] || 99))
                       .map((player) => {
                         const placement = player.placement as string;
                         const placementColors: Record<string, string> = {
