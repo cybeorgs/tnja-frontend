@@ -728,7 +728,12 @@ export default function TournamentDetailPage() {
             saved: true,
           };
         });
-        setDraws(drawMap);
+        // A draw generated or edited here but not saved yet is kept as it is (the refresh runs on a timer)
+        setDraws((prev) => {
+          const merged = { ...drawMap };
+          for (const [k, d] of Object.entries(prev)) if (d.saved === false) merged[k] = d;
+          return merged;
+        });
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -1053,7 +1058,9 @@ export default function TournamentDetailPage() {
     scoreA?: any,
     scoreB?: any,
     winMethod?: string,
-    elapsedSeconds?: number
+    elapsedSeconds?: number,
+    /** false when the scoreboard has already saved this result: update the screen only */
+    persist = true
   ) => {
     const prev = drawsRef.current;
     const newDraws = { ...prev };
@@ -1073,7 +1080,7 @@ export default function TournamentDetailPage() {
       if (foundRi === -1) continue;
 
       if (newRounds[foundRi][foundMi].status === "COMPLETED") {
-        alert("This match is already completed and locked. You cannot change the winner.");
+        if (persist) alert("This match is already completed and locked. You cannot change the winner.");
         return;
       }
 
@@ -1205,7 +1212,7 @@ export default function TournamentDetailPage() {
     setDraws(newDraws);
 
     // Auto-save the affected draw so next-round matches persist after refresh
-    if (affectedCatKey) {
+    if (affectedCatKey && persist) {
       const draw = newDraws[affectedCatKey];
       fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
         method: "POST",
@@ -1233,10 +1240,21 @@ export default function TournamentDetailPage() {
     const channel = new BroadcastChannel("tnja_match_results");
     channel.onmessage = (e) => {
       const { matchId, winnerId, winnerName, winnerClub, scoreA, scoreB, winMethod, elapsedSeconds } = e.data;
-      if (matchId && winnerName) handleMatchResult(matchId, winnerId, winnerName, winnerClub, scoreA, scoreB, winMethod, elapsedSeconds);
+      // The scoreboard saves the result itself; show it at once, then re-read the saved draw
+      // (saving our own copy too could overwrite newer results from other devices).
+      if (matchId && winnerName) handleMatchResult(matchId, winnerId, winnerName, winnerClub, scoreA, scoreB, winMethod, elapsedSeconds, false);
+      setTimeout(fetchDraws, 1500);
     };
     return () => channel.close();
-  }, [handleMatchResult]);
+  }, [handleMatchResult, fetchDraws]);
+
+  // Results saved by referees on other devices: refresh the draws every 15 s and on focus
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") fetchDraws(); };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => { clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [fetchDraws]);
 
   // ── Global Auto-Selection Effect ─────────────────────────────────────────────
   const ageGroupOrder = [

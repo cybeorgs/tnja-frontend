@@ -26,7 +26,7 @@ export function processByeMatches(rounds: BracketMatch[][]): BracketMatch[][] {
       // so its next-round opponent goes through. Placeholder slots ("Loser of QF 1") never count here.
       else if (m.slotA.isBye && m.slotB.isBye) winner = { playerId: null, playerName: "BYE", club: "", isBye: true, coachName: "" };
       if (!winner) continue;
-      r[ri][mi] = { ...m, winnerId: winner.playerId, status: "COMPLETED" };
+      r[ri][mi] = { ...m, winnerId: winner.playerId, status: "COMPLETED", winMethod: m.winMethod || "Walkover (BYE)" };
       if (ri + 1 < mainCount) {
         const nextIdx = Math.floor(mi / 2);
         const next = { ...r[ri + 1][nextIdx] };
@@ -91,8 +91,8 @@ function settle(m: BracketMatch): BracketMatch {
     const open = (x: BracketSlot) => !x.playerId && !x.isBye;
     return open(m.slotA) || open(m.slotB) ? { ...m, ...VOID_RESULT } : m;
   }
-  if (m.slotA.isBye && m.slotB.playerId) return { ...m, winnerId: m.slotB.playerId, status: "COMPLETED" };
-  if (m.slotB.isBye && m.slotA.playerId) return { ...m, winnerId: m.slotA.playerId, status: "COMPLETED" };
+  if (m.slotA.isBye && m.slotB.playerId) return { ...m, winnerId: m.slotB.playerId, status: "COMPLETED", winMethod: "Walkover (BYE)" };
+  if (m.slotB.isBye && m.slotA.playerId) return { ...m, winnerId: m.slotA.playerId, status: "COMPLETED", winMethod: "Walkover (BYE)" };
   if (m.slotA.isBye && m.slotB.isBye) return { ...m, winnerId: null, status: "COMPLETED" };
   return m;
 }

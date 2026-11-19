@@ -175,6 +175,14 @@ function ScoreboardInner() {
     setTimeout(() => setToastMsg(""), 4000);
   }, []);
 
+  const locked = dbMatchStatus === "COMPLETED";
+  /** Every result-changing action stops here once the match is finished. */
+  const blockIfLocked = () => {
+    if (dbMatchStatus !== "COMPLETED") return false;
+    showToast("This match is already completed and locked. You cannot change the result.");
+    return true;
+  };
+
   const saveMatchToDB = useCallback(async (
     currentScoreA = scoreA, currentScoreB = scoreB, currentWinner = winner, currentWinMethod = winMethod, currentLogs = logs
   ) => {
@@ -244,6 +252,8 @@ function ScoreboardInner() {
         const errText = await postRes.text();
         console.error("Failed to save match to database:", errText);
         showToast("Failed to save match: " + errText);
+        // not saved, so not locked: let the referee declare the winner again
+        if (currentWinner) { setDbMatchStatus(""); setWinner(null); }
       } else {
         if (currentWinner) {
           const winnerName = currentWinner === "A" ? fighterAName : fighterBName;
@@ -253,6 +263,7 @@ function ScoreboardInner() {
     } catch (err: any) {
       console.error("Error saving match to DB:", err);
       showToast("Error saving match.");
+      if (currentWinner) { setDbMatchStatus(""); setWinner(null); }
     }
   }, [tournamentId, matchId, scoreA, scoreB, winner, winMethod, logs, timeLeft, running, sp, fighterAName, fighterBName, fighterAClub, fighterBClub, goldenScore, durationInput, showToast]);
 
@@ -264,14 +275,19 @@ function ScoreboardInner() {
     }).then(r => r.ok ? r.json() : null).then((draws: any[]) => {
         if (!draws || !Array.isArray(draws)) return;
         for (const draw of draws) {
-          if (!Array.isArray(draw.rounds)) continue;
-          for (const round of draw.rounds) {
+          // Same repaired view as every other page: a stale result whose "winner" isn't in this
+          // match (left by the old progression bug) is void, not a finished match.
+          const rounds = normaliseRounds(draw.rounds);
+          for (const round of rounds as any[][]) {
             for (const m of round) {
               if (m.matchId === matchId) {
-                if (m.status) setDbMatchStatus(m.status);
+                const idA = sp.get("fighterAId"), idB = sp.get("fighterBId");
+                const f: Fighter | null = m.winnerId && m.winnerId === idA ? "A" : m.winnerId && m.winnerId === idB ? "B" : null;
+                const done = m.status === "COMPLETED" && !!f;
+                setDbMatchStatus(done ? "COMPLETED" : m.status === "COMPLETED" ? "PENDING" : (m.status || ""));
                 if (m.scoreA) setScoreA(m.scoreA);
                 if (m.scoreB) setScoreB(m.scoreB);
-                if (m.winnerId) { const f: Fighter = m.winnerId === sp.get("fighterAId") ? "A" : "B"; setWinner(f); }
+                if (done) setWinner(f);
                 if (m.winMethod) setWinMethod(m.winMethod);
                 if (m.logs) {
                   setLogs(m.logs);
@@ -313,6 +329,7 @@ function ScoreboardInner() {
       return;
     }
     setWinner(f); setWinMethod(method); setRunning(false); setOsaActive(false); setShowWinnerModal(true);
+    setDbMatchStatus("COMPLETED");
     if (timerRef.current) clearInterval(timerRef.current);
     if (osaRef.current)   clearInterval(osaRef.current);
 
@@ -369,11 +386,13 @@ function ScoreboardInner() {
     setShowEditTimerModal(false);
   }, [editMinutes, editSeconds, maxTime, logs, saveMatchToDB, scoreA, scoreB, winner, winMethod]);
 
-  const handleResetClick = useCallback(() => {
+  const handleResetClick = () => {
+    if (blockIfLocked()) return;
     setShowResetPrompt(true);
-  }, []);
+  };
 
   const confirmReset = useCallback(() => {
+    if (dbMatchStatus === "COMPLETED") { setShowResetPrompt(false); return; }
     if (!resetComment.trim()) {
       showToast("Reason is required to reset the match.");
       return;
@@ -406,7 +425,7 @@ function ScoreboardInner() {
     showToast("Match has been reset successfully!");
     setShowResetPrompt(false);
     setResetComment("");
-  }, [durationInput, saveMatchToDB, showToast, resetComment]);
+  }, [durationInput, saveMatchToDB, showToast, resetComment, dbMatchStatus]);
 
   /** Download the match statistics timeline as a CSV file (opens in Excel). */
   const downloadStats = () => {
@@ -461,6 +480,20 @@ function ScoreboardInner() {
   };
 
   const isMatchEnded = checkWin(scoreA, scoreB, goldenScore).w !== null;
+
+  /**
+   * How a winner the referee declares by hand won, when the scores didn't end the match:
+   * ahead on score (waza-ari / yuko count), in golden score, on the opponent's hansoku-make,
+   * or otherwise by the referees' decision (hantei / no score).
+   */
+  const manualMethod = (f: Fighter): string => {
+    const me = f === "A" ? scoreA : scoreB, them = f === "A" ? scoreB : scoreA;
+    if (them.shido >= 3) return "Hansoku-make (3× Shido)";
+    if (me.wazaAri !== them.wazaAri) return me.wazaAri > them.wazaAri ? (goldenScore ? "Golden Score (Waza-ari)" : "Waza-ari") : "Decision (Hantei)";
+    if (me.yuko !== them.yuko) return me.yuko > them.yuko ? (goldenScore ? "Golden Score (Yuko)" : "Yuko") : "Decision (Hantei)";
+    if (goldenScore) return "Golden Score (Decision)";
+    return "Decision (Hantei)";
+  };
 
   const addScore = useCallback((fighter: Fighter, field: keyof Score) => {
     if (dbMatchStatus === "COMPLETED") {
@@ -638,6 +671,7 @@ function ScoreboardInner() {
   };
 
   const applyPenalty = (fighter: Fighter, pen: string, desc: string) => {
+    if (blockIfLocked()) return;
     const fighterName = fighter === "A" ? fighterAName : fighterBName;
     const isDirectHansoku = pen.toLowerCase().includes("hansoku-make");
     const nextShido = (fighter === "A" ? scoreA.shido : scoreB.shido) + (isDirectHansoku ? 3 : 1);
@@ -926,7 +960,7 @@ function ScoreboardInner() {
         <div className="flex flex-wrap items-center justify-end justify-self-end gap-2 lg:gap-3">
           {winner ? (
             <div className="bg-green-600 text-white px-4 py-1.5 rounded-md font-bold text-sm shadow-[0_0_10px_rgba(22,163,74,0.6)] flex items-center gap-2 tracking-widest uppercase">
-              <Trophy size={14} /> MATCH FINISHED • WINNER: {winner === "A" ? fighterAName : fighterBName}
+              <Trophy size={14} /> MATCH FINISHED • WINNER: {winner === "A" ? fighterAName : fighterBName}{winMethod ? ` • ${winMethod}` : ""}
             </div>
           ) : (
             <button className="flex items-center gap-2 bg-[#ffcccc] text-red-600 px-4 py-1.5 rounded-md font-bold text-sm">
@@ -973,6 +1007,7 @@ function ScoreboardInner() {
           onHansoku={() => applyPenalty("A", "Hansoku-make", "")}
           onUndoLast={() => undoLastScore("A")}
           onWinner={() => setConfirmWinner("A")}
+          locked={locked}
           techniques={techniques}
           penalties={penalties}
           tech={selectedTechA} setTech={setSelectedTechA}
@@ -983,7 +1018,7 @@ function ScoreboardInner() {
 
         {/* ── CENTER PANEL ────────────────────────────────────────────────── */}
         <div className="w-full xl:w-[300px] shrink-0 min-h-0 flex flex-col lg:flex-row xl:flex-col gap-3 order-1 xl:order-2 lg:col-span-2 xl:col-span-1 items-stretch">
-          <div className="bg-[#1a1a1a] rounded-2xl flex flex-col items-center justify-center pt-3 pb-3 relative shadow-lg lg:w-[300px] xl:w-auto shrink-0">
+          <div className={`${goldenScore && !winner ? "bg-gradient-to-b from-[#d4a017] to-[#b8860b]" : "bg-[#1a1a1a]"} transition-colors duration-500 rounded-2xl flex flex-col items-center justify-center pt-3 pb-3 relative shadow-lg lg:w-[300px] xl:w-auto shrink-0`}>
             
             <div className="relative flex flex-col items-center justify-center">
               <svg viewBox="0 0 260 260" className="w-[190px] h-[190px]">
@@ -1031,7 +1066,7 @@ function ScoreboardInner() {
 
               <div className="absolute inset-0 flex flex-col items-center justify-center pb-4">
                 <span className="text-[10px] font-black tracking-[0.2em] text-[#5a7fa8] mb-0.5">{goldenScore ? "GOLDEN SCORE" : "ROUND 1"}</span>
-                <button onClick={handleOpenEditTimer} className="text-[2.6rem] leading-none font-black text-white tabular-nums tracking-tighter mb-1 drop-shadow-md hover:text-orange-400 hover:scale-105 transition-all cursor-pointer">
+                <button disabled={locked} onClick={handleOpenEditTimer} className="disabled:cursor-not-allowed text-[2.6rem] leading-none font-black text-white tabular-nums tracking-tighter mb-1 drop-shadow-md hover:text-orange-400 hover:scale-105 transition-all cursor-pointer">
                   {fmt(timeLeft)}
                 </button>
                 <span className="text-[10px] font-black tracking-[0.1em] text-[#5a7fa8]">TIME REMAINING</span>
@@ -1039,13 +1074,13 @@ function ScoreboardInner() {
             </div>
 
             <div className="flex gap-3 w-full px-4 mt-1 justify-center">
-              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } if (!winner) { setRunning(true); } }} className="bg-[#2ecc71] hover:bg-[#27ae60] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(46,204,113,0.3)]">
+              <button disabled={locked} onClick={() => { if (blockIfLocked()) return; if (!winner) { setRunning(true); } }} className="disabled:opacity-40 disabled:cursor-not-allowed bg-[#2ecc71] hover:bg-[#27ae60] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(46,204,113,0.3)]">
                 <PlayCircle size={16} strokeWidth={2.5}/> START
               </button>
-              <button onClick={() => { if (dbMatchStatus === "COMPLETED") { showToast("This match is already completed and locked."); return; } setRunning(false); }} className="bg-[#f1c40f] hover:bg-[#d4ac0d] text-black pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(241,196,15,0.3)]">
+              <button disabled={locked} onClick={() => { if (blockIfLocked()) return; setRunning(false); }} className="disabled:opacity-40 disabled:cursor-not-allowed bg-[#f1c40f] hover:bg-[#d4ac0d] text-black pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(241,196,15,0.3)]">
                 <PauseCircle size={16} strokeWidth={2.5}/> PAUSE
               </button>
-              <button onClick={handleResetClick} title="Reset the match (asks for a reason)" className="bg-[#e74c3c] hover:bg-[#c0392b] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(231,76,60,0.3)]">
+              <button disabled={locked} onClick={handleResetClick} title="Reset the match (asks for a reason)" className="disabled:opacity-40 disabled:cursor-not-allowed bg-[#e74c3c] hover:bg-[#c0392b] text-white pt-1.5 pb-1 w-[76px] rounded-lg font-black text-[10px] tracking-wider flex flex-col items-center gap-1 shadow-[0_4px_10px_rgba(231,76,60,0.3)]">
                 <RotateCcw size={16} strokeWidth={2.5}/> RESET
               </button>
             </div>
@@ -1063,8 +1098,8 @@ function ScoreboardInner() {
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => startOsaekomi("A")} disabled={osaActive && osaFor === "A"} title={osaActive && osaFor === "B" ? "Turn the hold over to P1 (keeps the time)" : undefined} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30 disabled:opacity-40">{osaActive && osaFor === "B" ? "Swap to P1" : "Osaekomi (P1)"}</button>
-              <button onClick={() => startOsaekomi("B")} disabled={osaActive && osaFor === "B"} title={osaActive && osaFor === "A" ? "Turn the hold over to P2 (keeps the time)" : undefined} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700 disabled:opacity-40">{osaActive && osaFor === "A" ? "Swap to P2" : "Osaekomi (P2)"}</button>
+              <button onClick={() => startOsaekomi("A")} disabled={locked || (osaActive && osaFor === "A")} title={osaActive && osaFor === "B" ? "Turn the hold over to P1 (keeps the time)" : undefined} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30 disabled:opacity-40">{osaActive && osaFor === "B" ? "Swap to P1" : "Osaekomi (P1)"}</button>
+              <button onClick={() => startOsaekomi("B")} disabled={locked || (osaActive && osaFor === "B")} title={osaActive && osaFor === "A" ? "Turn the hold over to P2 (keeps the time)" : undefined} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700 disabled:opacity-40">{osaActive && osaFor === "A" ? "Swap to P2" : "Osaekomi (P2)"}</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={swapOsaekomi} disabled={!osaActive} className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Swap P1 ⇄ P2 (Keep Time)</button>
@@ -1153,6 +1188,7 @@ function ScoreboardInner() {
           onHansoku={() => applyPenalty("B", "Hansoku-make", "")}
           onUndoLast={() => undoLastScore("B")}
           onWinner={() => setConfirmWinner("B")}
+          locked={locked}
           techniques={techniques}
           penalties={penalties}
           tech={selectedTechB} setTech={setSelectedTechB}
@@ -1330,7 +1366,7 @@ function ScoreboardInner() {
                 </button>
                 <button onClick={() => {
                   const ws = checkWin(scoreA, scoreB, goldenScore);
-                  declareWinner(confirmWinner, (ws.w === confirmWinner && ws.m) ? ws.m : "Decision");
+                  declareWinner(confirmWinner, (ws.w === confirmWinner && ws.m) ? ws.m : manualMethod(confirmWinner));
                   setConfirmWinner(null);
                 }} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-black py-3 rounded-xl shadow-lg shadow-green-500/20 transition-all">
                   Yes, Declare
@@ -1566,6 +1602,7 @@ function PlayerPanel(props: {
   theme: PanelTheme; className?: string;
   name: string; club: string; coach?: string; rep?: { name: string; code: string } | null; score: Score; total: number;
   osaActive: boolean; osaOtherActive: boolean; osaMs: number; onStartOsa: () => void; onCancelOsa: () => void;
+  locked?: boolean;
   onAdd: (f: ScoreField) => void; onUndo: (f: ScoreField) => void; onHansoku: () => void; onUndoLast: () => void; onWinner: () => void;
   techniques: string[]; penalties: string[];
   tech: string; setTech: (v: string) => void; pen: string; setPen: (v: string) => void; desc: string; setDesc: (v: string) => void;
@@ -1604,6 +1641,8 @@ function PlayerPanel(props: {
         </div>
       </div>
 
+      {/* Everything below changes the result: one disabled fieldset once the match is locked */}
+      <fieldset disabled={props.locked} className={`contents ${props.locked ? "[&_button]:opacity-40 [&_button]:cursor-not-allowed [&_select]:opacity-40 [&_textarea]:opacity-40" : ""}`}>
       {/* Score boxes */}
       <div className="grid grid-cols-4 gap-2">
         <ScoreBox t={t} label="IPPON" value={score.ippon} onUndo={() => props.onUndo("ippon")} onAdd={() => props.onAdd("ippon")} />
@@ -1653,6 +1692,7 @@ function PlayerPanel(props: {
           APPLY
         </button>
       </div>
+      </fieldset>
     </div>
   );
 }
