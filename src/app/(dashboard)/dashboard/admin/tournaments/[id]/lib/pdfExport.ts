@@ -3,6 +3,14 @@
 
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Tournament } from "../types";
 import { isDrawRoundRobin, roundName, getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel } from "./bracketEngine";
+import { getLoadedDistrictCodes, representingOf } from "@/utils/districtCodes";
+
+/** Representing-district code per player id for the sheet being built (set by the export before rendering). */
+let sheetCodes = new Map<string, string>();
+const codeTag = (slot: BracketSlot) => {
+  const c = slot.playerId ? sheetCodes.get(slot.playerId) : undefined;
+  return c ? `<span class="bx-code">${c}</span>` : "";
+};
 
 // ─── Classic "official draw sheet" bracket renderer ───────────────────────────
 // Renders a traditional box-and-connector-line bracket (IJF paper-sheet style):
@@ -27,7 +35,7 @@ function bxBox(slot: BracketSlot, x: number, y: number): string {
       ${blank ? "" : `
         ${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
         <span class="bx-name-wrap">
-          <span class="bx-name">${slot.playerName}</span>
+          <span class="bx-name">${codeTag(slot)}${slot.playerName}</span>
           ${slot.club ? `<span class="bx-club">${slot.club}</span>` : ""}
         </span>
       `}
@@ -201,7 +209,7 @@ function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass
         ? `<span class="bx-ph">${slot.playerName}</span>`
         : `${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
            <span class="bx-name-wrap">
-             <span class="bx-name">${slot.playerName}</span>
+             <span class="bx-name">${codeTag(slot)}${slot.playerName}</span>
              ${slot.club && d.font >= 7.5 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
            </span>`}
     </div>`;
@@ -222,7 +230,7 @@ function renderMirroredMainBracket(mainRounds: BracketMatch[][], page: SheetPage
 
   // Vertical centres per side (same for both): round 0 evenly spaced, later rounds midway between feeders.
   const centres: number[][] = [];
-  centres[0] = Array.from({ length: perSide0 }, (_, j) => j * 2 * d.row + d.row);
+  centres[0] = Array.from({ length: perSide0 }, (_, j) => j * 2 * d.row + d.row / 2); // top of the next-round box = midway between the two feeder tops
   for (let r = 1; r < F; r++) {
     const n = mainRounds[r].length / 2;
     centres[r] = Array.from({ length: n }, (_, j) => (centres[r - 1][2 * j] + centres[r - 1][2 * j + 1]) / 2);
@@ -276,7 +284,7 @@ function renderMirroredMainBracket(mainRounds: BracketMatch[][], page: SheetPage
 
   // Final: left finalist box | right finalist box, joined in the centre, with the places underneath.
   const fin = mainRounds[F][0];
-  const fy = rootY - d.boxH / 2 + (F === 1 ? 0 : 0);
+  const fy = rootY; // same top-coordinate convention as every other next-round box, so the lines meet its middle
   const lfx = xLeft(F), rfx = xRight(F);
   boxes += mBox(fin.slotA, lfx, fy, d, "bx-final") + mBox(fin.slotB, rfx, fy, d, "bx-final");
   const fcy = fy + d.boxH / 2;
@@ -385,6 +393,7 @@ const BX_STYLES = `
   .bx-seed { flex-shrink: 0; background: #fef3c7; color: #b45309; font-weight: 900; font-size: 9px; padding: 1px 4px; border-radius: 3px; }
   .bx-name-wrap { display: flex; flex-direction: column; justify-content: center; overflow: hidden; min-width: 0; line-height: 1.15; }
   .bx-name { font-weight: 800; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bx-code { font-weight: 900; color: #1d4ed8; margin-right: 4px; }
   .bx-club { color: #64748b; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bx-pos { position: absolute; text-align: right; padding-right: 4px; font-size: 10px; font-weight: 900; color: #1d4ed8; display: flex; align-items: center; justify-content: flex-end; }
   .bx-num { position: absolute; font-size: 9px; font-weight: 900; color: #475569; background: #fff; padding: 0 2px; }
@@ -1862,6 +1871,12 @@ export function exportEliminationChartPDF(
   const activePlayers = players.filter(p => p.status === "APPROVED");
   const mainCount = mainBracketRoundCount(draw.rounds);
   const formatLabel = getEliminationFormatLabel(draw.rounds);
+
+  // District each player represents, shown as a code before their name ("CBE NARENTHAR")
+  const districtCodes = getLoadedDistrictCodes();
+  sheetCodes = new Map(
+    players.flatMap((p) => { const r = representingOf(p, districtCodes); return r ? [[p.id, r.code] as [string, string]] : []; })
+  );
 
   let goldWinnerName = "-";
   let goldWinnerClub = "";

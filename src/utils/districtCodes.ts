@@ -8,6 +8,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 export type DistrictCodes = Record<string, string>;
 
 let cache: Promise<DistrictCodes> | null = null;
+let loaded: DistrictCodes = {};
+
+/** The codes if they have already arrived (e.g. for print/PDF builders that must run synchronously). */
+export function getLoadedDistrictCodes(): DistrictCodes {
+  if (!cache && typeof window !== "undefined") loadDistrictCodes(); // start loading for next time
+  return loaded;
+}
 
 /** Fetches the district codes once per page load and shares them. */
 export function loadDistrictCodes(): Promise<DistrictCodes> {
@@ -21,6 +28,7 @@ export function loadDistrictCodes(): Promise<DistrictCodes> {
             .map((d) => [d.name!.trim().toLowerCase(), d.code!.trim().toUpperCase()])
         )
       )
+      .then((codes: DistrictCodes) => (loaded = codes))
       .catch(() => {
         cache = null; // try again next time
         return {};
