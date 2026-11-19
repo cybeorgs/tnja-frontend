@@ -187,14 +187,19 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
  * round places on one side, extraRows = room needed under the main bracket (repechage / bronze).
  */
 function fitMirrorDims(F: number, slotsPerSide: number, page: SheetPage, extraRows: number): MirrorDims {
-  const pos = page.portrait ? 16 : 22;
-  const gap = page.portrait ? 10 : 30;      // a little narrower so the boxes get ~4px wider
-  const centre = page.portrait ? 18 : 40;
+  // Tight margins and gaps so as much of the width as possible goes to the boxes (and the text).
+  const pos = page.portrait ? 14 : 18;
+  const gap = page.portrait ? 8 : 20;
+  const centre = page.portrait ? 12 : 28;
   // W = 2 × (pos + F × (boxW + gap) + boxW) + centre  →  solve for boxW
   const boxW = Math.floor((page.width - centre - 2 * pos - 2 * F * gap) / (2 * (F + 1)));
-  const font = clamp(boxW / 12.5, 6.5, 10.5) + 4; // 4px larger text than the base size
-  const boxH = Math.round((font - 4) * 2.7) + 4;  // base box height + 4px
-  const row = clamp((page.bracketHeight - boxH * 2) / (slotsPerSide + extraRows), boxH + 4, boxH * 3.2);
+  // Text as large as the page allows: limited by the box width (a 10–11 letter name fills it) and by
+  // the height (all rows must fit with a small gap between boxes); never below 9px, never above 15px.
+  const units = slotsPerSide + extraRows;
+  const maxBoxH = (page.bracketHeight - 3 * units) / (units + 2); // from row = (H − 2·boxH)/units ≥ boxH + 3
+  const font = clamp(Math.min(boxW / 8, (maxBoxH - 8) / 2), 9, 15);
+  const boxH = Math.round(font * 2 + 8);
+  const row = clamp((page.bracketHeight - boxH * 2) / units, boxH + 3, boxH * 3.2);
   return { row, boxW, boxH, gap, font, pos, centre };
 }
 
@@ -210,7 +215,7 @@ function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass
         : `${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
            <span class="bx-name-wrap">
              <span class="bx-name">${codeTag(slot)}${slot.playerName}</span>
-             ${slot.club && d.font - 4 >= 7.5 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
+             ${slot.club && d.boxW >= 100 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
            </span>`}
     </div>`;
 }
@@ -1940,7 +1945,7 @@ export function exportEliminationChartPDF(
   // rows spaced to use the height. Brackets too small to mirror fall back to the one-direction tree.
   // Header, podium, section titles and signatures take about 300 px (less without a repechage).
   const hasExtra = repechageRounds.length > 0 || !!mainRounds[mainRounds.length - 1]?.some((m) => m.matchId.startsWith("M_BRONZE_"));
-  const chrome = repechageRounds.length > 0 ? 300 : 248;
+  const chrome = repechageRounds.length > 0 ? 250 : 205; // compact header, podium and signatures (see .sheet overrides)
   const layoutFor = (page: SheetPage) => {
     const mirrored = renderMirroredMainBracket(mainRounds, page, hasExtra ? 3 : 0);
     const main = mirrored ?? renderMainBracketTree(mainRounds);
@@ -2073,6 +2078,18 @@ export function exportEliminationChartPDF(
         }
         .sheet { margin: 0 auto; background: #fff; display: flex; flex-direction: column; }
         .sheet .signatures-section { margin-top: auto; }
+        /* Compact header, podium and signatures so the bracket gets more of the page height */
+        .sheet .header-table { margin-bottom: 5px; }
+        .sheet .header-table td { padding: 3px 10px; }
+        .sheet .title-center { font-size: 17px; }
+        .sheet .podium-bar { margin-bottom: 4px; }
+        .sheet .podium-box { padding: 2px 10px; }
+        .sheet .podium-place { font-size: 10px; margin-bottom: 0; }
+        .sheet .podium-name { font-size: 13px; }
+        .sheet .podium-club { font-size: 10px; }
+        .sheet .section-header { font-size: 12px; margin: 4px 0 6px 0; }
+        .sheet .repechage-divider { margin: 6px 0; }
+        .sheet .sig-line { margin-top: 14px; }
         .canvas-wrap { display: flex; justify-content: center; }
         body[data-orient="landscape"] .view-portrait, body[data-orient="portrait"] .view-landscape { display: none; }
         .orient { display: inline-flex; gap: 4px; background: #1e293b; padding: 4px; border-radius: 9px; margin-right: 10px; }
