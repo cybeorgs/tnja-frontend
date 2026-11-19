@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, Minus, Plus, Shuffle, Swords, Users, X } from "lucide-react";
+import { AlertCircle, Grid3x3, Minus, Plus, Shuffle, Swords, Users, X } from "lucide-react";
 import type { RegisteredPlayer } from "../types";
 import { drawSetupFor } from "../lib/bracketEngine";
 
@@ -64,7 +64,7 @@ export function DrawSetupModal({
   };
 
   const stat = (icon: React.ReactNode, value: number | string, label: string, step?: { down: () => void; up: () => void; canDown: boolean; canUp: boolean }) => (
-    <div className={`flex-1 min-w-[130px] rounded-xl border px-4 py-3 ${step ? "border-orange-200 bg-orange-50/40" : "border-slate-200 bg-slate-50/60"}`}>
+    <div className={`rounded-xl border px-4 py-3 ${step ? "border-orange-200 bg-orange-50/40" : "border-slate-200 bg-slate-50/60"}`}>
       <div className="flex items-center gap-1.5 text-slate-400">{icon}<span className="text-[11px] font-bold uppercase tracking-wide">{label}</span></div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <p className="text-2xl font-black text-slate-800">{value}</p>
@@ -80,7 +80,7 @@ export function DrawSetupModal({
 
   return createPortal(
     <div className="tnja-dashboard fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onCancel}>
-      <div role="dialog" aria-modal="true" aria-labelledby="draw-setup-title" onClick={(e) => e.stopPropagation()} className="w-full max-w-xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-labelledby="draw-setup-title" onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 id="draw-setup-title" className="text-lg font-black text-slate-800">{isRedraw ? "Redraw" : "Draw setup"}</h3>
@@ -90,9 +90,10 @@ export function DrawSetupModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>*]:min-w-0">
             {stat(<Users size={13} />, players.length, "Players")}
-            {stat(<Swords size={13} />, setup.firstRoundFights, "1st-round fights", {
+            {stat(<Grid3x3 size={13} />, setup.size / 2, "Round-1 matches")}
+            {stat(<Swords size={13} />, setup.firstRoundFights, "Fights", {
               down: () => changeFights(setup.firstRoundFights - 1), up: () => changeFights(setup.firstRoundFights + 1),
               canDown: setup.firstRoundFights > setup.minFights, canUp: setup.firstRoundFights < setup.maxFights,
             })}
@@ -102,13 +103,34 @@ export function DrawSetupModal({
               canDown: setup.firstRoundFights < setup.maxFights, canUp: setup.firstRoundFights > setup.minFights,
             })}
           </div>
-          <p className="text-xs text-slate-500 -mt-2">
-            {setup.size}-place bracket. {setup.byes > 0
-              ? `${setup.byes} player${setup.byes === 1 ? " goes" : "s go"} straight to round 2; ${setup.firstRoundFights * 2} player${setup.firstRoundFights === 1 ? "" : "s"} fight in round 1.`
-              : "No byes — every player fights in round 1."}
-            {setup.empties > 0 && ` With ${setup.firstRoundFights} fights, round 2 is uneven: ${setup.empties === 1 ? "one player goes" : `${setup.empties} players go`} through it without an opponent.`}
-            {setup.minFights < setup.maxFights && " Use − / + to change the fights and byes."}
-          </p>
+          {/* The round-1 match boxes, split into what each one holds */}
+          <div>
+            <div className="flex h-3 rounded-full overflow-hidden bg-slate-100" aria-hidden>
+              {Array.from({ length: setup.size / 2 }, (_, i) => (
+                <span
+                  key={i}
+                  className={`flex-1 border-r-2 border-white last:border-r-0 ${
+                    i < setup.firstRoundFights ? "bg-[#FF7400]" : i < setup.firstRoundFights + setup.byes ? "bg-amber-300" : "bg-slate-200"
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600">
+              <span className="font-black text-slate-800">{setup.size / 2} round-1 matches ({setup.size}-place bracket):</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#FF7400]" /> {setup.firstRoundFights} fight{setup.firstRoundFights === 1 ? "" : "s"}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-300" /> {setup.byes} bye{setup.byes === 1 ? "" : "s"}</span>
+              {setup.empties > 0 && <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-slate-200" /> {setup.empties} empty</span>}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {setup.byes > 0
+                ? `${setup.firstRoundFights * 2} players fight in round 1; ${setup.byes} go${setup.byes === 1 ? "es" : ""} straight to round 2.`
+                : "No byes — every player fights in round 1."}
+              {setup.empties > 0 && ` ${setup.empties === 1 ? "An empty box means one player" : `${setup.empties} empty boxes mean ${setup.empties} players`} also go${setup.empties === 1 ? "es" : ""} through round 2 without an opponent.`}
+              {setup.minFights < setup.maxFights
+                ? ` Use − / + to set between ${setup.minFights} and ${setup.maxFights} fights (${players.length} players allow at most ${setup.maxFights}).`
+                : ""}
+            </p>
+          </div>
 
           {setup.byes > 0 && (
             <div>
