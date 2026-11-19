@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
+import { normaliseRounds } from "../lib/bracketEngine";
 
 interface Score { ippon: number; wazaAri: number; yuko: number; shido: number; awaseteIppon?: boolean }
 type Fighter = "A" | "B";
@@ -186,9 +187,11 @@ function ScoreboardInner() {
 
       let targetDraw: any = null;
       for (const draw of draws) {
-        if (!Array.isArray(draw.rounds)) continue;
+        // BYE winners moved on first, so the saved draw has them in the next round too
+        const storedRounds = normaliseRounds(draw.rounds);
+        if (!storedRounds.length) continue;
         let matchFound = false;
-        const newRounds = draw.rounds.map((r: any[]) => r.map((m: any) => {
+        const newRounds = storedRounds.map((r: any[]) => r.map((m: any) => {
           if (m.matchId === matchId) {
             matchFound = true;
             const winnerIdVal = currentWinner ? (currentWinner === "A" ? sp.get("fighterAId") : sp.get("fighterBId")) : null;

@@ -36,6 +36,21 @@ export function processByeMatches(rounds: BracketMatch[][]): BracketMatch[][] {
   return r;
 }
 
+/**
+ * A draw's rounds as stored by the API, made ready to use: parsed if they came as a JSON string,
+ * BYE winners moved on into the next round, and semi-final losers placed in the bronze match.
+ * Every page that reads a draw (admin, coach mats, scoreboard, draw view) must use this, or a
+ * player who got a BYE shows as "TBD" in the next round.
+ */
+export function normaliseRounds(raw: unknown): BracketMatch[][] {
+  let rounds = raw;
+  if (typeof rounds === "string") {
+    try { rounds = JSON.parse(rounds); } catch { rounds = []; }
+  }
+  if (!Array.isArray(rounds) || rounds.length === 0) return [];
+  return backfillBronzeMatches(processByeMatches(rounds as BracketMatch[][]));
+}
+
 // Backfill the auto-generated Bronze (3rd place) match with semifinal losers.
 // Plain elimination brackets append this match as the 2nd match of the Final round
 // (see generateIJFBracket), but nothing ever wired the semifinal losers into it —

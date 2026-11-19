@@ -5,6 +5,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Monitor, ArrowLeft, Trophy, Calendar, CheckCircle2, User, PlayCircle, Search } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { normaliseRounds } from "@/app/(dashboard)/dashboard/admin/tournaments/[id]/lib/bracketEngine";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
 
@@ -58,7 +59,10 @@ function MatQueueInner() {
           const data = await dRes.json();
           // Filter draws assigned to this mat
           const drawsArray = Array.isArray(data) ? data : (data.draws || []);
-          const matDraws = drawsArray.filter((d: DrawCategory) => (d.matNumber || 1) === matNumber);
+          // Same preparation as the admin draw sheet, so BYE winners show in the next round (not "TBD")
+          const matDraws = drawsArray
+            .filter((d: DrawCategory) => (d.matNumber || 1) === matNumber)
+            .map((d: DrawCategory) => ({ ...d, rounds: normaliseRounds(d.rounds) }));
           setCategories(matDraws);
         }
       } catch (error) {
