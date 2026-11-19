@@ -12,6 +12,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Eye, FilterX,
   LayoutList, Upload, AlertTriangle, Scale,
   LayoutGrid, UserPlus, Grid3x3, Network, Ban, type LucideIcon,
+  Timer,
 } from "lucide-react";
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, Tab, Tournament, ViewMode } from "./types";
 import {
@@ -20,6 +21,8 @@ import {
   getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup,
   applyMatchResult, mainBracketRoundCount, normaliseRounds,
 } from "./lib/bracketEngine";
+import TimingModal from "./components/TimingModal";
+import { fmtClock, timingOf } from "./lib/matchTiming";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
 import { ExpiredBlock } from "./components/ExpiredBlock";
@@ -823,6 +826,7 @@ export default function TournamentDetailPage() {
 
   // ── Start / stop one category (the organiser decides which categories run) ──
   const [startingKey, setStartingKey] = useState<string | null>(null);
+  const [timingOpen, setTimingOpen] = useState(false);
   const toggleCategoryStart = async (key: string, d: DrawCategory, started: boolean) => {
     setStartingKey(key);
     try {
@@ -2438,6 +2442,45 @@ export default function TournamentDetailPage() {
                             <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </span>
                         </label>
+
+                        {/* Scoreboard timing */}
+                        {(() => {
+                          const tm = timingOf(currentDraw);
+                          const canSet = !!currentDraw?.saved && !currentDraw?.isConcluded;
+                          return (
+                            <button
+                              onClick={() => canSet && setTimingOpen(true)}
+                              disabled={!canSet}
+                              title={canSet ? "Set the scoreboard match time for this category" : "Save the draw first"}
+                              className="h-9 px-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:border-orange-300 hover:text-[#FF7400] disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:text-slate-700"
+                            >
+                              <Timer size={15} className={tm.custom ? "text-[#FF7400]" : "text-slate-400"} />
+                              <span className="tabular-nums">{fmtClock(tm.duration)}</span>
+                              <span className="text-[11px] font-semibold text-slate-400">GS {tm.goldenLimit ? fmtClock(tm.goldenLimit) : "∞"}</span>
+                            </button>
+                          );
+                        })()}
+                        {timingOpen && currentDraw && (
+                          <TimingModal
+                            tournamentId={tournamentId}
+                            token={token}
+                            draw={currentDraw}
+                            title={catTitle}
+                            onClose={() => setTimingOpen(false)}
+                            onSaved={(saved, message) => {
+                              setDraws((prev) => {
+                                const next = { ...prev };
+                                for (const d of saved) {
+                                  const k = categoryKey(d.ageGroup, d.exactAge === 0 ? "ALL" : String(d.exactAge), d.gender, d.weightCategory);
+                                  if (next[k]) next[k] = { ...next[k], matchDuration: d.matchDuration, goldenScoreLimit: d.goldenScoreLimit };
+                                }
+                                return next;
+                              });
+                              setTimingOpen(false);
+                              showToast(message, true);
+                            }}
+                          />
+                        )}
 
                         {/* Draw controls (hidden once the category has started) */}
                         {!locked && drawPlayers.length > 1 && (

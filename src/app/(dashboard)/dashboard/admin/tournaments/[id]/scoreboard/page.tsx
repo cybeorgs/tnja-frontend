@@ -5,6 +5,7 @@ import { useSearchParams, useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
 import { normaliseRounds, applyMatchResult } from "../lib/bracketEngine";
+import { fmtClock, timingOf } from "../lib/matchTiming";
 import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 interface Score { ippon: number; wazaAri: number; yuko: number; shido: number; awaseteIppon?: boolean }
@@ -141,7 +142,9 @@ function ScoreboardInner() {
   const [saveMessage, setSaveMessage] = useState("");
   const [dbMatchStatus, setDbMatchStatus] = useState("");
 
-  const [durationInput, setDurationInput] = useState(4);
+  /** Regular match time (s) and golden score limit (s, null = unlimited), from the category's timing. */
+  const [matchSeconds, setMatchSeconds] = useState(4 * 60);
+  const [goldenLimit, setGoldenLimit] = useState<number | null>(null);
   const [timeLeft, setTimeLeft]   = useState(4 * 60);
   const [maxTime, setMaxTime]     = useState(4 * 60);
   const [running, setRunning]     = useState(false);
@@ -224,7 +227,7 @@ function ScoreboardInner() {
         const storedRounds = normaliseRounds(draw.rounds);
         if (!storedRounds.some((r) => r.some((m) => m.matchId === matchId))) continue;
         const winnerIdVal = currentWinner ? (currentWinner === "A" ? sp.get("fighterAId") : sp.get("fighterBId")) : null;
-        const elapsedSeconds = goldenScore ? (durationInput * 60) + timeLeft : (durationInput * 60) - timeLeft;
+        const elapsedSeconds = goldenScore ? matchSeconds + timeLeft : matchSeconds - timeLeft;
         // Same progression as the admin tab: winner on, QF / SF losers into the repechage and bronze rounds
         const newRounds = applyMatchResult(storedRounds, matchId, {
           winnerId: winnerIdVal, status: statusVal, scoreA: currentScoreA, scoreB: currentScoreB,
@@ -265,7 +268,7 @@ function ScoreboardInner() {
       showToast("Error saving match.");
       if (currentWinner) { setDbMatchStatus(""); setWinner(null); }
     }
-  }, [tournamentId, matchId, scoreA, scoreB, winner, winMethod, logs, timeLeft, running, sp, fighterAName, fighterBName, fighterAClub, fighterBClub, goldenScore, durationInput, showToast]);
+  }, [tournamentId, matchId, scoreA, scoreB, winner, winMethod, logs, timeLeft, running, sp, fighterAName, fighterBName, fighterAClub, fighterBClub, goldenScore, matchSeconds, showToast]);
 
   useEffect(() => {
     if (!tournamentId || !matchId) return;
@@ -281,6 +284,11 @@ function ScoreboardInner() {
           for (const round of rounds as any[][]) {
             for (const m of round) {
               if (m.matchId === matchId) {
+                const tm = timingOf(draw);
+                setMatchSeconds(tm.duration);
+                setGoldenLimit(tm.goldenLimit);
+                const begun = (Array.isArray(m.logs) && m.logs.length > 0) || m.status === "IN_PROGRESS" || m.status === "COMPLETED";
+                if (!begun) { setTimeLeft(tm.duration); setMaxTime(tm.duration); }
                 const idA = sp.get("fighterAId"), idB = sp.get("fighterBId");
                 const f: Fighter | null = m.winnerId && m.winnerId === idA ? "A" : m.winnerId && m.winnerId === idB ? "B" : null;
                 const done = m.status === "COMPLETED" && !!f;
@@ -296,7 +304,7 @@ function ScoreboardInner() {
                     goldenScoreLoggedRef.current = true;
                   }
                 }
-                if (typeof m.timeLeft === "number") setTimeLeft(m.timeLeft);
+                if (begun && typeof m.timeLeft === "number") setTimeLeft(m.timeLeft);
                 break;
               }
             }
@@ -339,7 +347,7 @@ function ScoreboardInner() {
     setLogs(nextLogs);
 
     const sp2 = new URLSearchParams(window.location.search);
-    const elapsedSeconds = goldenScore ? (durationInput * 60) + timeLeft : (durationInput * 60) - timeLeft;
+    const elapsedSeconds = goldenScore ? matchSeconds + timeLeft : matchSeconds - timeLeft;
     try {
       const ch = new BroadcastChannel("tnja_match_results");
       ch.postMessage({ 
@@ -356,7 +364,7 @@ function ScoreboardInner() {
     } catch {}
 
     saveMatchToDB(scoreA, scoreB, f, method, nextLogs);
-  }, [fighterAName, fighterBName, fighterAClub, fighterBClub, scoreA, scoreB, logs, goldenScore, durationInput, timeLeft, saveMatchToDB, dbMatchStatus]);
+  }, [fighterAName, fighterBName, fighterAClub, fighterBClub, scoreA, scoreB, logs, goldenScore, matchSeconds, timeLeft, saveMatchToDB, dbMatchStatus]);
 
   const handleOpenEditTimer = useCallback(() => {
     if (dbMatchStatus === "COMPLETED") {
@@ -372,7 +380,6 @@ function ScoreboardInner() {
     const newTime = (editMinutes * 60) + editSeconds;
     setTimeLeft(newTime);
     if (newTime > maxTime) setMaxTime(newTime);
-    setDurationInput(editMinutes);
 
     const nextLogs = [...logs, {
       id: `${Date.now()}_system_timer_edit`,
@@ -409,7 +416,8 @@ function ScoreboardInner() {
     setWinner(null);
     setWinMethod("");
     setLogs(nextLogs);
-    setTimeLeft(durationInput * 60);
+    setTimeLeft(matchSeconds);
+    setMaxTime(matchSeconds);
     setRunning(false);
     setGoldenScore(false);
     goldenScoreLoggedRef.current = false;
@@ -425,7 +433,7 @@ function ScoreboardInner() {
     showToast("Match has been reset successfully!");
     setShowResetPrompt(false);
     setResetComment("");
-  }, [durationInput, saveMatchToDB, showToast, resetComment, dbMatchStatus]);
+  }, [matchSeconds, saveMatchToDB, showToast, resetComment, dbMatchStatus]);
 
   /** Download the match statistics timeline as a CSV file (opens in Excel). */
   const downloadStats = () => {
@@ -730,6 +738,11 @@ function ScoreboardInner() {
             if (aS === bS) { setGoldenScore(true); return 0; }
             return 0;
           }
+          if (goldenScore && goldenLimit && t + 1 >= goldenLimit) {
+            clearInterval(timerRef.current!); setRunning(false);
+            showToast(`Golden score limit (${fmtClock(goldenLimit)}) reached: declare the winner by decision`);
+            return goldenLimit;
+          }
           return goldenScore ? t + 1 : t - 1;
         });
       }, 1000);
@@ -737,7 +750,7 @@ function ScoreboardInner() {
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [running, scoreA, scoreB, goldenScore]);
+  }, [running, scoreA, scoreB, goldenScore, goldenLimit, showToast]);
 
   useEffect(() => {
     if (goldenScore && !goldenScoreLoggedRef.current) {
@@ -754,6 +767,46 @@ function ScoreboardInner() {
   useEffect(() => { saveMatchToDBRef.current = saveMatchToDB; }, [saveMatchToDB]);
 
   const logsRef = useRef(logs);
+
+  // The organiser can change the category's timing from the admin panel at any time: pick it up
+  // every 10 s. The match length only changes before the match begins (a running clock is never
+  // reset); the golden score limit applies until golden score is reached.
+  const begunRef = useRef(false);
+  const goldenRef = useRef(goldenScore);
+  const matchSecondsRef = useRef(matchSeconds);
+  useEffect(() => {
+    begunRef.current = logs.length > 0 || running || !!winner || dbMatchStatus === "IN_PROGRESS" || dbMatchStatus === "COMPLETED";
+    goldenRef.current = goldenScore;
+    matchSecondsRef.current = matchSeconds;
+  }, [logs, running, winner, dbMatchStatus, goldenScore, matchSeconds]);
+  useEffect(() => {
+    if (!tournamentId || !matchId) return;
+    const poll = async () => {
+      if (begunRef.current && goldenRef.current) return;
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api"}/tournaments/${tournamentId}/draws`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!res.ok) return;
+        const draws = await res.json();
+        const draw = (Array.isArray(draws) ? (draws as { rounds: unknown; ageGroup?: string; matchDuration?: number | null; goldenScoreLimit?: number | null }[]) : []).find((d) =>
+          normaliseRounds(d.rounds).some((r) => r.some((m) => m.matchId === matchId)));
+        if (!draw) return;
+        const tm = timingOf(draw);
+        if (!goldenRef.current) setGoldenLimit(tm.goldenLimit);
+        if (begunRef.current) return;
+        if (matchSecondsRef.current !== tm.duration) {
+          matchSecondsRef.current = tm.duration;
+          setMatchSeconds(tm.duration);
+          setTimeLeft(tm.duration);
+          setMaxTime(tm.duration);
+          showToast(`Match time updated to ${fmtClock(tm.duration)}`);
+        }
+      } catch { /* keep the current timing */ }
+    };
+    const timer = setInterval(poll, 10000);
+    return () => clearInterval(timer);
+  }, [tournamentId, matchId, showToast]);
   useEffect(() => { logsRef.current = logs; }, [logs]);
 
   const runningRef = useRef(running);
@@ -1065,7 +1118,7 @@ function ScoreboardInner() {
               </svg>
 
               <div className="absolute inset-0 flex flex-col items-center justify-center pb-4">
-                <span className="text-[10px] font-black tracking-[0.2em] text-[#5a7fa8] mb-0.5">{goldenScore ? "GOLDEN SCORE" : "ROUND 1"}</span>
+                <span className="text-[10px] font-black tracking-[0.2em] text-[#5a7fa8] mb-0.5">{goldenScore ? `GOLDEN SCORE${goldenLimit ? ` · MAX ${fmtClock(goldenLimit)}` : ""}` : `MATCH · ${fmtClock(matchSeconds)}`}</span>
                 <button disabled={locked} onClick={handleOpenEditTimer} className="disabled:cursor-not-allowed text-[2.6rem] leading-none font-black text-white tabular-nums tracking-tighter mb-1 drop-shadow-md hover:text-orange-400 hover:scale-105 transition-all cursor-pointer">
                   {fmt(timeLeft)}
                 </button>

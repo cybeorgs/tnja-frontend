@@ -50,6 +50,10 @@ export interface DrawCategory {
   ageGroup: string; exactAge?: number; gender: string; weightCategory: string; matNumber?: number;
   rounds: BracketMatch[][]; generated: boolean; saved: boolean;
   isConcluded?: boolean;
+  /** Scoreboard regular match time in seconds (null = age group default) */
+  matchDuration?: number | null;
+  /** Golden score limit in seconds (null = unlimited) */
+  goldenScoreLimit?: number | null;
   /** When the organiser started this category (its matches can be played); null = not started */
   startedAt?: string | null;
 }
