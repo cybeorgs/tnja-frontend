@@ -166,11 +166,29 @@ function renderRepechageBracket(repRounds: BracketMatch[][], numberStart: number
 // The bracket's top half runs left → centre and its bottom half runs right → centre, meeting at the
 // Final in the middle, so a whole category fits one landscape page (like the paper draw sheets).
 
-type MirrorDims = { row: number; boxW: number; boxH: number; gap: number; font: number; pos: number };
-const mirrorDims = (slotsPerSide: number): MirrorDims =>
-  slotsPerSide > 8
-    ? { row: 27, boxW: 150, boxH: 21, gap: 40, font: 8.5, pos: 22 }
-    : { row: 40, boxW: 180, boxH: 28, gap: 56, font: 10, pos: 26 };
+type MirrorDims = { row: number; boxW: number; boxH: number; gap: number; font: number; pos: number; centre: number };
+
+/** A printable A4 area (CSS px inside 7 mm margins) and how much of its height the bracket may use. */
+export type SheetPage = { width: number; bracketHeight: number; portrait: boolean };
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * Box sizes for a mirrored sheet that exactly fills the page width (fixed side margins), with the
+ * row spacing stretched to use the page height: F = index of the final round, slotsPerSide = first-
+ * round places on one side, extraRows = room needed under the main bracket (repechage / bronze).
+ */
+function fitMirrorDims(F: number, slotsPerSide: number, page: SheetPage, extraRows: number): MirrorDims {
+  const pos = page.portrait ? 16 : 22;
+  const gap = page.portrait ? 14 : 34;
+  const centre = page.portrait ? 18 : 40;
+  // W = 2 × (pos + F × (boxW + gap) + boxW) + centre  →  solve for boxW
+  const boxW = Math.floor((page.width - centre - 2 * pos - 2 * F * gap) / (2 * (F + 1)));
+  const font = clamp(boxW / 12.5, 6.5, 10.5);
+  const boxH = Math.round(font * 2.7);
+  const row = clamp((page.bracketHeight - boxH * 2) / (slotsPerSide + extraRows), boxH + 4, boxH * 3.2);
+  return { row, boxW, boxH, gap, font, pos, centre };
+}
 
 const slotBlank = (s: BracketSlot) => s.isBye || s.playerName === "TBD" || (!s.playerId && /^(Loser|Winner|Finalist)/.test(s.playerName));
 
@@ -184,7 +202,7 @@ function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass
         : `${slot.seedNumber ? `<span class="bx-seed">${slot.seedNumber}</span>` : ""}
            <span class="bx-name-wrap">
              <span class="bx-name">${slot.playerName}</span>
-             ${slot.club ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
+             ${slot.club && d.font >= 7.5 ? `<span class="bx-club" style="font-size:${d.font - 2}px;">${slot.club}</span>` : ""}
            </span>`}
     </div>`;
 }
@@ -192,13 +210,13 @@ function mBox(slot: BracketSlot, x: number, y: number, d: MirrorDims, extraClass
 const winnerOf = (m: BracketMatch) =>
   m.status === "COMPLETED" && m.winnerId ? (m.winnerId === m.slotA.playerId ? m.slotA : m.slotB) : null;
 
-function renderMirroredMainBracket(mainRounds: BracketMatch[][]): { html: string; width: number; height: number; matchCount: number; dims: MirrorDims } | null {
+function renderMirroredMainBracket(mainRounds: BracketMatch[][], page: SheetPage, extraRows: number): { html: string; width: number; height: number; matchCount: number; dims: MirrorDims } | null {
   const F = mainRounds.length - 1; // index of the final round
   if (F < 1 || mainRounds[0].length < 2) return null;
   const perSide0 = mainRounds[0].length / 2; // first-round matches per side
-  const d = mirrorDims(perSide0 * 2);
+  const d = fitMirrorDims(F, perSide0 * 2, page, extraRows);
   const colW = d.boxW + d.gap;
-  const centreGap = 40;
+  const centreGap = d.centre;
   const sideW = d.pos + F * colW + d.boxW;
   const W = 2 * sideW + centreGap;
 
@@ -1900,13 +1918,21 @@ export function exportEliminationChartPDF(
 
   // Both-sides layout (top half on the left, bottom half on the right, final in the centre) so the
   // category fits one landscape page; the single-column layout is the fallback.
-  const mirrored = renderMirroredMainBracket(mainRounds);
-  const mainTree = mirrored ?? renderMainBracketTree(mainRounds);
-  const mirroredRep = mirrored ? renderMirroredRepechage(repechageRounds, mainTree.matchCount + 1, mirrored.width, mirrored.dims) : null;
-  const repTree = mirroredRep ?? renderRepechageBracket(repechageRounds, mainTree.matchCount + 1);
-  // Portrait page: the classic one-direction bracket, which is tall rather than wide.
-  const portraitTree = renderMainBracketTree(mainRounds);
-  const portraitRep = renderRepechageBracket(repechageRounds, portraitTree.matchCount + 1);
+  // Both orientations use the paper sheet's layout (top half left, bottom half right, final in the
+  // centre), each built for its own page: boxes sized to fill the width between fixed margins and
+  // rows spaced to use the height. Brackets too small to mirror fall back to the one-direction tree.
+  // Header, podium, section titles and signatures take about 300 px (less without a repechage).
+  const hasExtra = repechageRounds.length > 0 || !!mainRounds[mainRounds.length - 1]?.some((m) => m.matchId.startsWith("M_BRONZE_"));
+  const chrome = repechageRounds.length > 0 ? 300 : 248;
+  const layoutFor = (page: SheetPage) => {
+    const mirrored = renderMirroredMainBracket(mainRounds, page, hasExtra ? 3 : 0);
+    const main = mirrored ?? renderMainBracketTree(mainRounds);
+    const mRep = mirrored ? renderMirroredRepechage(repechageRounds, main.matchCount + 1, mirrored.width, mirrored.dims) : null;
+    const repHtml = (mRep ?? renderRepechageBracket(repechageRounds, main.matchCount + 1)).html;
+    return { main: main.html, rep: repHtml };
+  };
+  const landscape = layoutFor({ width: 1052, bracketHeight: 735 - chrome, portrait: false });
+  const portrait = layoutFor({ width: 730, bracketHeight: 1062 - chrome, portrait: true });
   const bracketSections = (main: string, rep: string) => `
       <div class="section-header">
         <span>🏆</span> MAIN CHAMPIONSHIP BRACKET (${formatLabel})
@@ -2028,13 +2054,14 @@ export function exportEliminationChartPDF(
           gap: 30px;
           text-align: center;
         }
-        .sheet { margin: 0 auto; background: #fff; }
+        .sheet { margin: 0 auto; background: #fff; display: flex; flex-direction: column; }
+        .sheet .signatures-section { margin-top: auto; }
         .canvas-wrap { display: flex; justify-content: center; }
         body[data-orient="landscape"] .view-portrait, body[data-orient="portrait"] .view-landscape { display: none; }
         .orient { display: inline-flex; gap: 4px; background: #1e293b; padding: 4px; border-radius: 9px; margin-right: 10px; }
         .orient button { border: 0; background: transparent; color: #cbd5e1; font-weight: 800; font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
         .orient button.on { background: #fff; color: #0f172a; }
-        @media screen { .sheet { box-shadow: 0 0 0 1px #e2e8f0, 0 6px 24px rgba(15,23,42,.08); padding: 10px; } }
+        @media screen { .sheet { box-shadow: 0 0 0 1px #e2e8f0, 0 6px 24px rgba(15,23,42,.08); outline: 10px solid #fff; } }
         .sig-line {
           border-top: 1px solid #0f172a;
           padding-top: 6px;
@@ -2104,8 +2131,8 @@ export function exportEliminationChartPDF(
         </div>
       </div>
 
-      <div class="view view-landscape">${bracketSections(mainTree.html, repTree.html)}</div>
-      <div class="view view-portrait">${bracketSections(portraitTree.html, portraitRep.html)}</div>
+      <div class="view view-landscape">${bracketSections(landscape.main, landscape.rep)}</div>
+      <div class="view view-portrait">${bracketSections(portrait.main, portrait.rep)}</div>
 
       <div class="signatures-section">
         <div>
@@ -2125,25 +2152,20 @@ export function exportEliminationChartPDF(
       </div>
       <script>
         // A4 inside 7 mm margins is about 1065 × 740 CSS px (landscape) or 740 × 1065 (portrait).
-        var PAGE = { landscape: [1050, 725], portrait: [728, 1050] };
+        var PAGE = { landscape: [1052, 735], portrait: [730, 1062] };
         var orient = 'landscape';
         try { orient = localStorage.getItem('tnjaChartOrient') === 'portrait' ? 'portrait' : 'landscape'; } catch (e) {}
 
-        // The sheet is laid out at the page width; the bracket is then enlarged to fill that width
-        // (so it uses the page instead of sitting small in the middle), and only if the whole sheet
-        // is then taller than the page is everything shrunk to fit one page.
+        // The sheet is exactly one page: width fixed, height filled (signatures at the foot).
         function fitSheet() {
           var el = document.getElementById('sheet');
           if (!el) return;
           var pw = PAGE[orient][0], ph = PAGE[orient][1];
           el.style.zoom = 1;
           el.style.width = pw + 'px';
-          var canvases = el.querySelectorAll('.view-' + orient + ' .bracket-canvas');
-          var widest = 0;
-          canvases.forEach(function (c) { c.style.zoom = 1; widest = Math.max(widest, c.offsetWidth); });
-          var up = widest ? Math.min(1.8, (pw - 20) / widest) : 1;
-          canvases.forEach(function (c) { c.style.zoom = up; });
-          var z = Math.min(1, ph / el.scrollHeight);
+          el.style.minHeight = ph + 'px';
+          // The layout is built for this page; shrink only if something still overflows.
+          var z = Math.min(1, pw / el.scrollWidth, ph / el.scrollHeight);
           el.style.zoom = z;
         }
 
