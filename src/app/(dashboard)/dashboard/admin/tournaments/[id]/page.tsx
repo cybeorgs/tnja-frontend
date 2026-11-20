@@ -40,7 +40,8 @@ import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
 import { CategoryStartBoard } from "./components/CategoryStartBoard";
 import { EditDrawModal, canEditBracket, slotsFromRounds } from "./components/EditDrawModal";
-import { RoundRobinEditModal, canEditRoundRobin } from "./components/RoundRobinEditModal";
+import { RoundRobinEditModal, canEditRoundRobin, canCorrectLiveDraw } from "./components/RoundRobinEditModal";
+import { CorrectBracketModal } from "./components/CorrectBracketModal";
 /** A saved draw that can still be edited by hand: elimination (first round) or round robin (whole schedule). */
 const canEditDraw = (rounds: BracketMatch[][]) => canEditBracket(rounds) || canEditRoundRobin(rounds);
 import { DrawSetupModal, type DrawSetupChoice } from "./components/DrawSetupModal";
@@ -667,18 +668,28 @@ export default function TournamentDetailPage() {
   };
 
   /** Save a hand-edited round robin schedule (pool order, pairings and play order decided by the organiser). */
-  const saveRoundRobinDraw = async (key: string, d: DrawCategory, rounds: BracketMatch[][]) => {
+  const [correctingKey, setCorrectingKey] = useState<string | null>(null);
+  /** Players of a draw's category: those already in it plus approved players of the same category. */
+  const categoryPlayersFor = (d: DrawCategory) => {
+    const inDraw = new Set(d.rounds.flatMap((r) => r.flatMap((m) => [m.slotA.playerId, m.slotB.playerId])).filter((x): x is string => !!x));
+    return players.filter((p) => inDraw.has(p.id) || (
+      p.status === "APPROVED" && p.ageGroup === d.ageGroup && p.gender === d.gender &&
+      String(p.weight) === d.weightCategory && (!d.exactAge || p.exactAge === d.exactAge)
+    ));
+  };
+  /** Save a hand-edited draw; correction = a live (started) category, played matches unchanged. */
+  const saveRoundRobinDraw = async (key: string, d: DrawCategory, rounds: BracketMatch[][], correction = false) => {
     const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ageGroup: d.ageGroup, exactAge: d.exactAge ?? 0, gender: d.gender, weightCategory: d.weightCategory, matNumber: d.matNumber ?? 1, rounds }),
+      body: JSON.stringify({ ageGroup: d.ageGroup, exactAge: d.exactAge ?? 0, gender: d.gender, weightCategory: d.weightCategory, matNumber: d.matNumber ?? 1, rounds, ...(correction && { correction: true }) }),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.error || "Could not save the draw");
     let saved = data?.draw?.rounds ?? rounds;
     if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
     setDraws((p) => ({ ...p, [key]: { ...d, rounds: normaliseRounds(saved), generated: true, saved: true } }));
-    showToast("Round robin updated", true);
+    showToast(correction ? "Live draw corrected" : "Round robin updated", true);
   };
 
   /** Drag-and-drop on the bracket: swap two first-round places (BYEs included) and save. */
@@ -2424,6 +2435,18 @@ export default function TournamentDetailPage() {
                           </Tip>
                         )}
 
+                        {/* Live correction: the draw was made wrong and matches are already being played */}
+                        {generated && currentDraw && locked && !currentDraw.isConcluded && canCorrectLiveDraw(currentDraw.rounds) && (
+                          <Tip text="Category is live: change the players of matches not played yet. Played matches and results stay locked.">
+                            <button
+                              onClick={() => setCorrectingKey(currentKey)}
+                              className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 transition-colors"
+                            >
+                              <Edit2 size={14} /> Correct draw
+                            </button>
+                          </Tip>
+                        )}
+
                         {/* Output + view */}
                         {generated && currentDraw && (
                           <div className="flex flex-wrap items-center gap-2">
@@ -3612,11 +3635,7 @@ export default function TournamentDetailPage() {
       {editingDrawKey && draws[editingDrawKey] && canEditRoundRobin(draws[editingDrawKey].rounds) && (() => {
         const d = draws[editingDrawKey];
         // players already in the pool, plus approved players of this category (to bring someone in)
-        const inDraw = new Set(d.rounds.flatMap((r) => r.flatMap((m) => [m.slotA.playerId, m.slotB.playerId])).filter((x): x is string => !!x));
-        const poolPlayers = players.filter((p) => inDraw.has(p.id) || (
-          p.status === "APPROVED" && p.ageGroup === d.ageGroup && p.gender === d.gender &&
-          String(p.weight) === d.weightCategory && (!d.exactAge || p.exactAge === d.exactAge)
-        ));
+        const poolPlayers = categoryPlayersFor(d);
         return (
           <RoundRobinEditModal
             title={`${d.ageGroup} · ${d.gender === "FEMALE" ? "Girls" : "Boys"} · ${d.weightCategory}`}
@@ -3625,6 +3644,16 @@ export default function TournamentDetailPage() {
             onClose={() => setEditingDrawKey(null)}
             onSave={(rounds) => saveRoundRobinDraw(editingDrawKey, d, rounds)}
           />
+        );
+      })()}
+      {correctingKey && draws[correctingKey] && (() => {
+        const d = draws[correctingKey];
+        const title = `${d.ageGroup} · ${d.gender === "FEMALE" ? "Girls" : "Boys"} · ${d.weightCategory}`;
+        const save = (rounds: BracketMatch[][]) => saveRoundRobinDraw(correctingKey, d, rounds, true);
+        return isDrawRoundRobin(d) ? (
+          <RoundRobinEditModal live title={title} players={categoryPlayersFor(d)} rounds={d.rounds} onClose={() => setCorrectingKey(null)} onSave={save} />
+        ) : (
+          <CorrectBracketModal title={title} players={categoryPlayersFor(d)} rounds={d.rounds} onClose={() => setCorrectingKey(null)} onSave={save} />
         );
       })()}
       {editingDrawKey && draws[editingDrawKey] && !canEditRoundRobin(draws[editingDrawKey].rounds) && (() => {

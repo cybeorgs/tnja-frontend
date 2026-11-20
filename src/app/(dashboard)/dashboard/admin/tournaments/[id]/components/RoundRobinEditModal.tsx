@@ -2,15 +2,24 @@
 
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, CheckCircle2, GripVertical, Loader2, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, GripVertical, Loader2, Lock, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import type { BracketMatch, RegisteredPlayer } from "../types";
 import { generateRoundRobin } from "../lib/bracketEngine";
 
 /** One editable match: who fights whom (player ids; "" = not chosen yet). */
-type EditMatch = { key: string; matchId?: string; a: string; b: string };
+type EditMatch = { key: string; matchId?: string; a: string; b: string; orig?: BracketMatch; locked?: boolean };
 type DragItem = { kind: "player"; index: number } | { kind: "match"; round: number; index: number };
 
 /** True for a round robin draw that hasn't been played yet (can be edited). */
+/** A match that has been played (not a BYE walkover) or is being played: never changed by an edit. */
+export const isPlayedMatch = (m: BracketMatch) =>
+  m.status === "IN_PROGRESS" || (m.status === "COMPLETED" && !m.slotA.isBye && !m.slotB.isBye);
+
+/** A live (started) draw that still has unplayed matches whose players can be corrected. */
+export function canCorrectLiveDraw(rounds: BracketMatch[][]): boolean {
+  return rounds.some((r) => r.some((m) => m.status === "PENDING"));
+}
+
 export function canEditRoundRobin(rounds: BracketMatch[][]): boolean {
   const first = rounds[0]?.[0];
   if (!first || !first.matchId.startsWith("rr_") || first.matchId.startsWith("rr_rep")) return false;
@@ -31,7 +40,7 @@ function poolOrderOf(rounds: BracketMatch[][], players: RegisteredPlayer[]): str
 }
 
 const toEditRounds = (rounds: BracketMatch[][]): EditMatch[][] =>
-  rounds.map((r) => r.map((m) => ({ key: newKey(), matchId: m.matchId, a: m.slotA.playerId || "", b: m.slotB.playerId || "" })));
+  rounds.map((r) => r.map((m) => ({ key: newKey(), matchId: m.matchId, a: m.slotA.playerId || "", b: m.slotB.playerId || "", orig: m, locked: isPlayedMatch(m) })));
 
 /**
  * Hand-edit a round robin draw: drag players to set the pool order (and rebuild the standard
@@ -44,12 +53,15 @@ export function RoundRobinEditModal({
   rounds,
   onClose,
   onSave,
+  live = false,
 }: {
   title: string;
   players: RegisteredPlayer[];
   rounds: BracketMatch[][];
   onClose: () => void;
   onSave: (rounds: BracketMatch[][]) => Promise<void>;
+  /** The category has started: played matches stay locked, only unplayed ones can change. */
+  live?: boolean;
 }) {
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const [order, setOrder] = useState<string[]>(() => poolOrderOf(rounds, players));
@@ -86,7 +98,7 @@ export function RoundRobinEditModal({
   const setMatch = (ri: number, mi: number, side: "a" | "b", id: string) =>
     setSched((s) => s.map((r, i) => (i !== ri ? r : r.map((m, j) => (j !== mi ? m : { ...m, [side]: id })))));
   const removeMatch = (ri: number, mi: number) =>
-    setSched((s) => s.map((r, i) => (i !== ri ? r : r.filter((_, j) => j !== mi))).filter((r, i) => r.length > 0 || i === s.length - 1 || s.length === 1));
+    sched[ri]?.[mi]?.locked ? undefined : setSched((s) => s.map((r, i) => (i !== ri ? r : r.filter((_, j) => j !== mi))).filter((r, i) => r.length > 0 || i === s.length - 1 || s.length === 1));
   const addMatch = (ri: number, a = "", b = "") =>
     setSched((s) => s.map((r, i) => (i !== ri ? r : [...r, { key: newKey(), a, b }])));
   const addRound = () => setSched((s) => [...s, []]);
@@ -114,7 +126,7 @@ export function RoundRobinEditModal({
   };
   /** Drop a match before match `toIndex` of round `toRound` (toIndex = length → at the end). */
   const dropMatch = (toRound: number, toIndex: number) => {
-    if (drag?.kind !== "match") return;
+    if (drag?.kind !== "match" || sched[drag.round]?.[drag.index]?.locked) return;
     setSched((s) => {
       const next = s.map((r) => [...r]);
       const [m] = next[drag.round].splice(drag.index, 1);
@@ -130,7 +142,7 @@ export function RoundRobinEditModal({
   const save = async () => {
     if (blocking) return setError("Every match needs two different players.");
     setSaving(true); setError("");
-    const stamp = Date.now();
+    const stamp = newKey().slice(1); // unique per save
     let number = 0;
     const slot = (id: string) => {
       const p = byId.get(id)!;
@@ -141,10 +153,14 @@ export function RoundRobinEditModal({
       .map((r, ri) =>
         r.map((m, mi) => {
           number += 1;
+          // a played / running match goes back exactly as it was (result, scores, logs)
+          if (m.locked && m.orig) return { ...m.orig, round: ri + 1 };
+          // an unplayed match with the same fighters keeps its data; otherwise it starts fresh
+          if (live && m.orig && m.orig.slotA.playerId === m.a && m.orig.slotB.playerId === m.b) return { ...m.orig, round: ri + 1 };
           return {
             matchId: m.matchId ?? `rr_r${ri + 1}_m${mi + 1}_${stamp}_${number}`,
             round: ri + 1,
-            matchNumber: number, // play order across the whole pool
+            matchNumber: live ? numberOf(ri, mi, m) : number, // play order across the whole pool
             matNumber: rounds[0]?.[0]?.matNumber ?? 1,
             status: "PENDING" as const,
             winnerId: null,
@@ -165,6 +181,13 @@ export function RoundRobinEditModal({
   const select = "flex-1 min-w-0 h-9 px-2 text-sm font-bold bg-white border border-slate-200 rounded-lg outline-none focus:border-[#FF7400]";
   // match number of each round's first match (numbers run across the whole pool)
   const roundStart = sched.map((_, i) => sched.slice(0, i).reduce((n, r) => n + r.length, 0));
+  // Live: matches keep the numbers officials already use; new ones continue after the highest.
+  const liveNumbers = new Map<string, number>();
+  if (live) {
+    let next = Math.max(0, ...rounds.flat().map((m) => m.matchNumber || 0));
+    for (const m of sched.flat()) liveNumbers.set(m.key, m.orig?.matchNumber ?? ++next);
+  }
+  const numberOf = (ri: number, mi: number, m: EditMatch) => (live ? liveNumbers.get(m.key)! : roundStart[ri] + mi + 1);
 
   return createPortal(
     <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -172,8 +195,8 @@ export function RoundRobinEditModal({
         {/* Header */}
         <div className="flex items-start gap-3 px-5 pt-5 pb-4 border-b border-slate-100 shrink-0">
           <div className="flex-1 min-w-0">
-            <h3 className="font-black text-slate-800">Edit round robin</h3>
-            <p className="text-xs font-semibold text-slate-400 truncate">{title} · drag to reorder, pick who fights whom</p>
+            <h3 className="font-black text-slate-800">{live ? "Correct live round robin" : "Edit round robin"}</h3>
+            <p className="text-xs font-semibold text-slate-400 truncate">{title} · {live ? "played matches are locked; change the players of unplayed matches" : "drag to reorder, pick who fights whom"}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Close"><X size={18} /></button>
         </div>
@@ -205,13 +228,13 @@ export function RoundRobinEditModal({
                 </div>
               ))}
             </div>
-            <button
+            {!live && <button
               onClick={rebuildFromOrder}
               title="Replace the schedule with the standard round robin for this pool order"
               className="mt-3 w-full h-9 inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-xs font-black hover:bg-amber-100"
             >
               <RefreshCw size={13} /> Rebuild schedule from order
-            </button>
+            </button>}
           </div>
 
           {/* Schedule */}
@@ -258,6 +281,27 @@ export function RoundRobinEditModal({
                     {round.map((m, mi) => {
                       const id = `m${ri}_${mi}`;
                       const bad = !m.a || !m.b || m.a === m.b;
+                      if (m.locked) {
+                        const w = m.orig?.winnerId;
+                        return (
+                          <div
+                            key={m.key}
+                            onDragOver={(e) => { if (drag?.kind === "match") { e.preventDefault(); setOver(id); } }}
+                            onDrop={(e) => { e.preventDefault(); dropMatch(ri, mi); endDrag(); }}
+                            title="Already played or in progress: can't be changed"
+                            className={`flex items-center gap-2 px-2 py-2 rounded-lg border bg-slate-50 ${over === id ? "border-[#FF7400] border-t-4" : "border-slate-200"}`}
+                          >
+                            <Lock size={14} className="text-slate-400 shrink-0" />
+                            <span className="w-12 text-[11px] font-black text-slate-400 shrink-0">#{numberOf(ri, mi, m)}</span>
+                            <span className={`flex-1 min-w-0 truncate text-sm font-bold ${w === m.a ? "text-emerald-700" : "text-slate-600"}`}>{name(m.a)}</span>
+                            <span className="text-[10px] font-black text-slate-300">VS</span>
+                            <span className={`flex-1 min-w-0 truncate text-sm font-bold ${w === m.b ? "text-emerald-700" : "text-slate-600"}`}>{name(m.b)}</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded ${m.orig?.status === "IN_PROGRESS" ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"}`}>
+                              {m.orig?.status === "IN_PROGRESS" ? "LIVE" : "DONE"}
+                            </span>
+                          </div>
+                        );
+                      }
                       return (
                         <div
                           key={m.key}
@@ -271,7 +315,7 @@ export function RoundRobinEditModal({
                           }`}
                         >
                           <span title="Drag to change the play order or round" className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500"><GripVertical size={15} /></span>
-                          <span className="w-12 text-[11px] font-black text-slate-400 shrink-0">#{roundStart[ri] + mi + 1}</span>
+                          <span className="w-12 text-[11px] font-black text-slate-400 shrink-0">#{numberOf(ri, mi, m)}</span>
                           <select value={m.a} onChange={(e) => setMatch(ri, mi, "a", e.target.value)} className={select} aria-label="White">
                             <option value="">Choose player…</option>
                             {order.map((pid) => <option key={pid} value={pid}>{poolNo(pid)}. {name(pid)}</option>)}
@@ -298,7 +342,7 @@ export function RoundRobinEditModal({
         {/* Footer */}
         <div className="flex items-center gap-3 px-5 py-4 border-t border-slate-100 shrink-0">
           {error ? <p className="text-sm font-bold text-red-600 flex-1">{error}</p>
-            : <p className="text-xs font-semibold text-slate-400 flex-1">Match numbers follow this order. Only before the category starts.</p>}
+            : <p className="text-xs font-semibold text-slate-400 flex-1">{live ? "Played matches and their results are kept. Referees see the change on their next refresh." : "Match numbers follow this order. Only before the category starts."}</p>}
           <button onClick={onClose} className="h-10 px-4 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 hover:bg-slate-50">Cancel</button>
           <button
             onClick={save}
