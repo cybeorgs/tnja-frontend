@@ -22,6 +22,7 @@ import {
   applyMatchResult, mainBracketRoundCount, normaliseRounds, detectDrawPlacements, PLACEMENT_ORDER,
 } from "./lib/bracketEngine";
 import TimingModal from "./components/TimingModal";
+import Tip from "./components/Tip";
 import { fmtClock, timingOf } from "./lib/matchTiming";
 import { exportAllMatchesToPDF, exportMatchToPDF, exportOverallTournamentReport, printRegistrationSlip, exportCategoryReport, exportCategoryChartPDF } from "./lib/pdfExport";
 import { getRoundsStats } from "./lib/matchStats";
@@ -2229,12 +2230,11 @@ export default function TournamentDetailPage() {
                   const status = currentDraw?.isConcluded ? "finished" : locked ? "live" : generated ? "ready" : "none";
                   const catTitle = [ageFilter !== "ALL" ? ageFilter : "", genderFilter === "FEMALE" ? "Girls" : genderFilter === "MALE" ? "Boys" : "", weightFilter !== "ALL" ? fmtKg(weightFilter) : ""].filter(Boolean).join(" · ") || "All players";
                   const formatLabel = generated && currentDraw ? (isCurrentRoundRobin ? "Round Robin" : getEliminationFormatLabel(currentDraw.rounds)) : "";
-                  const iconBtn = "w-9 h-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-[#FF7400] hover:border-orange-200 transition-colors";
                   return (
                     <>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4 border-b border-slate-100">
-                        {/* Title + facts */}
-                        <div className="min-w-0 mr-auto">
+                      {/* Title + facts */}
+                      <div className="px-5 pt-4 pb-3">
+                        <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-black text-slate-800">{catTitle}</h3>
                             {status === "live" && (
@@ -2250,9 +2250,14 @@ export default function TournamentDetailPage() {
                             {formatLabel && <> · {formatLabel}</>}
                           </p>
                         </div>
+                      </div>
 
+                      {/* Toolbar: setup | draw | output | view, all on one line */}
+                      <div className="flex flex-wrap items-center gap-2 px-5 pb-4 border-b border-slate-100">
                         {/* Mat */}
-                        <label className="flex items-center gap-2">
+                        <Tip text="Mat (and its referee) where this category's matches are played" align="start">
+                        <label className="flex items-center gap-1.5 h-9 pl-3 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[11px] font-black tracking-wider text-slate-400">MAT</span>
                           <span className="text-xs font-bold text-slate-400">Mat</span>
                           <span className="relative">
                             <select
@@ -2282,7 +2287,7 @@ export default function TournamentDetailPage() {
                                   console.error(err);
                                 }
                               }}
-                              className="h-9 pl-3 pr-8 text-sm font-bold bg-white border border-slate-200 text-slate-700 rounded-lg outline-none focus:border-[#FF7400] hover:border-slate-300 cursor-pointer appearance-none"
+                              className="h-[34px] pl-1 pr-8 text-sm font-bold bg-transparent text-slate-700 rounded-lg outline-none cursor-pointer appearance-none"
                             >
                               {(tournamentMats.length > 0 ? tournamentMats.map(m => m.matNumber).sort((a, b) => a - b) : [1]).map(m => {
                                 const refName = tournamentMats.find(tm => tm.matNumber === m)?.refereeName;
@@ -2292,22 +2297,25 @@ export default function TournamentDetailPage() {
                             <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </span>
                         </label>
+                        </Tip>
 
                         {/* Scoreboard timing */}
                         {(() => {
                           const tm = timingOf(currentDraw);
                           const canSet = !!currentDraw?.saved && !currentDraw?.isConcluded;
                           return (
+                            <Tip text={canSet ? `Scoreboard timing: ${fmtClock(tm.duration)} match, golden score ${tm.goldenLimit ? "max " + fmtClock(tm.goldenLimit) : "unlimited"}${tm.custom ? "" : " (age group default)"}. Click to change.` : "Save the draw first, then set the match time"}>
                             <button
                               onClick={() => canSet && setTimingOpen(true)}
                               disabled={!canSet}
-                              title={canSet ? "Set the scoreboard match time for this category" : "Save the draw first"}
-                              className="h-9 px-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:border-orange-300 hover:text-[#FF7400] disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:text-slate-700"
+                              aria-label="Scoreboard timing"
+                              className="h-9 px-3 inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 text-sm font-bold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <Timer size={15} className={tm.custom ? "text-[#FF7400]" : "text-slate-400"} />
+                              <Timer size={15} />
                               <span className="tabular-nums">{fmtClock(tm.duration)}</span>
-                              <span className="text-[11px] font-semibold text-slate-400">GS {tm.goldenLimit ? fmtClock(tm.goldenLimit) : "∞"}</span>
+                              <span className="text-[11px] font-semibold text-indigo-400">GS {tm.goldenLimit ? fmtClock(tm.goldenLimit) : "∞"}</span>
                             </button>
+                            </Tip>
                           );
                         })()}
                         {timingOpen && currentDraw && (
@@ -2334,6 +2342,7 @@ export default function TournamentDetailPage() {
 
                         {/* Draw controls (hidden once the category has started) */}
                         {!locked && drawPlayers.length > 1 && (
+                          <Tip text="Draw format used when you generate or redraw">
                           <span className="relative">
                             <select
                               value={shownDrawMethod(detailDrawMethod, drawPlayers.length, generated ? currentDraw?.rounds : undefined)}
@@ -2348,8 +2357,12 @@ export default function TournamentDetailPage() {
                             </select>
                             <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </span>
+                          </Tip>
                         )}
+
+                        {!locked && <span className="hidden md:block w-px h-7 bg-slate-200 mx-1" aria-hidden />}
                         {!locked && !(drawPlayers.length === 1 && generated) && (
+                          <Tip text={drawPlayers.length === 1 ? "Only one player: declare them the winner" : generated ? "Draw again with the selected format (replaces the current draw)" : "Make the draw with the selected format"}>
                           <button
                             onClick={() => {
                               const method = shownDrawMethod(detailDrawMethod, drawPlayers.length, generated ? currentDraw?.rounds : undefined);
@@ -2359,73 +2372,81 @@ export default function TournamentDetailPage() {
                               else handleGenerateDraw();
                             }}
                             disabled={busy}
-                            title={generated ? "Draw again with the selected format" : undefined}
                             className={`h-9 inline-flex items-center gap-1.5 px-4 rounded-lg text-sm font-black transition-colors disabled:opacity-50 ${
-                              generated ? "bg-white border border-slate-200 text-slate-700 hover:border-[#FF7400] hover:text-[#FF7400]" : "bg-[#FF7400] text-white hover:bg-orange-600"
+                              generated ? "bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 hover:border-amber-400" : "bg-[#FF7400] text-white hover:bg-orange-600"
                             }`}
                           >
                             {busy ? <Loader2 size={15} className="animate-spin" />
                               : drawPlayers.length === 1 ? <Trophy size={15} /> : <Shuffle size={15} />}
                             {drawPlayers.length === 1 ? "Declare winner" : generated ? "Redraw" : "Generate draw"}
                           </button>
+                          </Tip>
                         )}
                         {generated && currentDraw?.saved && !locked && canEditBracket(currentDraw.rounds) && (
+                          <Tip text="Change first-round pairings and who gets a BYE (only before Start)">
                           <button
                             onClick={() => setEditingDrawKey(currentKey)}
-                            title="Change first-round pairings and who gets a BYE (before Start)"
-                            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-slate-600 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400]"
+                            className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors"
                           >
                             <Edit2 size={14} /> Edit draw
                           </button>
+                          </Tip>
                         )}
 
                         {/* Start this category right here (also on the Category start board above) */}
                         {generated && currentDraw?.saved && !locked && !currentDraw.isConcluded && (
+                          <Tip text={!tournament?.registrationClosed ? "Close registration first, then start categories" : "Start this category: the draw locks and its scoreboards open"}>
                           <button
                             onClick={() => toggleCategoryStart(currentKey, currentDraw, true)}
                             disabled={startingKey === currentKey || busy || !tournament?.registrationClosed}
-                            title={!tournament?.registrationClosed ? "Close registration first, then start categories" : "Start this category — the draw locks and its scoreboards open"}
                             className="h-9 inline-flex items-center gap-1.5 px-4 rounded-lg text-sm font-black text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {startingKey === currentKey ? <Loader2 size={15} className="animate-spin" /> : <PlayCircle size={15} />} Start
                           </button>
+                          </Tip>
                         )}
 
                         {/* Output + view */}
                         {generated && currentDraw && (
-                          <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="hidden md:block w-px h-7 bg-slate-200 mx-1" aria-hidden />
+                            <Tip text="Open this draw in a new tab (view only, with the draw animation)">
                             <button
                               onClick={() => openDrawView(currentDraw)}
-                              title="Open this draw in a new tab, view only"
-                              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-[#FF7400] text-[#FF7400] text-xs font-bold hover:bg-orange-50 transition-colors"
+                              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 text-[#E85D00] text-sm font-bold hover:bg-orange-100 hover:border-orange-400 transition-colors"
                             >
-                              <Eye size={14} /> View Draw ↗
+                              <Eye size={15} /> View Draw ↗
                             </button>
+                            </Tip>
+                            <Tip text="Download the bracket chart as a PDF (portrait or landscape)">
                             <button
                               onClick={() => exportCategoryChartPDF(tournament, currentKey, currentDraw, filteredPlayers)}
-                              title="Download bracket chart (PDF)"
                               aria-label="Download bracket chart (PDF)"
-                              className={iconBtn}
+                              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-sm font-bold hover:bg-sky-100 hover:border-sky-300 transition-colors"
                             >
-                              <Download size={16} />
+                              <Download size={15} /> Chart PDF
                             </button>
+                            </Tip>
+                            <Tip text="Print the match report for this category">
                             <button
                               onClick={() => exportCategoryReport(tournament, currentKey, currentDraw, filteredPlayers)}
-                              title="Print match report"
                               aria-label="Print match report"
-                              className={iconBtn}
+                              className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-sm font-bold hover:bg-violet-100 hover:border-violet-300 transition-colors"
                             >
-                              <Printer size={16} />
+                              <Printer size={15} /> Report
                             </button>
-                            <div className="flex gap-0.5 bg-slate-100 p-0.5 rounded-lg ml-1">
+                            </Tip>
+                            <span className="hidden md:block w-px h-7 bg-slate-200 mx-1" aria-hidden />
+                            <div className="flex gap-0.5 bg-slate-100 p-0.5 rounded-lg">
                               {(isCurrentRoundRobin ? (["bracket", "list", "leaderboard"] as ViewMode[]) : (["bracket", "sheet", "list"] as ViewMode[])).map((v) => (
+                                <Tip key={v} text={v === "bracket" ? "Bracket view: the tree of all rounds" : v === "sheet" ? "Sheet view: one-page contest sheet, left and right halves" : v === "list" ? "List view: every match, round by round" : "Standings: round robin table"} align="end">
                                 <button
-                                  key={v}
                                   onClick={() => setViewMode(v)}
                                   className={`h-8 px-3 rounded-md text-xs font-bold inline-flex items-center gap-1 transition-colors ${effectiveViewMode === v ? "bg-white text-[#FF7400] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                                 >
                                   {v === "bracket" ? <><Grid size={12} />Bracket</> : v === "sheet" ? <><LayoutList size={12} />Sheet</> : v === "list" ? <><List size={12} />List</> : <><BarChart3 size={12} />Standings</>}
                                 </button>
+                                </Tip>
                               ))}
                             </div>
                           </div>
