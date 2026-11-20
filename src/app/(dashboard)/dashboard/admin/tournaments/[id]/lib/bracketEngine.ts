@@ -7,9 +7,39 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds }
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 export function nextPow2(n: number): number { let p = 1; while (p < n) p <<= 1; return p; }
 
+/** A round robin schedule (every match independent: nobody "advances" to the next round). */
+export const isRoundRobinRounds = (rounds: BracketMatch[][]) => {
+  const id = rounds[0]?.[0]?.matchId ?? "";
+  return id.startsWith("rr_") && !id.startsWith("rr_rep") && !id.startsWith("rr_bronze");
+};
+
+/**
+ * Round robin matches that repeat a pairing already scheduled earlier (e.g. left by the old bug
+ * that moved a winner into the next round), with the pairings that are missing from the pool.
+ */
+export function roundRobinRepeats(rounds: BracketMatch[][]): { repeats: { round: number; match: BracketMatch }[]; missing: [string, string][] } {
+  if (!isRoundRobinRounds(rounds)) return { repeats: [], missing: [] };
+  const key = (a: string, b: string) => [a, b].sort().join("|");
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  const repeats: { round: number; match: BracketMatch }[] = [];
+  rounds.forEach((r, ri) => r.forEach((m) => {
+    const a = m.slotA.playerId, b = m.slotB.playerId;
+    for (const x of [a, b]) if (x && !ids.includes(x)) ids.push(x);
+    if (!a || !b) return;
+    const k = key(a, b);
+    if (seen.has(k) || a === b) repeats.push({ round: ri + 1, match: m });
+    seen.add(k);
+  }));
+  const missing: [string, string][] = [];
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) if (!seen.has(key(ids[i], ids[j]))) missing.push([ids[i], ids[j]]);
+  return { repeats, missing };
+}
+
 // Auto-advance non-BYE players through any BYE match (cascades through all rounds)
 export function processByeMatches(rounds: BracketMatch[][]): BracketMatch[][] {
   const r = rounds.map(row => row.map(m => ({ ...m })));
+  if (isRoundRobinRounds(r)) return r; // round robin: nobody advances
   // Repechage / bronze rounds are filled by syncRepechage: their "Loser of QF 1" placeholders
   // are players still to come, not BYEs, and the main bracket's "next round" rule doesn't apply.
   const mainCount = mainBracketRoundCount(r);
@@ -163,6 +193,8 @@ export function applyMatchResult(
   r[ri][mi] = { ...r[ri][mi], ...result };
   const m = r[ri][mi];
   const main = mainBracketRoundCount(r);
+  // Round robin: just record the result (the winner must NOT be written into the next round)
+  if (isRoundRobinRounds(r)) return r;
   if (m.status === "COMPLETED" && m.winnerId && ri + 1 < main && !m.matchId.startsWith("M_BRONZE_")) {
     const win = m.winnerId === m.slotA.playerId ? m.slotA : m.slotB;
     const ni = Math.floor(mi / 2);

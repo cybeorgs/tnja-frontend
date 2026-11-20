@@ -18,7 +18,7 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, 
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
-  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup,
+  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup, roundRobinRepeats,
   applyMatchResult, mainBracketRoundCount, normaliseRounds, detectDrawPlacements, PLACEMENT_ORDER,
 } from "./lib/bracketEngine";
 import TimingModal from "./components/TimingModal";
@@ -2493,6 +2493,31 @@ export default function TournamentDetailPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* Round robin with a repeated pairing still to be fought (e.g. left by the old winner-advance bug) */}
+                      {generated && currentDraw && !currentDraw.isConcluded && (() => {
+                        const { repeats } = roundRobinRepeats(currentDraw.rounds);
+                        const open = repeats.filter((x) => x.match.status === "PENDING");
+                        if (!open.length) return null;
+                        const canFix = locked ? canCorrectLiveDraw(currentDraw.rounds) : canEditDraw(currentDraw.rounds);
+                        return (
+                          <div className="mx-5 mt-3 flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                            <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                            <p className="flex-1 min-w-0 text-sm font-bold text-rose-700">
+                              {open.map((x) => `Round ${x.round}: ${x.match.slotA.playerName} v ${x.match.slotB.playerName}`).join(", ")}
+                              {" "}repeat{open.length === 1 ? "s" : ""} a pairing that already happened. Each pair should meet only once.
+                            </p>
+                            {canFix && (
+                              <button
+                                onClick={() => (locked ? setCorrectingKey(currentKey) : setEditingDrawKey(currentKey))}
+                                className="h-8 px-3 rounded-lg text-xs font-black text-white bg-rose-600 hover:bg-rose-700"
+                              >
+                                Fix now
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Players */}
                       <div className="px-5 py-3 flex flex-wrap gap-2">

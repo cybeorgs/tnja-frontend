@@ -93,6 +93,32 @@ export function RoundRobinEditModal({
     return n + d;
   }, 0);
   const blocking = incomplete > 0 || selfMatches > 0 || all.length === 0;
+  // matches (in play order) whose pairing already happened / is scheduled earlier
+  const repeatKeys = new Set<string>();
+  {
+    const seenPairs = new Set<string>();
+    for (const m of all) {
+      if (!m.a || !m.b) continue;
+      const k = pairKey(m.a, m.b);
+      if (seenPairs.has(k)) repeatKeys.add(m.key);
+      seenPairs.add(k);
+    }
+  }
+  const fixableRepeats = all.filter((m) => repeatKeys.has(m.key) && !m.locked).length;
+  /** Give each repeated unplayed match a missing pairing instead (preferring players free in that round). */
+  const fixRepeats = () => {
+    setSched((s) => {
+      const left = [...missingPairs];
+      return s.map((r) => r.map((m) => {
+        if (!repeatKeys.has(m.key) || m.locked || left.length === 0) return m;
+        const busy = new Set(r.filter((x) => x.key !== m.key).flatMap((x) => [x.a, x.b]));
+        let i = left.findIndex(([a, b]) => !busy.has(a) && !busy.has(b));
+        if (i < 0) i = 0;
+        const [a, b] = left.splice(i, 1)[0];
+        return { ...m, a, b };
+      }));
+    });
+  };
 
   // ── edits ──
   const setMatch = (ri: number, mi: number, side: "a" | "b", id: string) =>
@@ -250,6 +276,12 @@ export function RoundRobinEditModal({
                 </button>
               )}
               {duplicates > 0 && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700">{duplicates} repeated pairing{duplicates > 1 ? "s" : ""}</span>}
+              {fixableRepeats > 0 && missingPairs.length > 0 && (
+                <button onClick={fixRepeats} title="Replace each repeated unplayed match with a pairing that hasn't happened yet"
+                  className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-600 text-white hover:bg-rose-700">
+                  Fix repeated pairings
+                </button>
+              )}
               {doubleBooked > 0 && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700">A player fights twice in one round</span>}
               {selfMatches > 0 && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700">Player against themselves</span>}
               {incomplete > 0 && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700">{incomplete} match{incomplete > 1 ? "es" : ""} without two players</span>}
@@ -311,7 +343,7 @@ export function RoundRobinEditModal({
                           onDrop={(e) => { e.preventDefault(); dropMatch(ri, mi); endDrag(); }}
                           onDragEnd={endDrag}
                           className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border bg-white transition-colors ${
-                            over === id ? "border-[#FF7400] border-t-4" : drag?.kind === "match" && drag.round === ri && drag.index === mi ? "opacity-40 border-slate-200" : bad ? "border-red-200" : "border-slate-200"
+                            over === id ? "border-[#FF7400] border-t-4" : drag?.kind === "match" && drag.round === ri && drag.index === mi ? "opacity-40 border-slate-200" : bad ? "border-red-200" : repeatKeys.has(m.key) ? "border-rose-300 bg-rose-50" : "border-slate-200"
                           }`}
                         >
                           <span title="Drag to change the play order or round" className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500"><GripVertical size={15} /></span>
