@@ -446,6 +446,8 @@ export default function TournamentDetailPage() {
     }
   };
 
+  /** Set once fetchDraws exists (declared further down). */
+  const fetchDrawsRef = useRef<(() => void) | null>(null);
   const handleUpdateMetrics = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMetrics?.regId) return;
@@ -467,6 +469,7 @@ export default function TournamentDetailPage() {
         setToast({ msg: "Metrics updated successfully", ok: true });
         setEditingMetrics(null);
         fetchPlayers(); // Refresh the players list
+        fetchDrawsRef.current?.(); // a category change moves the player between draws
       } else {
         const data = await res.json();
         setToast({ msg: data.error || "Failed to update metrics", ok: false });
@@ -599,6 +602,7 @@ export default function TournamentDetailPage() {
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [tournamentId, token]);
+  useEffect(() => { fetchDrawsRef.current = fetchDraws; }, [fetchDraws]);
 
   useEffect(() => {
     fetchTournament();
@@ -1411,7 +1415,7 @@ export default function TournamentDetailPage() {
           tournamentId={tournamentId}
           players={players}
           registrationClosed={!!tournament.registrationClosed}
-          onChanged={fetchPlayers}
+          onChanged={() => { fetchPlayers(); fetchDraws(); }}
           showToast={showToast}
         />
       )}
