@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Monitor, Printer, Download, GripVertical } from "lucide-react";
 import type { BracketMatch, DrawCategory, RegisteredPlayer, Tournament } from "../types";
-import { getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel, detectDrawPlacements, PLACEMENT_ORDER, type Placement } from "../lib/bracketEngine";
+import { getRoundLabel, mainBracketRoundCount, isMatchReady, compareWeights, getEliminationFormatLabel, detectDrawPlacements, PLACEMENT_ORDER, type Placement } from "../lib/bracketEngine";
 import { exportRoundRobinPoolSheet, exportCategoryReport, exportCategoryChartPDF } from "../lib/pdfExport";
 import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
@@ -114,7 +114,7 @@ export function BracketView({
     return " cursor-grab";
   };
 
-  const weightGroups = Array.from(new Set(players.map(p => p.weight))).sort((a, b) => a - b);
+  const weightGroups = Array.from(new Set(players.map(p => p.weight))).sort(compareWeights);
 
   /** Representing district (or unit) per player, shown as e.g. "[CBE] HARIKRISHNA G". */
   const repById = new Map(players.map((p) => [p.id, representingOf(p, districtCodes)]));
@@ -323,6 +323,8 @@ export function BracketView({
               return round.map((match, mi) => {
                 let top = mTop(ri, mi);
                 const isBronzeMatch = !isRoundRobin && ri === rounds.length - 1 && mi === 1;
+                // every bronze match looks the same: the plain bracket's 3rd-place match and both repechage bronze matches
+                const bronzeStyle = !isRoundRobin && (isBronzeMatch || match.matchId.startsWith("rr_bronze") || match.matchId.startsWith("M_BRONZE_"));
                 
                 if (isBronzeMatch) {
                   // Position the bronze match visually below the gold match
@@ -341,10 +343,10 @@ export function BracketView({
                     animate={{ opacity: 1, x: 0, scale: 1, rotateY: 0 }}
                     transition={{ delay: staggerDelay, type: "spring", stiffness: 280, damping: 22 }}
                     className={`group bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-shadow ${
-                      isBronzeMatch ? "border-amber-400 border-2" : "border-slate-200"
+                      bronzeStyle ? "border-amber-400 border-2" : "border-slate-200"
                     }`}
                   >
-                    {isBronzeMatch && (
+                    {bronzeStyle && (
                       <div className="bg-gradient-to-r from-amber-500 to-amber-400 text-white text-[9px] font-black uppercase text-center py-0.5 tracking-wider">
                         🥉 Bronze Match
                       </div>
@@ -366,18 +368,12 @@ export function BracketView({
                       <span className="text-[8px] text-slate-400 font-semibold">
                         {match.status === "COMPLETED" && !revealing ? "✓ Done" : `Mat ${match.matNumber} · #${match.matchNumber}`}
                       </span>
-                      {onOpenScoreboard && !match.slotA.isBye && !match.slotB.isBye &&
-                       match.slotA.playerName !== "TBD" && match.slotB.playerName !== "TBD" &&
-                       match.status !== "COMPLETED" && (
+                      {onOpenScoreboard && isMatchReady(match) && (
                         <button
                           onClick={() => onOpenScoreboard(match)}
-                          disabled={!(ri === 0 || rounds[ri - 1].every(m => m.status === "COMPLETED"))}
-                          title={!(ri === 0 || rounds[ri - 1].every(m => m.status === "COMPLETED")) ? "Previous round must be completed first" : ""}
-                          className={`text-[8px] font-black transition-colors flex items-center gap-0.5 opacity-0 group-hover:opacity-100 ${
-                            (ri === 0 || rounds[ri - 1].every(m => m.status === "COMPLETED"))
-                              ? "text-orange-500 hover:text-orange-700"
-                              : "text-slate-400 cursor-not-allowed"
-                          }`}>
+                          title="Open the scoreboard for this match"
+                          className="text-[8px] font-black transition-colors flex items-center gap-0.5 text-orange-500 hover:text-orange-700"
+                        >
                           <Monitor size={8} /> Scoreboard ↗
                         </button>
                       )}

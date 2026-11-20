@@ -18,7 +18,7 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, 
 import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
-  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup, roundRobinRepeats,
+  getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup, roundRobinRepeats, isMatchReady, compareWeights,
   applyMatchResult, mainBracketRoundCount, normaliseRounds, detectDrawPlacements, PLACEMENT_ORDER,
 } from "./lib/bracketEngine";
 import TimingModal from "./components/TimingModal";
@@ -1172,7 +1172,7 @@ export default function TournamentDetailPage() {
   }, [genderFilter, availableAgeGroupsGlobal.join(",")]);
 
   const groupPlayersGlobal = players.filter(p => (genderFilter === "BOTH" || p.gender === genderFilter) && p.ageGroup === ageFilter);
-  const availableWeightsGlobal = [...new Set(groupPlayersGlobal.map(p => String(p.weight)))].sort((a, b) => +a - +b);
+  const availableWeightsGlobal = [...new Set(groupPlayersGlobal.map(p => String(p.weight)))].sort(compareWeights);
 
   useEffect(() => {
     if (availableWeightsGlobal.length > 0 && !availableWeightsGlobal.includes(weightFilter) && weightFilter !== "ALL") {
@@ -2217,7 +2217,7 @@ export default function TournamentDetailPage() {
                                                 </span>
                                               </div>
                                             </div>
-                                            {match.slotA.playerName !== "TBD" && match.slotB.playerName !== "TBD" && !match.slotA.isBye && !match.slotB.isBye && match.status !== "COMPLETED" && (
+                                            {isMatchReady(match) && (
                                               <button onClick={() => openScoreboard(match)}
                                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF7400] text-white rounded-xl text-[10px] font-black hover:scale-105 transition-all">
                                                 <Monitor size={11} /> Scoreboard
@@ -2643,7 +2643,7 @@ export default function TournamentDetailPage() {
                                   )}
                                 </div>
                               )}
-                              {match.slotA.playerName !== "TBD" && match.slotB.playerName !== "TBD" && !match.slotA.isBye && !match.slotB.isBye && match.status !== "COMPLETED" && (
+                              {isMatchReady(match) && (
                                 <button onClick={() => openScoreboard(match)}
                                   className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF7400] text-white rounded-xl text-[10px] font-black hover:scale-105 transition-all">
                                   <Monitor size={11} /> Scoreboard
@@ -2913,7 +2913,7 @@ export default function TournamentDetailPage() {
                               )}
                             </div>
                           )}
-                          {match.slotA.playerName !== "TBD" && match.slotB.playerName !== "TBD" && match.status !== "COMPLETED" && (
+                          {isMatchReady(match) && (
                             <button onClick={() => openScoreboard(match)}
                               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#FF7400] to-orange-500 text-white rounded-xl text-xs font-black shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all">
                               <Monitor size={13} /> Open Scoreboard ↗

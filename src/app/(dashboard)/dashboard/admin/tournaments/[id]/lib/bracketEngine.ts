@@ -7,6 +7,28 @@ import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds }
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 export function nextPow2(n: number): number { let p = 1; while (p < n) p <<= 1; return p; }
 
+/**
+ * A match can be played as soon as both its fighters are known (real players, no BYE) and it isn't
+ * finished. No need to wait for the rest of the previous round: e.g. a repechage match is ready
+ * once its quarter-final losers are known, even before the Final is fought.
+ */
+export const isMatchReady = (m: BracketMatch) =>
+  !!m.slotA.playerId && !!m.slotB.playerId && !m.slotA.isBye && !m.slotB.isBye && m.status !== "COMPLETED";
+
+/**
+ * Orders weight classes lightest first: by the kilo number, and at the same number the "-" (up to)
+ * class before the "+" (over) class. "-22kg", "-26", "-30 kg", "+30kg" → -22, -26, -30, +30.
+ */
+export function compareWeights(a: unknown, b: unknown): number {
+  const parse = (w: unknown) => {
+    const v = String(w ?? "").trim();
+    const n = parseFloat(v.replace(/[^0-9.]/g, ""));
+    return { n: Number.isFinite(n) ? n : Number.MAX_VALUE, plus: v.startsWith("+") ? 1 : 0, v };
+  };
+  const x = parse(a), y = parse(b);
+  return x.n - y.n || x.plus - y.plus || x.v.localeCompare(y.v);
+}
+
 /** A round robin schedule (every match independent: nobody "advances" to the next round). */
 export const isRoundRobinRounds = (rounds: BracketMatch[][]) => {
   const id = rounds[0]?.[0]?.matchId ?? "";
