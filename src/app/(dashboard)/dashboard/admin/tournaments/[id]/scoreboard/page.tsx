@@ -856,7 +856,7 @@ function ScoreboardInner() {
   useEffect(() => {
     if (osaActive && osaFor) {
       // Measured from the wall clock (not by counting ticks) so it stays exact to the hundredth;
-      // the base carries the elapsed time over when the hold is swapped to the other player.
+      // A swap to the other player resets osaMsRef to 0, so the new hold's clock starts from 0.
       const base = Date.now() - osaMsRef.current;
       osaRef.current = setInterval(() => {
         const ms = Math.min(Date.now() - base, OSAEKOMI_IPPON_S * 1000);
@@ -896,8 +896,8 @@ function ScoreboardInner() {
       showToast("Match has ended! Cannot start Osaekomi.");
       return;
     }
-    // A hold is already running: never restart it from 0. Pressing the other player's Osaekomi
-    // turns the hold over to them (same as Swap: the time and the score reached so far carry over).
+    // A hold is already running: pressing the same player does nothing; pressing the other player
+    // is a reversal (same as Swap): the first holder keeps its score, the new hold starts from 0.
     if (osaActive && osaFor) {
       if (osaFor !== fighter) swapOsaekomi();
       return;
@@ -939,6 +939,11 @@ function ScoreboardInner() {
     osaAward.current = null;
   };
 
+  /**
+   * Reversal (IJF): the held player turns the hold over. The first hold ends there (toketa): its
+   * holder keeps whatever it had scored (5 s Yuko, 10 s Waza-ari). A new osaekomi starts for the
+   * other player from 0, and scores on its own clock.
+   */
   const swapOsaekomi = () => {
     if (dbMatchStatus === "COMPLETED") {
       showToast("This match is already completed and locked.");
@@ -952,35 +957,27 @@ function ScoreboardInner() {
     const oldFighter = osaFor;
     const newFighter: Fighter = oldFighter === "A" ? "B" : "A";
     const award = osaAward.current;
-
-    // Switch holder; the hold time carries over
-    setOsaFor(newFighter);
-
-    // Move whatever this hold has scored from the old holder to the new one
-    let nextScoreA = { ...scoreA };
-    let nextScoreB = { ...scoreB };
-    if (award) {
-      if (oldFighter === "A") { nextScoreA = removeOsaAward(nextScoreA, award); nextScoreB = addOsaAward(nextScoreB, award); }
-      else                    { nextScoreB = removeOsaAward(nextScoreB, award); nextScoreA = addOsaAward(nextScoreA, award); }
-    }
-
+    const endedAt = fmtOsa(osaMsRef.current);
     const oldName = oldFighter === "A" ? fighterAName : fighterBName;
     const newName = newFighter === "A" ? fighterAName : fighterBName;
-    const newLogs = [
-      ...logsRef.current.filter((l) => !isHoldScoreLog(l, osaHoldId.current)),
-      { id: `${Date.now()}_osa_swap`, timestamp: Date.now(), text: `Osaekomi swapped from ${oldName} to ${newName} at ${fmtOsa(osaMsRef.current)}s`, type: "system" as const },
-    ];
-    if (award) {
-      newLogs.push({ id: `${osaHoldId.current}_osa_${newFighter}_${award}`, timestamp: Date.now(), text: `${newName} scored ${OSA_LABEL[award]} (Osaekomi ${osaTimeRef.current}s)`, type: "score" as const, fighter: newFighter });
-    }
 
-    setScoreA(nextScoreA);
-    setScoreB(nextScoreB);
+    // End the first hold (its score stays with its holder) and start a fresh one at 0
+    if (osaRef.current) clearInterval(osaRef.current);
+    osaTimeRef.current = 0;
+    osaMsRef.current = 0;
+    setOsaMs(0);
+    osaAward.current = null;
+    osaHoldId.current = String(Date.now());
+    setOsaFor(newFighter); // the hold effect restarts its clock from osaMsRef (0)
+
+    const newLogs = [
+      ...logsRef.current,
+      { id: `${Date.now()}_osa_swap`, timestamp: Date.now(), text: `Osaekomi reversed at ${endedAt}s: ${award ? `${oldName} keeps ${OSA_LABEL[award]}` : `${oldName} no score`}; new osaekomi for ${newName} from 0`, type: "system" as const },
+    ];
     setLogs(newLogs);
     logsRef.current = newLogs;
-
-    saveMatchToDB(nextScoreA, nextScoreB, null, "", newLogs);
-    showToast(`Osaekomi swapped to ${newName}`);
+    saveMatchToDB(scoreA, scoreB, null, "", newLogs);
+    showToast(`Osaekomi for ${newName} from 0${award ? ` (${oldName} keeps ${OSA_LABEL[award]})` : ""}`);
   };
 
   const totalScore = (score: Score) => score.ippon * 100 + score.wazaAri * 10 + score.yuko;
@@ -1151,11 +1148,11 @@ function ScoreboardInner() {
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => startOsaekomi("A")} disabled={locked || (osaActive && osaFor === "A")} title={osaActive && osaFor === "B" ? "Turn the hold over to P1 (keeps the time)" : undefined} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30 disabled:opacity-40">{osaActive && osaFor === "B" ? "Swap to P1" : "Osaekomi (P1)"}</button>
-              <button onClick={() => startOsaekomi("B")} disabled={locked || (osaActive && osaFor === "B")} title={osaActive && osaFor === "A" ? "Turn the hold over to P2 (keeps the time)" : undefined} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700 disabled:opacity-40">{osaActive && osaFor === "A" ? "Swap to P2" : "Osaekomi (P2)"}</button>
+              <button onClick={() => startOsaekomi("A")} disabled={locked || (osaActive && osaFor === "A")} title={osaActive && osaFor === "B" ? "Reversal: P2 keeps what the hold scored, new osaekomi for P1 from 0" : undefined} className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded-sm border border-white/30 disabled:opacity-40">{osaActive && osaFor === "B" ? "Swap to P1" : "Osaekomi (P1)"}</button>
+              <button onClick={() => startOsaekomi("B")} disabled={locked || (osaActive && osaFor === "B")} title={osaActive && osaFor === "A" ? "Reversal: P1 keeps what the hold scored, new osaekomi for P2 from 0" : undefined} className="bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 text-xs font-bold py-2 rounded-sm border border-blue-700 disabled:opacity-40">{osaActive && osaFor === "A" ? "Swap to P2" : "Osaekomi (P2)"}</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={swapOsaekomi} disabled={!osaActive} className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Swap P1 ⇄ P2 (Keep Time)</button>
+              <button onClick={swapOsaekomi} disabled={!osaActive} title="Reversal: the current holder keeps what they scored, the other player's osaekomi starts from 0" className="bg-transparent border border-orange-500/50 hover:bg-orange-600/20 text-orange-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Swap P1 ⇄ P2 (Restart 0)</button>
               <button onClick={cancelOsaekomi} disabled={!osaActive} title="Player escaped the hold — stop the timer and keep the points earned" className="bg-transparent border border-red-500/60 hover:bg-red-600/20 text-red-400 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-gray-700 disabled:text-gray-500 text-[10px] font-bold py-2 rounded-sm transition-all">Cancel (Toketa)</button>
             </div>
           </div>
