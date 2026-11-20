@@ -157,6 +157,9 @@ export default function TournamentDetailPage() {
   const [placements, setPlacements] = useState<Record<string, "FIRST" | "SECOND" | "THIRD" | "PARTICIPATION">>({});
   const [submittingResults, setSubmittingResults] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  /** Results tab: which round sections are open (closed by default). */
+  const [openResultRounds, setOpenResultRounds] = useState<Set<string>>(new Set());
+  const toggleResultRound = (k: string) => setOpenResultRounds((cur) => { const n = new Set(cur); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   // ── Modals State ────────────────────────────────────────────────────────────
   const [editingMetrics, setEditingMetrics] = useState<{ regId: string, weight: string, height: string, belt: string, clubId: string, coachId: string, ageGroup: string } | null>(null);
@@ -501,7 +504,7 @@ export default function TournamentDetailPage() {
                 weightLabel = `${Math.ceil(exactWeight / 5) * 5 - 4}-${Math.ceil(exactWeight / 5) * 5}`;
               }
             }
-            
+
             return {
               id: r.playerId || r.player?.id || r.id,
               name: r.player?.fullName || r.playerName || r.name || "Unknown",
@@ -542,7 +545,7 @@ export default function TournamentDetailPage() {
   // ── Handle Registration Status Update ─────────────────────────────────────────
   const handleUpdatePlayerStatus = async (regId: string, status: "APPROVED" | "REJECTED") => {
     if (!window.confirm(`Are you sure you want to ${status.toLowerCase()} this registration?`)) return;
-    
+
     try {
       const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/registrations/${regId}`, {
         method: "PATCH",
@@ -577,7 +580,7 @@ export default function TournamentDetailPage() {
             try { roundsArr = JSON.parse(roundsArr); } catch (err) {}
           }
           if (!Array.isArray(roundsArr)) roundsArr = [];
-          
+
           const ageStr = d.exactAge === 0 ? "ALL" : String(d.exactAge);
           drawMap[categoryKey(d.ageGroup, ageStr, d.gender, d.weightCategory)] = {
             ...d,
@@ -802,7 +805,7 @@ export default function TournamentDetailPage() {
 
     setDrawPhase(isShuffle ? "shuffling" : "dealing");
     if (isShuffle) setShuffleKey(k => k + 1);
-    
+
     let rounds;
     /** Shown with the "generated" toast when the chosen method had to be changed. */
     let drawNote = "";
@@ -836,7 +839,7 @@ export default function TournamentDetailPage() {
         rounds = appendRepechageRounds(rounds, selectedMethod === "double-repechage" ? "double" : "single");
       }
     }
-    
+
     setTimeout(async () => {
       const newDraw = {
         ageGroup: activeAgeGrp,
@@ -851,17 +854,17 @@ export default function TournamentDetailPage() {
 
       setDraws((prev) => ({ ...prev, [activeKey]: newDraw }));
       setDrawPhase("done");
-      
+
       setSaving(true);
       try {
         const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            ageGroup: newDraw.ageGroup, 
+            ageGroup: newDraw.ageGroup,
             exactAge: newDraw.exactAge,
             gender: newDraw.gender,
-            weightCategory: newDraw.weightCategory, 
+            weightCategory: newDraw.weightCategory,
             matNumber: newDraw.matNumber,
             rounds: newDraw.rounds,
           }),
@@ -935,9 +938,9 @@ export default function TournamentDetailPage() {
 
   // ── Handle match result from scoreboard tab ──────────────────────────────────
   const handleMatchResult = useCallback((
-    matchId: string, 
-    winnerId: string, 
-    winnerName: string, 
+    matchId: string,
+    winnerId: string,
+    winnerName: string,
     winnerClub: string,
     scoreA?: any,
     scoreB?: any,
@@ -968,9 +971,9 @@ export default function TournamentDetailPage() {
         return;
       }
 
-      newRounds[foundRi][foundMi] = { 
-        ...newRounds[foundRi][foundMi], 
-        winnerId, 
+      newRounds[foundRi][foundMi] = {
+        ...newRounds[foundRi][foundMi],
+        winnerId,
         status: "COMPLETED",
         scoreA: scoreA || newRounds[foundRi][foundMi].scoreA,
         scoreB: scoreB || newRounds[foundRi][foundMi].scoreB,
@@ -1039,8 +1042,8 @@ export default function TournamentDetailPage() {
 
             const tiedGroup = Object.values(standingsMap).filter(p => p.wins === a.wins && p.points === a.points);
             if (tiedGroup.length === 2) {
-              const headToHead = allMatches.find(m => 
-                m.status === "COMPLETED" && 
+              const headToHead = allMatches.find(m =>
+                m.status === "COMPLETED" &&
                 ((m.slotA.playerId === a.playerId && m.slotB.playerId === b.playerId) ||
                  (m.slotA.playerId === b.playerId && m.slotB.playerId === a.playerId))
               );
@@ -1053,8 +1056,8 @@ export default function TournamentDetailPage() {
               return a.totalWinningTime - b.totalWinningTime;
             }
 
-            const headToHead = allMatches.find(m => 
-              m.status === "COMPLETED" && 
+            const headToHead = allMatches.find(m =>
+              m.status === "COMPLETED" &&
               ((m.slotA.playerId === a.playerId && m.slotB.playerId === b.playerId) ||
                (m.slotA.playerId === b.playerId && m.slotB.playerId === a.playerId))
             );
@@ -1069,9 +1072,9 @@ export default function TournamentDetailPage() {
           const rrSecond = sortedPlayers[1];
           const rrThird = sortedPlayers[2];
           if (rrChampion) {
-            setTimeout(() => setChampion({ 
-              name: rrChampion.name, 
-              club: rrChampion.club, 
+            setTimeout(() => setChampion({
+              name: rrChampion.name,
+              club: rrChampion.club,
               categoryKey: catKey,
               secondPlaceName: rrSecond?.name,
               secondPlaceClub: rrSecond?.club,
@@ -1161,7 +1164,7 @@ export default function TournamentDetailPage() {
   };
 
   const availableAgeGroupsGlobal = [...new Set(players.filter(p => genderFilter === "BOTH" || p.gender === genderFilter).map((p) => p.ageGroup))].sort((a, b) => getAgeGroupRank(a) - getAgeGroupRank(b) || a.localeCompare(b));
-  
+
   useEffect(() => {
     if (availableAgeGroupsGlobal.length > 0 && (!availableAgeGroupsGlobal.includes(ageFilter) || ageFilter === "ALL")) {
       setAgeFilter(availableAgeGroupsGlobal[0]);
@@ -1460,7 +1463,7 @@ export default function TournamentDetailPage() {
                   className="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF7400]/50 transition-all font-semibold text-sm"
                 />
                 {regSearchQuery && (
-                  <button 
+                  <button
                     onClick={() => { setRegSearchQuery(""); setRegCurrentPage(1); }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
@@ -1468,7 +1471,7 @@ export default function TournamentDetailPage() {
                   </button>
                 )}
               </div>
-              
+
               <div className="flex items-center gap-3 shrink-0 w-full md:w-auto">
                 <button
                   type="button"
@@ -1544,7 +1547,7 @@ export default function TournamentDetailPage() {
                         </div>
                       ))}
                     </div>
-                    
+
                     {(() => {
                       const hasActive = [regDistrictFilter !== "All Districts", regClubFilter !== "All Clubs", regGenderFilter !== "All Genders", regCategoryFilter !== "All Categories", regBeltFilter !== "All Belts", regPaymentFilter !== "All Payment Status"].some(Boolean);
                       if (!hasActive) return null;
@@ -1566,7 +1569,7 @@ export default function TournamentDetailPage() {
                               </button>
                             </div>
                           ))}
-                          <button 
+                          <button
                             onClick={() => {
                               setRegDistrictFilter("All Districts");
                               setRegClubFilter("All Clubs");
@@ -1611,7 +1614,7 @@ export default function TournamentDetailPage() {
                       if (regBeltFilter !== "All Belts" && p.belt !== regBeltFilter) return false;
                       return true;
                     });
-                    
+
                     const totalItems = filtered.length;
                     const paginated = filtered.slice((regCurrentPage - 1) * regItemsPerPage, regCurrentPage * regItemsPerPage);
 
@@ -1749,8 +1752,8 @@ export default function TournamentDetailPage() {
                   </p>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 mr-4">
-                      <select 
-                        value={regItemsPerPage} 
+                      <select
+                        value={regItemsPerPage}
                         onChange={(e) => { setRegItemsPerPage(Number(e.target.value)); setRegCurrentPage(1); }}
                         className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2 py-1.5 focus:outline-none"
                       >
@@ -1759,14 +1762,14 @@ export default function TournamentDetailPage() {
                         <option value={50}>50 / page</option>
                       </select>
                     </div>
-                    <button 
+                    <button
                       onClick={() => setRegCurrentPage(prev => Math.max(prev - 1, 1))}
                       disabled={regCurrentPage === 1}
                       className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                     >
                       <ChevronLeft size={16} />
                     </button>
-                    
+
                     <div className="flex gap-1">
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
                         if (page === 1 || page === totalPages || (page >= regCurrentPage - 1 && page <= regCurrentPage + 1)) {
@@ -1786,7 +1789,7 @@ export default function TournamentDetailPage() {
                       })}
                     </div>
 
-                    <button 
+                    <button
                       onClick={() => setRegCurrentPage(prev => Math.min(prev + 1, totalPages))}
                       disabled={regCurrentPage === totalPages}
                       className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
@@ -1955,7 +1958,7 @@ export default function TournamentDetailPage() {
                     map[key].catDrawPlayers.push(p);
                   });
                   const categories = Object.entries(map).map(([key, data]) => ({ key, ...data })).sort((a, b) => a.key.localeCompare(b.key));
-                  
+
                   if (categories.length === 0) {
                     return (
                       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center space-y-4">
@@ -2066,7 +2069,7 @@ export default function TournamentDetailPage() {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="p-5 border-b border-slate-50">
                           <div className="flex items-center justify-between mb-4">
                             <p className="font-black text-slate-800">
@@ -2821,7 +2824,7 @@ export default function TournamentDetailPage() {
                         {round.map((match) => (
                       <div key={match.matchId}
                         className="p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50 transition-colors group">
-                        
+
                         {/* Left: Mat & Match Info */}
                         <div className="flex items-center gap-4 shrink-0">
                           <div className="flex flex-col items-center justify-center w-16 h-16 bg-slate-100 group-hover:bg-white rounded-2xl border border-slate-200 group-hover:border-[#FF7400]/30 group-hover:shadow-lg group-hover:shadow-[#FF7400]/10 transition-all">
@@ -2993,20 +2996,45 @@ export default function TournamentDetailPage() {
                       .sort((a, b) => (PLACEMENT_ORDER[placements[a.id] || "PARTICIPATION"] ?? 99) - (PLACEMENT_ORDER[placements[b.id] || "PARTICIPATION"] ?? 99))
                       .map((player) => {
                       const placement = placements[player.id] || "PARTICIPATION";
-                      const placementColors: Record<string, string> = {
-                        FIRST: "border-yellow-400 bg-yellow-50",
-                        SECOND: "border-slate-300 bg-slate-50",
-                        THIRD: "border-orange-400 bg-orange-50",
-                        PARTICIPATION: "border-slate-200 bg-slate-50/50",
+                      // Medal cards: each place has its own metal, badge and glow
+                      const medal: Record<string, { card: string; badge: string; tag: string; label: string; rank: string; name: string; sub: string }> = {
+                        FIRST: {
+                          card: "border-yellow-300 bg-gradient-to-br from-yellow-100 via-amber-50 to-yellow-200 shadow-[0_6px_20px_rgba(234,179,8,0.25)]",
+                          badge: "bg-gradient-to-br from-yellow-300 via-amber-400 to-yellow-600 text-yellow-950 ring-4 ring-yellow-200 shadow-[0_0_14px_rgba(234,179,8,0.6)]",
+                          tag: "bg-amber-500 text-white", label: "GOLD", rank: "1", name: "text-amber-900", sub: "text-amber-700/80",
+                        },
+                        SECOND: {
+                          card: "border-slate-300 bg-gradient-to-br from-slate-100 via-white to-slate-200 shadow-[0_6px_20px_rgba(100,116,139,0.18)]",
+                          badge: "bg-gradient-to-br from-slate-200 via-slate-300 to-slate-500 text-slate-900 ring-4 ring-slate-200 shadow-[0_0_12px_rgba(148,163,184,0.6)]",
+                          tag: "bg-slate-500 text-white", label: "SILVER", rank: "2", name: "text-slate-800", sub: "text-slate-500",
+                        },
+                        THIRD: {
+                          card: "border-orange-300 bg-gradient-to-br from-orange-100 via-amber-50 to-orange-200 shadow-[0_6px_20px_rgba(194,65,12,0.18)]",
+                          badge: "bg-gradient-to-br from-orange-300 via-orange-500 to-amber-800 text-white ring-4 ring-orange-200 shadow-[0_0_12px_rgba(234,88,12,0.5)]",
+                          tag: "bg-orange-700 text-white", label: "BRONZE", rank: "3", name: "text-orange-950", sub: "text-orange-800/70",
+                        },
+                        PARTICIPATION: {
+                          card: "border-slate-200 bg-white", badge: "bg-slate-100 text-slate-400", tag: "", label: "", rank: "", name: "text-slate-800", sub: "text-slate-400",
+                        },
                       };
+                      const md = medal[placement] ?? medal.PARTICIPATION;
                       return (
-                        <div key={player.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${placementColors[placement]}`}>
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm text-white shrink-0 ${player.gender === "FEMALE" ? "bg-pink-500" : "bg-blue-600"}`}>
-                            {player.name.charAt(0)}
+                        <motion.div
+                          key={player.id}
+                          layout
+                          whileHover={{ y: -2 }}
+                          className={`relative flex items-center gap-3 p-3 rounded-2xl border overflow-hidden transition-shadow ${md.card}`}
+                        >
+                          {md.label && <span aria-hidden className="pointer-events-none absolute -top-6 -right-6 w-20 h-20 rounded-full bg-white/40" />}
+                          <div className={`relative w-11 h-11 rounded-full flex items-center justify-center font-black text-base shrink-0 ${md.badge}`}>
+                            {md.rank || player.name.charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-black text-slate-800 truncate">{player.name}</p>
-                            <p className="text-[11px] text-slate-400 truncate">{player.club || player.district}</p>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className={`text-sm font-black truncate ${md.name}`}>{player.name}</p>
+                              {md.label && <span className={`shrink-0 text-[9px] font-black tracking-widest px-1.5 py-0.5 rounded ${md.tag}`}>{md.label}</span>}
+                            </div>
+                            <p className={`text-[11px] font-semibold truncate ${md.sub}`}>{player.club || player.district}</p>
                           </div>
                           <div className="relative shrink-0">
                             <button
@@ -3067,7 +3095,7 @@ export default function TournamentDetailPage() {
                           >
                             <Download size={14} />
                           </button>
-                        </div>
+                        </motion.div>
                       );
                     })}
                   </div>
@@ -3086,7 +3114,7 @@ export default function TournamentDetailPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-center gap-5 px-8 py-5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/60 rounded-3xl shadow-sm"
@@ -3102,7 +3130,7 @@ export default function TournamentDetailPage() {
 
               <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-yellow-100 via-orange-50 to-transparent opacity-50 pointer-events-none rounded-full -mr-20 -mt-20 blur-3xl" />
-                
+
                 <div className="flex items-center gap-4 mb-8 relative z-10">
                   <div className="w-14 h-14 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-200">
                     <Trophy size={28} className="text-white" />
@@ -3241,128 +3269,70 @@ export default function TournamentDetailPage() {
                     const completedMatches = round.filter(m => m.status === "COMPLETED");
                     if (completedMatches.length === 0) return null;
 
+                    const roundKey = `${key}|${ri}`;
+                    const open = openResultRounds.has(roundKey);
+                    const isRR = isDrawRoundRobin(draw);
                     return (
-                      <motion.div
-                        key={ri}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
-                      >
-                        <div className="px-6 py-4 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white flex items-center justify-between">
-                          <h3 className="font-black">{getRoundLabel(draw.rounds, ri, smallBracket)} Results</h3>
-                          <span className="text-xs font-bold text-emerald-100">{completedMatches.length} completed</span>
-                        </div>
+                      <div key={ri} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <button
+                          onClick={() => toggleResultRound(roundKey)}
+                          aria-expanded={open}
+                          title={open ? "Hide the results of this round" : "Show the results of this round"}
+                          className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white flex items-center gap-3 text-left hover:from-emerald-700 hover:to-emerald-600 transition-colors"
+                        >
+                          <ChevronDown size={16} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+                          <span className="font-black text-sm flex-1">{getRoundLabel(draw.rounds, ri, smallBracket)} Results</span>
+                          <span className="text-[11px] font-bold text-emerald-50 bg-white/15 px-2 py-0.5 rounded-full">{completedMatches.length} completed</span>
+                        </button>
 
-                        <div className="divide-y divide-slate-100">
-                          {completedMatches.map((match) => {
-                            const winner = match.winnerId === match.slotA.playerId ? match.slotA : match.slotB;
-                            const loser = match.winnerId === match.slotA.playerId ? match.slotB : match.slotA;
-                            const nextMatchInfo = findNextMatch(draw.rounds, ri, round.indexOf(match), winner);
-
-                            return (
-                          <div key={match.matchId} className="p-6 hover:bg-emerald-50/30 transition-colors">
-                            <div className="flex items-start justify-between gap-6">
-                              <div className="flex-1 space-y-4">
-                                {/* Match Header */}
-                                <div className="flex items-center gap-4">
-                                  <div className="text-center w-14">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase">Mat</p>
-                                    <p className="text-2xl font-black text-slate-800">{match.matNumber}</p>
-                                  </div>
-                                  <div className="h-10 w-px bg-slate-200" />
-                                  <div className="text-center w-14">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase">Match</p>
-                                    <p className="text-2xl font-black text-slate-800">#{match.matchNumber}</p>
-                                  </div>
-                                </div>
-
-                                {/* Winner & Loser */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {/* Winner */}
-                                  <motion.div
-                                    initial={{ scale: 0.95, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    transition={{ delay: 0.1 }}
-                                    className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-4 border-2 border-emerald-300"
-                                  >
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <Trophy size={16} className="text-emerald-600" />
-                                      <p className="text-xs font-black text-emerald-600 uppercase">Winner</p>
-                                    </div>
-                                    <p className="text-lg font-black text-emerald-700">{winner.playerName}</p>
-                                    <p className="text-xs text-emerald-600 font-semibold mt-1">{winner.club}</p>
-                                    {winner.seedNumber && (
-                                      <span className="mt-2 inline-block text-[9px] font-black text-amber-600 bg-amber-100 px-2 py-1 rounded-full">
-                                        Seed #{winner.seedNumber}
+                        <AnimatePresence initial={false}>
+                          {open && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="divide-y divide-slate-100 overflow-hidden"
+                            >
+                              {completedMatches.map((match) => {
+                                const winner = match.winnerId === match.slotA.playerId ? match.slotA : match.slotB;
+                                const loser = match.winnerId === match.slotA.playerId ? match.slotB : match.slotA;
+                                // Round robin: nobody advances, so there is no "next match"
+                                const nextMatchInfo = isRR ? null : findNextMatch(draw.rounds, ri, round.indexOf(match), winner);
+                                return (
+                                  <div key={match.matchId} className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 hover:bg-emerald-50/40 transition-colors">
+                                    <span className="text-[11px] font-black text-slate-400 w-20 shrink-0">Mat {match.matNumber} · #{match.matchNumber}</span>
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                      <Trophy size={14} className="text-emerald-600 shrink-0" />
+                                      <span className="text-sm font-black text-emerald-700 truncate">{winner.playerName}</span>
+                                    </span>
+                                    <span className="text-[10px] font-black text-slate-300">DEF.</span>
+                                    <span className="text-sm font-semibold text-slate-500 truncate min-w-0">{loser.isBye ? "BYE" : loser.playerName}</span>
+                                    {match.winMethod && (
+                                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">{match.winMethod}</span>
+                                    )}
+                                    {nextMatchInfo && (
+                                      <span className="text-[11px] font-semibold text-blue-600">
+                                        → {getRoundLabel(draw.rounds, nextMatchInfo.roundIndex)} #{nextMatchInfo.matchNumber}
+                                        {nextMatchInfo.opponent ? ` vs ${nextMatchInfo.opponent}` : " (waiting)"}
                                       </span>
                                     )}
-                                  </motion.div>
-
-                                  {/* Loser */}
-                                  <motion.div
-                                    initial={{ scale: 0.95, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    transition={{ delay: 0.15 }}
-                                    className="bg-slate-50 rounded-2xl p-4 border border-slate-200"
-                                  >
-                                    <p className="text-xs font-black text-slate-400 uppercase mb-2">Loser</p>
-                                    <p className="text-lg font-bold text-slate-700">{loser.playerName}</p>
-                                    <p className="text-xs text-slate-500 font-semibold mt-1">{loser.club}</p>
-                                    {loser.seedNumber && (
-                                      <span className="mt-2 inline-block text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                                        Seed #{loser.seedNumber}
-                                      </span>
-                                    )}
-                                  </motion.div>
-                                </div>
-
-                                {/* Next Match Info */}
-                                {nextMatchInfo && (
-                                  <motion.div
-                                    initial={{ scale: 0.95, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    transition={{ delay: 0.2 }}
-                                    className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200 mt-4"
-                                  >
-                                    <p className="text-xs font-black text-blue-600 uppercase mb-2">📍 Next Match</p>
-                                    <div className="grid grid-cols-2 gap-3 text-sm">
-                                      <div>
-                                        <p className="text-[10px] text-blue-600 font-bold uppercase">Round</p>
-                                        <p className="font-black text-blue-700">{getRoundLabel(draw.rounds, nextMatchInfo.roundIndex)}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-[10px] text-blue-600 font-bold uppercase">Match #{nextMatchInfo.matchNumber}</p>
-                                        <p className="font-black text-blue-700">Mat {nextMatchInfo.matNumber}</p>
-                                      </div>
-                                      <div className="col-span-2">
-                                        <p className="text-[10px] text-blue-600 font-bold uppercase">Opponent Status</p>
-                                        <p className="font-semibold text-blue-700">
-                                          {nextMatchInfo.opponent
-                                            ? `vs ${nextMatchInfo.opponent}`
-                                            : "⏳ Waiting for opponent to advance"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </motion.div>
-                                )}
-                              </div>
-
-                              {/* Export PDF Button */}
-                              <button
-                                onClick={() => exportMatchToPDF(match, winner, loser, tournament, ri, nextMatchInfo)}
-                                className="flex-shrink-0 px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-2xl font-black text-sm flex items-center gap-2 hover:scale-105 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-                              >
-                                <Download size={16} />
-                                Export PDF
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                );
-              })}
+                                    <button
+                                      onClick={() => exportMatchToPDF(match, winner, loser, tournament, ri, nextMatchInfo)}
+                                      title="Export this match result as PDF"
+                                      className="ml-auto h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors"
+                                    >
+                                      <Download size={13} /> PDF
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
                 </div>
                 );
               })}

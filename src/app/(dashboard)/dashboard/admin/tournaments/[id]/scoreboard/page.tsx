@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Download, CheckCircle, RotateCcw, ArrowLeft, RefreshCw, Hand, Activity, PlayCircle, PauseCircle, AlertTriangle } from "lucide-react";
 import { normaliseRounds, applyMatchResult } from "../lib/bracketEngine";
 import { fmtClock, timingOf } from "../lib/matchTiming";
+import { Confetti, TrophyPop, WinnerName } from "./Celebration";
 import { useDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 interface Score { ippon: number; wazaAri: number; yuko: number; shido: number; awaseteIppon?: boolean }
@@ -242,13 +243,13 @@ function ScoreboardInner() {
       const postRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api"}/tournaments/${tournamentId}/draws`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          ageGroup: targetDraw.ageGroup, 
-          exactAge: targetDraw.exactAge, 
-          gender: targetDraw.gender, 
-          weightCategory: targetDraw.weightCategory, 
-          matNumber: targetDraw.matNumber, 
-          rounds: targetDraw.rounds 
+        body: JSON.stringify({
+          ageGroup: targetDraw.ageGroup,
+          exactAge: targetDraw.exactAge,
+          gender: targetDraw.gender,
+          weightCategory: targetDraw.weightCategory,
+          matNumber: targetDraw.matNumber,
+          rounds: targetDraw.rounds
         })
       });
       if (!postRes.ok) {
@@ -318,7 +319,7 @@ function ScoreboardInner() {
     if (sB.awaseteIppon) return { w: "B", m: "Ippon (Waza-ari-awasete)" };
     if (sA.ippon >= 1)   return { w: "A", m: "Ippon" };
     if (sB.ippon >= 1)   return { w: "B", m: "Ippon" };
-    
+
     if (isGolden) {
       const aS = sA.wazaAri * 10 + sA.yuko;
       const bS = sB.wazaAri * 10 + sB.yuko;
@@ -350,10 +351,10 @@ function ScoreboardInner() {
     const elapsedSeconds = goldenScore ? matchSeconds + timeLeft : matchSeconds - timeLeft;
     try {
       const ch = new BroadcastChannel("tnja_match_results");
-      ch.postMessage({ 
-        matchId: sp2.get("matchId")||"", 
-        winnerId: f === "A" ? sp2.get("fighterAId")||"" : sp2.get("fighterBId")||"", 
-        winnerName, 
+      ch.postMessage({
+        matchId: sp2.get("matchId")||"",
+        winnerId: f === "A" ? sp2.get("fighterAId")||"" : sp2.get("fighterBId")||"",
+        winnerName,
         winnerClub: f === "A" ? fighterAClub : fighterBClub,
         scoreA,
         scoreB,
@@ -389,7 +390,7 @@ function ScoreboardInner() {
     }];
     setLogs(nextLogs);
     saveMatchToDB(scoreA, scoreB, winner, winMethod, nextLogs);
-    
+
     setShowEditTimerModal(false);
   }, [editMinutes, editSeconds, maxTime, logs, saveMatchToDB, scoreA, scoreB, winner, winMethod]);
 
@@ -428,7 +429,7 @@ function ScoreboardInner() {
     setDbMatchStatus("PENDING");
     if (timerRef.current) clearInterval(timerRef.current);
     if (osaRef.current) clearInterval(osaRef.current);
-    
+
     saveMatchToDB(emptyScore(), emptyScore(), null, "", nextLogs);
     showToast("Match has been reset successfully!");
     setShowResetPrompt(false);
@@ -479,7 +480,7 @@ function ScoreboardInner() {
     if (ageGroup) titleParts.push(ageGroup);
     if (weightCategory) titleParts.push(weightCategory);
     titleParts.push("vs", fighterBName);
-    
+
     const newTitle = titleParts.join(" ");
     const originalTitle = document.title;
     document.title = newTitle;
@@ -573,7 +574,7 @@ function ScoreboardInner() {
       setLogs(nextLogs);
 
       if (fighter === "A") {
-        setScoreA(p => { 
+        setScoreA(p => {
           const next = { ...p };
           if (field === "wazaAri" && p.awaseteIppon) {
             next.wazaAri = 1;
@@ -582,11 +583,11 @@ function ScoreboardInner() {
           } else {
             (next as any)[field] = Math.max(0, (p[field] as number) - 1);
           }
-          saveMatchToDB(next, scoreB, null, "", nextLogs); 
-          return next; 
+          saveMatchToDB(next, scoreB, null, "", nextLogs);
+          return next;
         });
       } else {
-        setScoreB(p => { 
+        setScoreB(p => {
           const next = { ...p };
           if (field === "wazaAri" && p.awaseteIppon) {
             next.wazaAri = 1;
@@ -595,15 +596,15 @@ function ScoreboardInner() {
           } else {
             (next as any)[field] = Math.max(0, (p[field] as number) - 1);
           }
-          saveMatchToDB(scoreA, next, null, "", nextLogs); 
-          return next; 
+          saveMatchToDB(scoreA, next, null, "", nextLogs);
+          return next;
         });
       }
     } else if (type === "last") {
       const fighterLogs = logs.filter(l => l.fighter === fighter && (l.type === "score" || l.type === "penalty"));
       const lastAction = fighterLogs[fighterLogs.length - 1];
       const text = lastAction.text.toLowerCase();
-      
+
       let parsedField: keyof Score | null = null;
       if (text.includes("ippon")) parsedField = "ippon";
       else if (text.includes("waza-ari")) parsedField = "wazaAri";
@@ -617,7 +618,7 @@ function ScoreboardInner() {
         setLogs(nextLogs);
 
         if (fighter === "A") {
-          setScoreA(p => { 
+          setScoreA(p => {
             const next = { ...p };
             if (parsedField === "wazaAri" && p.awaseteIppon) {
               next.wazaAri = 1;
@@ -626,11 +627,11 @@ function ScoreboardInner() {
             } else {
               (next as any)[parsedField!] = Math.max(0, (p[parsedField!] as number) - 1);
             }
-            saveMatchToDB(next, scoreB, null, "", nextLogs); 
-            return next; 
+            saveMatchToDB(next, scoreB, null, "", nextLogs);
+            return next;
           });
         } else {
-          setScoreB(p => { 
+          setScoreB(p => {
             const next = { ...p };
             if (parsedField === "wazaAri" && p.awaseteIppon) {
               next.wazaAri = 1;
@@ -639,8 +640,8 @@ function ScoreboardInner() {
             } else {
               (next as any)[parsedField!] = Math.max(0, (p[parsedField!] as number) - 1);
             }
-            saveMatchToDB(scoreA, next, null, "", nextLogs); 
-            return next; 
+            saveMatchToDB(scoreA, next, null, "", nextLogs);
+            return next;
           });
         }
       }
@@ -712,10 +713,10 @@ function ScoreboardInner() {
     const selectedTech = fighter === "A" ? selectedTechA : selectedTechB;
     const selectedPen = fighter === "A" ? selectedPenA : selectedPenB;
     const desc = fighter === "A" ? descA : descB;
-    
+
     if (selectedPen) applyPenalty(fighter, selectedPen, desc);
     if (selectedTech) applyTechnique(fighter, selectedTech, desc);
-    
+
     if (!selectedPen && !selectedTech && desc) {
       const fighterName = fighter === "A" ? fighterAName : fighterBName;
       const nextLogs = [...logs, { id: `${Date.now()}_custom`, timestamp: Date.now(), text: `${fighterName}: ${desc}`, type: "system" as const, fighter }];
@@ -815,7 +816,7 @@ function ScoreboardInner() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+
       if (e.key === "Tab") {
         e.preventDefault();
         if (dbMatchStatus === "COMPLETED") {
@@ -823,7 +824,7 @@ function ScoreboardInner() {
           return;
         }
         if (!runningRef.current && winner) return;
-        
+
         const nextState = !runningRef.current;
         setRunning(nextState);
         showToast(nextState ? "Timer Started" : "Timer Paused");
@@ -994,7 +995,7 @@ function ScoreboardInner() {
       {/* Black normally; gold only while golden score is running */}
       <div className={`fixed inset-0 z-[9999] transition-colors duration-700 ${goldenOn ? "bg-gradient-to-br from-[#7a5a12] via-[#c9a227] to-[#7a5a12]" : "bg-[#0a0a0a]"} flex justify-center xl:items-center font-sans select-none overflow-y-auto text-white print:hidden`}>
         <div className={`w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[820px] flex flex-col relative rounded-none ${goldenOn ? "bg-gradient-to-br from-[#8f6b14] via-[#d4af37] to-[#8f6b14] border border-[#f5d76e]/40" : "bg-[#111111] border border-[#2a2a2a]"} xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4`}>
-        
+
         {/* ══ HEADER ════════════════════════════════════════════════════════ */}
         {/* 3-column grid keeps the title centred whatever the side widths; z-10 keeps the panels' glow underneath */}
         <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 lg:px-6 py-2.5 border-b border-[#333] bg-[#1a1a1a] shadow-md shrink-0">
@@ -1039,7 +1040,7 @@ function ScoreboardInner() {
 
       {/* ══ MAIN CONTENT ══════════════════════════════════════════════════════ */}
       <div className="flex-1 min-h-0 p-3 lg:p-4 flex flex-col xl:flex-row gap-3 lg:gap-4 overflow-y-auto xl:overflow-hidden">
-        
+
         {/* ── PLAYER 1 (WHITE) ──────────────────────────────────────────── */}
         <PlayerPanel
           theme="white"
@@ -1072,7 +1073,7 @@ function ScoreboardInner() {
         {/* ── CENTER PANEL ────────────────────────────────────────────────── */}
         <div className="w-full xl:w-[300px] shrink-0 min-h-0 flex flex-col lg:flex-row xl:flex-col gap-3 order-1 xl:order-2 lg:col-span-2 xl:col-span-1 items-stretch">
           <div className={`bg-[#1a1a1a] rounded-2xl flex flex-col items-center justify-center pt-3 pb-3 relative shadow-lg lg:w-[300px] xl:w-auto shrink-0`}>
-            
+
             <div className="relative flex flex-col items-center justify-center">
               <svg viewBox="0 0 260 260" className="w-[190px] h-[190px]">
                 <defs>
@@ -1081,36 +1082,36 @@ function ScoreboardInner() {
                     <stop offset="100%" stopColor="#facc15" />
                   </linearGradient>
                 </defs>
-                <path 
-                  d="M 47.98 212.02 A 116 116 0 1 1 212.02 212.02" 
-                  stroke="#333" strokeWidth="6" fill="none" strokeLinecap="round" 
+                <path
+                  d="M 47.98 212.02 A 116 116 0 1 1 212.02 212.02"
+                  stroke="#333" strokeWidth="6" fill="none" strokeLinecap="round"
                 />
-                <path 
-                  d="M 47.98 212.02 A 116 116 0 1 1 212.02 212.02" 
-                  stroke="url(#timerGrad)" 
-                  strokeWidth="14" 
-                  fill="none" 
-                  strokeLinecap="round" 
+                <path
+                  d="M 47.98 212.02 A 116 116 0 1 1 212.02 212.02"
+                  stroke="url(#timerGrad)"
+                  strokeWidth="14"
+                  fill="none"
+                  strokeLinecap="round"
                   style={{
                     strokeDasharray: arcLength,
                     strokeDashoffset: arcOffset,
                     transition: "stroke-dashoffset 1s linear"
-                  }} 
+                  }}
                 />
-                
+
                 {/* ── DRAINING THUMB / DOT ── */}
-                <g 
-                  style={{ 
-                    transform: `rotate(${thumbAngle}deg)`, 
+                <g
+                  style={{
+                    transform: `rotate(${thumbAngle}deg)`,
                     transformOrigin: "130px 130px",
-                    transition: "transform 1s linear" 
+                    transition: "transform 1s linear"
                   }}
                 >
-                  <circle 
-                    cx="246" cy="130" r="10" 
-                    fill="#f97316" 
-                    stroke="#ffffff" 
-                    strokeWidth="4" 
+                  <circle
+                    cx="246" cy="130" r="10"
+                    fill="#f97316"
+                    stroke="#ffffff"
+                    strokeWidth="4"
                     style={{ filter: "drop-shadow(0px 2px 4px rgba(0,0,0,0.5))" }}
                   />
                   <circle cx="243" cy="127" r="3" fill="#ffffff" opacity="0.6" />
@@ -1258,14 +1259,14 @@ function ScoreboardInner() {
           <div className="bg-[#1a1a1a] border border-[#333] rounded-xl px-4 lg:px-8 py-4 flex flex-col md:flex-row items-center gap-4 md:gap-8 shadow-xl w-full md:w-auto">
             <span className="text-xs font-bold text-gray-500 tracking-widest uppercase">EXPORT</span>
             <div className="flex flex-wrap justify-center gap-2 lg:gap-4">
-              <button 
-                onClick={handlePrint} 
+              <button
+                onClick={handlePrint}
                 className="bg-white text-black font-bold text-sm px-5 py-2.5 flex items-center gap-2 rounded-sm transition-colors hover:bg-gray-200"
               >
                 <Download size={16} /> Save PDF
               </button>
-              <button 
-                onClick={() => saveMatchToDB()} 
+              <button
+                onClick={() => saveMatchToDB()}
                 className="bg-white text-black font-bold text-sm px-5 py-2.5 flex items-center gap-2 rounded-sm transition-colors hover:bg-gray-200"
               >
                 <CheckCircle size={16} /> Save Match
@@ -1281,14 +1282,14 @@ function ScoreboardInner() {
       {/* ── RESET MATCH OVERLAY MODAL ────────────────────────────────────── */}
       <AnimatePresence>
         {showResetPrompt && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
           >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-[#1a1a1a] border-2 border-[#333] p-6 sm:p-8 mx-4 rounded-2xl max-w-md w-full shadow-2xl relative overflow-hidden"
             >
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-500 to-orange-500" />
@@ -1296,7 +1297,7 @@ function ScoreboardInner() {
               <p className="text-gray-400 mb-6 font-semibold text-xs sm:text-sm text-center">
                 Please provide a <span className="text-red-500 font-bold">mandatory</span> reason for resetting this match.
               </p>
-              
+
               <input
                 type="text"
                 placeholder="Reason (Required)"
@@ -1311,12 +1312,12 @@ function ScoreboardInner() {
                 <button onClick={() => { setShowResetPrompt(false); setResetComment(""); }} className="flex-1 bg-transparent hover:bg-[#333] text-gray-300 border-2 border-[#444] font-black py-3 rounded-xl transition-all">
                   Cancel
                 </button>
-                <button 
-                  onClick={confirmReset} 
+                <button
+                  onClick={confirmReset}
                   disabled={!resetComment.trim()}
                   className={`flex-1 font-black py-3 rounded-xl shadow-lg transition-all ${
-                    resetComment.trim() 
-                      ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20' 
+                    resetComment.trim()
+                      ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
                       : 'bg-[#333] text-gray-500 cursor-not-allowed'
                   }`}
                 >
@@ -1331,44 +1332,60 @@ function ScoreboardInner() {
       {/* ── WINNER OVERLAY MODAL ─────────────────────────────────────────── */}
       <AnimatePresence>
         {showWinnerModal && winner && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md print:hidden"
           >
-            <motion.div 
-              initial={{ scale: 0.8, opacity: 0, y: 30 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              className="bg-[#1a1a1a] border-2 border-[#333] px-6 sm:px-12 py-8 sm:py-12 mx-4 rounded-[2px] shadow-2xl flex flex-col items-center max-w-2xl w-full text-center relative overflow-hidden"
+            {/* Celebration: confetti in the winner's colours */}
+            <Confetti side={winner} />
+            {/* soft spotlight behind the card */}
+            <motion.div
+              aria-hidden
+              className="pointer-events-none absolute w-[720px] h-[720px] rounded-full bg-[radial-gradient(circle,rgba(250,204,21,0.22),transparent_65%)]"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.9, ease: "easeOut" }}
+            />
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0, y: 40 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 220, damping: 18 }}
+              className="bg-[#1a1a1a] border-2 border-yellow-500/50 shadow-[0_0_60px_rgba(250,204,21,0.25)] px-6 sm:px-12 py-8 sm:py-12 mx-4 rounded-[2px] flex flex-col items-center max-w-2xl w-full text-center relative overflow-hidden"
             >
-              <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-green-400 to-green-600" />
-              
-              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-4 sm:mb-6 ring-4 ring-green-500/20 shrink-0">
+              <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400" />
+
+              <TrophyPop>
                 <Trophy size={40} className="sm:w-12 sm:h-12" />
-              </div>
-              <h2 className="text-lg sm:text-xl font-black tracking-[0.3em] text-gray-500 mb-2">WINNER DECLARED</h2>
-              <h1 className="text-4xl sm:text-6xl font-black text-white mb-2 sm:mb-3 leading-tight drop-shadow-lg break-words">
-                {winner === "A" ? fighterAName : fighterBName}
-              </h1>
+              </TrophyPop>
+              <motion.h2
+                initial={{ opacity: 0, letterSpacing: "0.1em" }}
+                animate={{ opacity: 1, letterSpacing: "0.3em" }}
+                transition={{ duration: 0.8, delay: 0.25 }}
+                className="text-lg sm:text-xl font-black text-yellow-400/80 mb-2"
+              >
+                WINNER DECLARED
+              </motion.h2>
+              <WinnerName name={winner === "A" ? fighterAName : fighterBName} />
               <h3 className="text-xl sm:text-2xl font-bold text-gray-400 mb-6 sm:mb-10">
                 {(() => { const r = winner === "A" ? repA : repB; const club = winner === "A" ? fighterAClub : fighterBClub; return [r && `[${r.code}] ${r.name}`, club && club !== r?.name ? club : ""].filter(Boolean).join(" · "); })()}
               </h3>
-              
+
               <div className="bg-[#111] px-6 py-4 rounded-2xl border border-[#333] mb-8 sm:mb-10 w-full shadow-inner">
                 <span className="text-xs font-bold text-gray-500 tracking-[0.2em] uppercase block mb-1">Method of Victory</span>
                 <span className="text-xl sm:text-2xl font-black text-[#FF7400] uppercase tracking-wider">{winMethod || "Decision"}</span>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4 w-full">
-                <button 
-                  onClick={handlePrint} 
+                <button
+                  onClick={handlePrint}
                   className="flex-1 bg-white hover:bg-gray-200 text-black font-black py-4 rounded-xl transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-2 sm:gap-3 text-base sm:text-lg"
                 >
                   <Download size={20} className="sm:w-6 sm:h-6" /> Download PDF
                 </button>
-                <button 
-                  onClick={() => window.close()} 
+                <button
+                  onClick={() => window.close()}
                   className="px-8 bg-transparent hover:bg-[#333] text-gray-300 border-2 border-[#444] font-black py-4 rounded-xl transition-all flex items-center justify-center gap-2"
                 >
                   <ArrowLeft size={20} /> Back to Matches
@@ -1396,16 +1413,16 @@ function ScoreboardInner() {
       {/* ── CONFIRM WINNER MODAL ─────────────────────────────────────────── */}
       <AnimatePresence>
         {confirmWinner && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm print:hidden"
           >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-[#1a1a1a] border-2 border-[#333] p-6 sm:p-8 mx-4 rounded-2xl max-w-md w-full text-center shadow-2xl relative overflow-hidden"
             >
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-500 to-orange-500" />
@@ -1434,19 +1451,19 @@ function ScoreboardInner() {
       {/* ── EDIT TIMER MODAL ─────────────────────────────────────────── */}
       <AnimatePresence>
         {showEditTimerModal && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
           >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-[#1a1a1a] border-2 border-[#333] p-6 sm:p-8 mx-4 rounded-2xl max-w-sm w-full shadow-2xl relative overflow-hidden"
             >
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-yellow-500" />
               <h2 className="text-xl sm:text-2xl font-black text-white mb-6 text-center">Edit Timer</h2>
-              
+
               <div className="flex gap-4 justify-center items-center mb-8">
                 <div className="flex flex-col items-center">
                   <input
@@ -1477,8 +1494,8 @@ function ScoreboardInner() {
                 <button onClick={() => setShowEditTimerModal(false)} className="flex-1 bg-transparent hover:bg-[#333] text-gray-300 border-2 border-[#444] font-black py-3 rounded-xl transition-all">
                   Cancel
                 </button>
-                <button 
-                  onClick={handleSaveTimer} 
+                <button
+                  onClick={handleSaveTimer}
                   className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-all"
                 >
                   Save Time
@@ -1500,7 +1517,7 @@ function ScoreboardInner() {
             html, body { background-color: #ffffff !important; }
           `}
         </style>
-        
+
         <div className="text-center border-b-2 border-black pb-6 mb-8 flex flex-col items-center">
           <img src={TNJA_LOGO} alt="Tamil Nadu Judo Association logo" className="w-24 h-24 mb-4 object-contain" />
           <h1 className="text-4xl font-black uppercase tracking-widest mb-2">Tamil Nadu Judo Association</h1>
