@@ -982,6 +982,8 @@ function ScoreboardInner() {
 
   const totalScore = (score: Score) => score.ippon * 100 + score.wazaAri * 10 + score.yuko;
 
+  /** Golden score is running (not yet decided): the page background turns gold. */
+  const goldenOn = goldenScore && !winner;
   const timerProgress = Math.max(0, Math.min(1, timeLeft / maxTime));
   const arcLength = 546.637;
   const arcOffset = arcLength - (timerProgress * arcLength);
@@ -989,8 +991,9 @@ function ScoreboardInner() {
 
   return (
     <>
-      <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-[#7a5a12] via-[#c9a227] to-[#7a5a12] flex justify-center xl:items-center font-sans select-none overflow-y-auto text-white print:hidden">
-        <div className="w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[820px] flex flex-col bg-gradient-to-br from-[#8f6b14] via-[#d4af37] to-[#8f6b14] relative border border-[#f5d76e]/40 rounded-none xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4">
+      {/* Black normally; gold only while golden score is running */}
+      <div className={`fixed inset-0 z-[9999] transition-colors duration-700 ${goldenOn ? "bg-gradient-to-br from-[#7a5a12] via-[#c9a227] to-[#7a5a12]" : "bg-[#0a0a0a]"} flex justify-center xl:items-center font-sans select-none overflow-y-auto text-white print:hidden`}>
+        <div className={`w-full max-w-[1400px] min-h-[100dvh] xl:min-h-0 xl:h-full xl:max-h-[820px] flex flex-col relative rounded-none ${goldenOn ? "bg-gradient-to-br from-[#8f6b14] via-[#d4af37] to-[#8f6b14] border border-[#f5d76e]/40" : "bg-[#111111] border border-[#2a2a2a]"} xl:rounded-lg shadow-2xl xl:overflow-hidden m-0 xl:my-auto xl:mx-4`}>
         
         {/* ══ HEADER ════════════════════════════════════════════════════════ */}
         {/* 3-column grid keeps the title centred whatever the side widths; z-10 keeps the panels' glow underneath */}
@@ -1068,7 +1071,7 @@ function ScoreboardInner() {
 
         {/* ── CENTER PANEL ────────────────────────────────────────────────── */}
         <div className="w-full xl:w-[300px] shrink-0 min-h-0 flex flex-col lg:flex-row xl:flex-col gap-3 order-1 xl:order-2 lg:col-span-2 xl:col-span-1 items-stretch">
-          <div className={`${goldenScore && !winner ? "bg-gradient-to-b from-[#d4a017] to-[#b8860b]" : "bg-[#1a1a1a]"} transition-colors duration-500 rounded-2xl flex flex-col items-center justify-center pt-3 pb-3 relative shadow-lg lg:w-[300px] xl:w-auto shrink-0`}>
+          <div className={`bg-[#1a1a1a] rounded-2xl flex flex-col items-center justify-center pt-3 pb-3 relative shadow-lg lg:w-[300px] xl:w-auto shrink-0`}>
             
             <div className="relative flex flex-col items-center justify-center">
               <svg viewBox="0 0 260 260" className="w-[190px] h-[190px]">
@@ -1838,7 +1841,7 @@ function ActionBtn({ t, icon, label, onClick }: { t: PanelTokens; icon?: React.R
 
 export default function ScoreboardPage() {
   return (
-    <Suspense fallback={<div className="fixed inset-0 z-[9999] bg-gradient-to-br from-[#7a5a12] via-[#c9a227] to-[#7a5a12] flex items-center justify-center text-white/80 font-bold">Loading Scoreboard...</div>}>
+    <Suspense fallback={<div className="fixed inset-0 z-[9999] bg-[#0a0a0a] flex items-center justify-center text-white/80 font-bold">Loading Scoreboard...</div>}>
       <ScoreboardInner />
     </Suspense>
   );

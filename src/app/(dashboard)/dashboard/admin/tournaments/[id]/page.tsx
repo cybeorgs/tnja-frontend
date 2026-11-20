@@ -40,6 +40,9 @@ import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
 import { MatsOfficialsPanel, matFromApi } from "./components/MatsOfficialsPanel";
 import { CategoryStartBoard } from "./components/CategoryStartBoard";
 import { EditDrawModal, canEditBracket, slotsFromRounds } from "./components/EditDrawModal";
+import { RoundRobinEditModal, canEditRoundRobin } from "./components/RoundRobinEditModal";
+/** A saved draw that can still be edited by hand: elimination (first round) or round robin (whole schedule). */
+const canEditDraw = (rounds: BracketMatch[][]) => canEditBracket(rounds) || canEditRoundRobin(rounds);
 import { DrawSetupModal, type DrawSetupChoice } from "./components/DrawSetupModal";
 import { levelLabel } from "@/utils/tournamentLevel";
 
@@ -661,6 +664,21 @@ export default function TournamentDetailPage() {
     if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
     setDraws((p) => ({ ...p, [key]: { ...d, rounds: normaliseRounds(saved), generated: true, saved: true } }));
     showToast("Draw updated", true);
+  };
+
+  /** Save a hand-edited round robin schedule (pool order, pairings and play order decided by the organiser). */
+  const saveRoundRobinDraw = async (key: string, d: DrawCategory, rounds: BracketMatch[][]) => {
+    const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ageGroup: d.ageGroup, exactAge: d.exactAge ?? 0, gender: d.gender, weightCategory: d.weightCategory, matNumber: d.matNumber ?? 1, rounds }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Could not save the draw");
+    let saved = data?.draw?.rounds ?? rounds;
+    if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
+    setDraws((p) => ({ ...p, [key]: { ...d, rounds: normaliseRounds(saved), generated: true, saved: true } }));
+    showToast("Round robin updated", true);
   };
 
   /** Drag-and-drop on the bracket: swap two first-round places (BYEs included) and save. */
@@ -2072,10 +2090,10 @@ export default function TournamentDetailPage() {
                                 {effectiveCatViewMode === "bracket" ? "Bracket" : effectiveCatViewMode === "sheet" ? "Contest Sheet" : effectiveCatViewMode === "list" ? "Match List" : "Leaderboard"}
                               </h4>
                               <div className="flex items-center gap-2">
-                                {draw.saved && !draw.startedAt && !draw.isConcluded && canEditBracket(draw.rounds) && (
+                                {draw.saved && !draw.startedAt && !draw.isConcluded && canEditDraw(draw.rounds) && (
                                   <button
                                     onClick={() => setEditingDrawKey(key)}
-                                    title="Change first-round pairings and who gets a BYE (before Start)"
+                                    title={canEditRoundRobin(draw.rounds) ? "Drag players and matches, decide who fights whom (before Start)" : "Change first-round pairings and who gets a BYE (before Start)"}
                                     className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold text-slate-600 border border-slate-200 hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
                                   >
                                     <Edit2 size={13} /> Edit draw
@@ -2382,8 +2400,8 @@ export default function TournamentDetailPage() {
                           </button>
                           </Tip>
                         )}
-                        {generated && currentDraw?.saved && !locked && canEditBracket(currentDraw.rounds) && (
-                          <Tip text="Change first-round pairings and who gets a BYE (only before Start)">
+                        {generated && currentDraw?.saved && !locked && canEditDraw(currentDraw.rounds) && (
+                          <Tip text={canEditRoundRobin(currentDraw.rounds) ? "Drag players and matches, and decide who fights whom (only before Start)" : "Change first-round pairings and who gets a BYE (only before Start)"}>
                           <button
                             onClick={() => setEditingDrawKey(currentKey)}
                             className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors"
@@ -3591,7 +3609,25 @@ export default function TournamentDetailPage() {
         />
       )}
 
-      {editingDrawKey && draws[editingDrawKey] && (() => {
+      {editingDrawKey && draws[editingDrawKey] && canEditRoundRobin(draws[editingDrawKey].rounds) && (() => {
+        const d = draws[editingDrawKey];
+        // players already in the pool, plus approved players of this category (to bring someone in)
+        const inDraw = new Set(d.rounds.flatMap((r) => r.flatMap((m) => [m.slotA.playerId, m.slotB.playerId])).filter((x): x is string => !!x));
+        const poolPlayers = players.filter((p) => inDraw.has(p.id) || (
+          p.status === "APPROVED" && p.ageGroup === d.ageGroup && p.gender === d.gender &&
+          String(p.weight) === d.weightCategory && (!d.exactAge || p.exactAge === d.exactAge)
+        ));
+        return (
+          <RoundRobinEditModal
+            title={`${d.ageGroup} · ${d.gender === "FEMALE" ? "Girls" : "Boys"} · ${d.weightCategory}`}
+            players={poolPlayers}
+            rounds={d.rounds}
+            onClose={() => setEditingDrawKey(null)}
+            onSave={(rounds) => saveRoundRobinDraw(editingDrawKey, d, rounds)}
+          />
+        );
+      })()}
+      {editingDrawKey && draws[editingDrawKey] && !canEditRoundRobin(draws[editingDrawKey].rounds) && (() => {
         const d = draws[editingDrawKey];
         const ids = new Set(slotsFromRounds(d.rounds).filter((x): x is string => !!x));
         return (
