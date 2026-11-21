@@ -107,6 +107,22 @@ export function BracketView({
       },
     };
   };
+  // Left player list: a name can be dragged too; it picks up that player's first-round place,
+  // so dropping it on a slot swaps the two (or moves the player onto a BYE).
+  const placeOf = new Map<string, number>();
+  (rounds[0] ?? []).forEach((m, mi) => {
+    if (m.slotA.playerId && !m.slotA.isBye) placeOf.set(m.slotA.playerId, mi * 2);
+    if (m.slotB.playerId && !m.slotB.isBye) placeOf.set(m.slotB.playerId, mi * 2 + 1);
+  });
+  const listDnd = (playerId: string) => {
+    const place = placeOf.get(playerId);
+    if (!canDrag || place === undefined) return {};
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => { setDragFrom(place); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(place)); },
+      onDragEnd: () => { setDragFrom(null); setDragOver(null); },
+    };
+  };
   const dndCls = (ri: number, place: number) => {
     if (!canDrag || ri !== 0) return "";
     if (dragOver === place) return " cursor-grab ring-2 ring-inset ring-[#FF7400] bg-orange-50";
@@ -214,7 +230,7 @@ export function BracketView({
       )}
       {canDrag && (
         <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-          <GripVertical size={14} className="text-[#FF7400]" /> Drag a player in the first round onto another place to swap them — drop onto a BYE to move the BYE. Saves straight away; locked once the category starts.
+          <GripVertical size={14} className="text-[#FF7400]" /> Drag a player (from the list on the left or in the first round) onto another place to swap them — drop onto a BYE to move the BYE. Saves straight away; locked once the category starts.
         </p>
       )}
       <div className="flex gap-6">
@@ -229,7 +245,17 @@ export function BracketView({
               </p>
               <div className="space-y-1">
                 {wPlayers.map((p) => (
-                  <div key={p.id} className={`flex items-center gap-2 py-1 transition-opacity duration-500 ${revealing && !drawnIds.has(p.id) ? "opacity-25" : ""}`}>
+                  <div
+                    key={p.id}
+                    {...listDnd(p.id)}
+                    title={canDrag && placeOf.has(p.id) ? "Drag onto a first-round place to move this player there (swaps with whoever is there)" : undefined}
+                    className={`flex items-center gap-2 py-1 px-1 -mx-1 rounded-lg transition-all duration-300 ${revealing && !drawnIds.has(p.id) ? "opacity-25" : ""} ${
+                      canDrag && placeOf.has(p.id)
+                        ? `cursor-grab active:cursor-grabbing hover:bg-orange-50 ${dragFrom === placeOf.get(p.id) ? "bg-orange-100 ring-1 ring-[#FF7400]" : ""}`
+                        : ""
+                    }`}
+                  >
+                    {canDrag && placeOf.has(p.id) && <GripVertical size={11} className="shrink-0 -mr-1 text-slate-300" />}
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black text-white ${p.gender === "FEMALE" ? "bg-pink-400" : "bg-blue-500"}`}>
                       {p.name.charAt(0)}
                     </div>
