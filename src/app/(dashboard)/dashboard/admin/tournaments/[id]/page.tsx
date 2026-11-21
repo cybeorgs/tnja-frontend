@@ -171,6 +171,8 @@ export default function TournamentDetailPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   /** Results tab: which round sections are open (closed by default). */
   const [openResultRounds, setOpenResultRounds] = useState<Set<string>>(new Set());
+  /** Draw Generation: quick name search over the category's player chips. */
+  const [playerSearch, setPlayerSearch] = useState("");
   const toggleResultRound = (k: string) => setOpenResultRounds((cur) => { const n = new Set(cur); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   // ── Modals State ────────────────────────────────────────────────────────────
@@ -2550,9 +2552,38 @@ export default function TournamentDetailPage() {
                         );
                       })()}
 
-                      {/* Players */}
+                      {/* Players: with a quick search to check whether a name is in this category */}
+                      {(() => {
+                        const q = playerSearch.trim().toLowerCase();
+                        const hits = q
+                          ? drawPlayers.filter((p) => [p.name, p.tnjaId, p.tempId, p.club, p.district].some((v) => v?.toLowerCase().includes(q)))
+                          : drawPlayers;
+                        return (
+                          <>
+                            <div className="px-5 pt-3 flex flex-wrap items-center gap-3">
+                              <div className="relative w-full sm:w-64">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                  value={playerSearch}
+                                  onChange={(e) => setPlayerSearch(e.target.value)}
+                                  placeholder="Search player name or ID"
+                                  aria-label="Search players in this category"
+                                  className="w-full h-8 pl-8 pr-8 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-[#FF7400]"
+                                />
+                                {playerSearch && (
+                                  <button onClick={() => setPlayerSearch("")} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:text-slate-600">
+                                    <XCircle size={14} />
+                                  </button>
+                                )}
+                              </div>
+                              {q && (
+                                <span className={`text-xs font-bold ${hits.length ? "text-emerald-600" : "text-red-500"}`}>
+                                  {hits.length ? `${hits.length} of ${drawPlayers.length} found` : `No "${playerSearch.trim()}" in this category`}
+                                </span>
+                              )}
+                            </div>
                       <div className="px-5 py-3 flex flex-wrap gap-2">
-                        {drawPlayers.map((p, i) => (
+                        {hits.map((p, i) => (
                           <motion.div
                             key={`${p.id}-${shuffleKey}`}
                             layoutId={`player-card-${p.id}`}
@@ -2572,7 +2603,12 @@ export default function TournamentDetailPage() {
                             <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] text-white shrink-0 ${p.gender === "FEMALE" ? "bg-pink-400" : "bg-blue-500"}`}>
                               {p.name.charAt(0)}
                             </span>
-                            <span className="text-xs font-bold text-slate-700 max-w-[10rem] truncate" title={`${p.name} · ${p.club || p.district}`}>{p.name}</span>
+                            <span className="text-xs font-bold text-slate-700 max-w-[10rem] truncate" title={`${p.name} · ${p.club || p.district}`}>
+                              {(() => {
+                                const at = q ? p.name.toLowerCase().indexOf(q) : -1;
+                                return at < 0 ? p.name : <>{p.name.slice(0, at)}<mark className="bg-yellow-200 text-slate-900 rounded-sm px-0.5">{p.name.slice(at, at + q.length)}</mark>{p.name.slice(at + q.length)}</>;
+                              })()}
+                            </span>
                             <span className="text-[11px] font-semibold text-slate-400">{fmtKg(p.weight)}</span>
                             {([1, 2, 3, 4] as const).map((s) => seeds[s]?.id === p.id && (
                               <span key={s} className="text-[9px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">S{s}</span>
@@ -2587,6 +2623,9 @@ export default function TournamentDetailPage() {
                           </motion.div>
                         ))}
                       </div>
+                          </>
+                        );
+                      })()}
                     </>
                   );
                 })()}
