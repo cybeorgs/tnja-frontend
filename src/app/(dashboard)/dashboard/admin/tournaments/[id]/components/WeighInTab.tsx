@@ -170,6 +170,30 @@ export function WeighInTab({
     }
   };
 
+  /** Undo a disqualification: the player is approved again and can be weighed (or disqualified) afresh. */
+  const reinstate = async (p: RegisteredPlayer) => {
+    if (!p.regId) return;
+    if (!window.confirm(`Reinstate ${p.name}? The disqualification is removed and they must be weighed in again.`)) return;
+    setBusy(p.regId);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/registrations/${p.regId}/reinstate`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not reinstate the player");
+      showToast(`${p.name} reinstated: weigh them in again`);
+      setWeights((w) => ({ ...w, [p.regId!]: "" })); // open the weight box straight away
+      onChanged();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Something went wrong", false);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const disqualify = async (p: RegisteredPlayer) => {
     if (!p.regId) return;
     const weight = weights[p.regId] ?? "";
@@ -355,9 +379,19 @@ export function WeighInTab({
                   />
 
                   {disqualified ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-black text-red-600 bg-red-100 px-3 py-1.5 rounded-lg self-start xl:self-auto">
-                      <X size={14} /> Disqualified{p.weighInWeight ? ` · ${p.weighInWeight}kg` : ""}
-                    </span>
+                    <div className="flex items-center gap-2 self-start xl:self-auto">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-black text-red-600 bg-red-100 px-3 py-1.5 rounded-lg">
+                        <X size={14} /> Disqualified{p.weighInWeight ? ` · ${p.weighInWeight}kg` : ""}
+                      </span>
+                      <button
+                        onClick={() => reinstate(p)}
+                        disabled={isBusy || !registrationClosed}
+                        title="Remove the disqualification so the player can be weighed in again (or disqualified with another reason)"
+                        className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg disabled:opacity-40"
+                      >
+                        {isBusy ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Reinstate
+                      </button>
+                    </div>
                   ) : passed && !(regId in weights) ? (
                     <div className="flex items-center gap-2 self-start xl:self-auto">
                       <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg">
