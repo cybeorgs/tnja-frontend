@@ -142,6 +142,8 @@ function ScoreboardInner() {
   const [winMethod, setWinMethod] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [dbMatchStatus, setDbMatchStatus] = useState("");
+  /** Set when this scoreboard's match is gone from the draw or has other players now (stale link). */
+  const [matchMissing, setMatchMissing] = useState<string | null>(null);
 
   /** Regular match time (s) and golden score limit (s, null = unlimited), from the category's timing. */
   const [matchSeconds, setMatchSeconds] = useState(4 * 60);
@@ -179,9 +181,10 @@ function ScoreboardInner() {
     setTimeout(() => setToastMsg(""), 4000);
   }, []);
 
-  const locked = dbMatchStatus === "COMPLETED";
+  const locked = dbMatchStatus === "COMPLETED" || !!matchMissing;
   /** Every result-changing action stops here once the match is finished. */
   const blockIfLocked = () => {
+    if (matchMissing) { showToast(matchMissing); return true; }
     if (dbMatchStatus !== "COMPLETED") return false;
     showToast("This match is already completed and locked. You cannot change the result.");
     return true;
@@ -197,7 +200,7 @@ function ScoreboardInner() {
 
     if (!currentWinner) {
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api"}/tournaments/${tournamentId}/matches/${matchId}/state`, {
+        const stateRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api"}/tournaments/${tournamentId}/matches/${matchId}/state`, {
           method: "PATCH",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -208,8 +211,14 @@ function ScoreboardInner() {
             status: statusVal
           })
         });
+        if (!stateRes.ok) {
+          const data = await stateRes.json().catch(() => null);
+          if (stateRes.status === 404) setMatchMissing("This match is no longer in the draw (the draw was reset or corrected). Close this scoreboard and open the match again from Matches / My Mats.");
+          showToast("Not saved: " + (stateRes.status === 404 ? "This match is no longer in the draw (the draw was reset or corrected). Close this scoreboard and open the match again from Matches / My Mats." : data?.error || "the server refused the update"));
+        }
       } catch (err) {
         console.error("Error syncing match state", err);
+        showToast("Not saved: no connection to the server.");
       }
       return;
     }
@@ -238,7 +247,12 @@ function ScoreboardInner() {
         break;
       }
 
-      if (!targetDraw) return;
+      if (!targetDraw) {
+        setMatchMissing("This match is no longer in the draw (the draw was reset or corrected). Close this scoreboard and open the match again from Matches / My Mats.");
+        showToast("Not saved: " + "This match is no longer in the draw (the draw was reset or corrected). Close this scoreboard and open the match again from Matches / My Mats.");
+        if (currentWinner) { setDbMatchStatus(""); setWinner(null); setShowWinnerModal(false); }
+        return;
+      }
 
       const postRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api"}/tournaments/${tournamentId}/draws`, {
         method: "POST",
@@ -278,6 +292,17 @@ function ScoreboardInner() {
       headers: { Authorization: `Bearer ${token}` }
     }).then(r => r.ok ? r.json() : null).then((draws: any[]) => {
         if (!draws || !Array.isArray(draws)) return;
+        // Is this match still in a draw, with the same two players as this scoreboard?
+        const idA0 = sp.get("fighterAId"), idB0 = sp.get("fighterBId");
+        const current = draws.flatMap((d) => normaliseRounds(d.rounds).flat()).find((m) => m.matchId === matchId);
+        if (!current) {
+          setMatchMissing("This match is no longer in the draw (the draw was reset or corrected). Close this scoreboard and open the match again from Matches / My Mats.");
+          return;
+        }
+        if ((idA0 && current.slotA.playerId !== idA0) || (idB0 && current.slotB.playerId !== idB0)) {
+          setMatchMissing(`The players of this match have changed (now ${current.slotA.playerName} v ${current.slotB.playerName}). Close this scoreboard and open the match again from Matches / My Mats.`);
+          return;
+        }
         for (const draw of draws) {
           // Same repaired view as every other page: a stale result whose "winner" isn't in this
           // match (left by the old progression bug) is void, not a finished match.
@@ -333,6 +358,7 @@ function ScoreboardInner() {
   }, []);
 
   const declareWinner = useCallback((f: Fighter, method: string) => {
+    if (matchMissing) { showToast(matchMissing); return; }
     if (dbMatchStatus === "COMPLETED") {
       showToast("This match is already completed and locked. You cannot change the winner.");
       return;
@@ -365,7 +391,7 @@ function ScoreboardInner() {
     } catch {}
 
     saveMatchToDB(scoreA, scoreB, f, method, nextLogs);
-  }, [fighterAName, fighterBName, fighterAClub, fighterBClub, scoreA, scoreB, logs, goldenScore, matchSeconds, timeLeft, saveMatchToDB, dbMatchStatus]);
+  }, [fighterAName, fighterBName, fighterAClub, fighterBClub, scoreA, scoreB, logs, goldenScore, matchSeconds, timeLeft, saveMatchToDB, dbMatchStatus, matchMissing]);
 
   const handleOpenEditTimer = useCallback(() => {
     if (dbMatchStatus === "COMPLETED") {
@@ -1032,7 +1058,12 @@ function ScoreboardInner() {
           </button> */}
         </div>
       </div>
-      {dbMatchStatus === "COMPLETED" && (
+      {matchMissing && (
+        <div className="bg-red-700 text-white text-center px-4 py-2 text-sm font-bold tracking-wide shrink-0 shadow-md z-[11]">
+          ⚠ {matchMissing}
+        </div>
+      )}
+      {!matchMissing && dbMatchStatus === "COMPLETED" && (
         <div className="bg-red-600 text-white text-center py-2 text-sm font-bold tracking-wider shrink-0 uppercase shadow-md z-[10]">
           This match is already completed and locked. You cannot change the winner.
         </div>
