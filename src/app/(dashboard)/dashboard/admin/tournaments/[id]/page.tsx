@@ -12,7 +12,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Eye, FilterX,
   LayoutList, Upload, AlertTriangle, Scale,
   LayoutGrid, UserPlus, Grid3x3, Network, Ban, type LucideIcon,
-  Timer,
+  Timer, RotateCcw,
 } from "lucide-react";
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Seeds, Tab, Tournament, ViewMode } from "./types";
 import {
@@ -42,6 +42,7 @@ import { CategoryStartBoard } from "./components/CategoryStartBoard";
 import { EditDrawModal, canEditBracket, slotsFromRounds } from "./components/EditDrawModal";
 import { RoundRobinEditModal, canEditRoundRobin, canCorrectLiveDraw } from "./components/RoundRobinEditModal";
 import { CorrectBracketModal } from "./components/CorrectBracketModal";
+import { ResetCategoryModal } from "./components/ResetCategoryModal";
 /** A saved draw that can still be edited by hand: elimination (first round) or round robin (whole schedule). */
 const canEditDraw = (rounds: BracketMatch[][]) => canEditBracket(rounds) || canEditRoundRobin(rounds);
 import { DrawSetupModal, type DrawSetupChoice } from "./components/DrawSetupModal";
@@ -676,6 +677,7 @@ export default function TournamentDetailPage() {
 
   /** Save a hand-edited round robin schedule (pool order, pairings and play order decided by the organiser). */
   const [correctingKey, setCorrectingKey] = useState<string | null>(null);
+  const [resettingKey, setResettingKey] = useState<string | null>(null);
   /** Players of a draw's category: those already in it plus approved players of the same category. */
   const categoryPlayersFor = (d: DrawCategory) => {
     const inDraw = new Set(d.rounds.flatMap((r) => r.flatMap((m) => [m.slotA.playerId, m.slotB.playerId])).filter((x): x is string => !!x));
@@ -2453,6 +2455,17 @@ export default function TournamentDetailPage() {
                             </button>
                           </Tip>
                         )}
+                        {/* Reset: stop the category and clear its draw + results, to draw it again */}
+                        {generated && currentDraw && locked && !currentDraw.isConcluded && (
+                          <Tip text="Stop this category and clear its draw and all its results, so you can redraw and start again (organiser only)">
+                            <button
+                              onClick={() => setResettingKey(currentKey)}
+                              className="h-9 inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-colors"
+                            >
+                              <RotateCcw size={14} /> Reset category
+                            </button>
+                          </Tip>
+                        )}
 
                         {/* Output + view */}
                         {generated && currentDraw && (
@@ -3642,6 +3655,25 @@ export default function TournamentDetailPage() {
             rounds={d.rounds}
             onClose={() => setEditingDrawKey(null)}
             onSave={(rounds) => saveRoundRobinDraw(editingDrawKey, d, rounds)}
+          />
+        );
+      })()}
+      {resettingKey && draws[resettingKey] && (() => {
+        const d = draws[resettingKey];
+        return (
+          <ResetCategoryModal
+            tournamentId={tournamentId}
+            token={token}
+            draw={d}
+            title={`${d.ageGroup} · ${d.gender === "FEMALE" ? "Girls" : "Boys"} · ${d.weightCategory}`}
+            onClose={() => setResettingKey(null)}
+            onDone={(message) => {
+              // back to "no draw yet": Generate draw / Start become available again
+              setDraws((p) => ({ ...p, [resettingKey]: { ...d, rounds: [], generated: false, saved: true, startedAt: null } }));
+              setResettingKey(null);
+              showToast(message, true);
+              fetchDraws();
+            }}
           />
         );
       })()}
