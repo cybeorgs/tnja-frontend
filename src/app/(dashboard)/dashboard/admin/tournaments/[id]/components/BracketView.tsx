@@ -235,7 +235,15 @@ export function BracketView({
       )}
       <div className="flex gap-6">
       {/* ── Left: Player List ────────────────────────────────────────────── */}
-      <div className="w-56 shrink-0">
+      {/* Sticky: stays in view while the (tall) bracket scrolls; the page's main area has 32px
+          padding, which sticky offsets already exclude, hence the -24px (= 8px gap under the header). */}
+      <div
+        className="w-56 shrink-0 self-start sticky overflow-y-auto pr-1 print:static print:max-h-none print:overflow-visible"
+        style={{
+          top: "max(8px, calc(var(--tour-header-h, 32px) - 24px))",
+          maxHeight: "calc(100vh - max(8px, calc(var(--tour-header-h, 32px) - 24px)) - 16px)",
+        }}
+      >
         {weightGroups.map((w) => {
           const wPlayers = players.filter(p => p.weight === w);
           return (

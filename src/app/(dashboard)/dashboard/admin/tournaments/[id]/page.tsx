@@ -127,6 +127,17 @@ export default function TournamentDetailPage() {
 
   const [draws, setDraws] = useState<Record<string, DrawCategory>>({});
   const drawsRef = useRef<Record<string, DrawCategory>>({});
+  // The pinned header's height, as --tour-header-h, so things below can stick just under it
+  // (e.g. the bracket's player list stays in view while the bracket scrolls).
+  const stickyHeaderRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stickyHeaderRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty("--tour-header-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => { ro.disconnect(); root.style.removeProperty("--tour-header-h"); };
+  }, []);
   const [seeds, setSeeds] = useState<Seeds>({ 1: null, 2: null, 3: null, 4: null });
   const [showSeedModal, setShowSeedModal] = useState(false);
   const [assigningSeed, setAssigningSeed] = useState<1 | 2 | 3 | 4 | null>(null);
@@ -1224,7 +1235,7 @@ export default function TournamentDetailPage() {
       </AnimatePresence>
 
       {/* Header + tabs stay pinned while the tab content scrolls underneath */}
-      <div className="sticky -top-8 z-30 -mt-8 -mx-8 print:static bg-white border-b border-slate-200">
+      <div ref={stickyHeaderRef} className="sticky -top-8 z-30 -mt-8 -mx-8 print:static bg-white border-b border-slate-200">
         <div className="px-8 pt-5 pb-3 flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
           <div className="flex items-start gap-4 min-w-0 flex-1">
             <button
@@ -2588,7 +2599,7 @@ export default function TournamentDetailPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
+                    className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-clip"
                   >
                 {effectiveViewMode === "leaderboard" ? (
                   <div className="p-5 pb-8 bg-slate-50/50">
