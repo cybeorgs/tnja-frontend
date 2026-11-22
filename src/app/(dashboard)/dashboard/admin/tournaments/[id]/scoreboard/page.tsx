@@ -100,7 +100,7 @@ function ScoreboardInner() {
         const regs: Record<string, any>[] = Array.isArray(raw) ? raw : raw?.registrations || []; // eslint-disable-line @typescript-eslint/no-explicit-any
         const find = (id: string | null): Rep | undefined => {
           const r = id ? regs.find(x => (x.playerId || x.player?.id) === id) : undefined;
-          return r ? { representing: r.representing || "", representingDistrict: r.representingDistrict || "", representingUnit: r.representingUnit || "", district: r.player?.district?.name || r.district || "" } : undefined;
+          return r ? { representing: r.representing || "", representingDistrict: r.representingDistrict || r.player?.representingDistrict?.name || "", representingUnit: r.representingUnit || "", district: r.player?.district?.name || r.district || "" } : undefined;
         };
         setReps({ A: find(idA), B: find(idB) });
       })

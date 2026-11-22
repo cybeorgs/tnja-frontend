@@ -43,6 +43,7 @@ import { EditDrawModal, canEditBracket, slotsFromRounds } from "./components/Edi
 import { RoundRobinEditModal, canEditRoundRobin, canCorrectLiveDraw } from "./components/RoundRobinEditModal";
 import { CorrectBracketModal } from "./components/CorrectBracketModal";
 import { ResetCategoryModal } from "./components/ResetCategoryModal";
+import { EditResultModal } from "./components/EditResultModal";
 /** A saved draw that can still be edited by hand: elimination (first round) or round robin (whole schedule). */
 const canEditDraw = (rounds: BracketMatch[][]) => canEditBracket(rounds) || canEditRoundRobin(rounds);
 import { DrawSetupModal, type DrawSetupChoice } from "./components/DrawSetupModal";
@@ -549,7 +550,7 @@ export default function TournamentDetailPage() {
               weighInWeight: r.weighInWeight ?? null,
               weighInStatus: r.weighInStatus ?? null,
               representing: r.representing || "",
-              representingDistrict: r.representingDistrict || "",
+              representingDistrict: r.representingDistrict || r.player?.representingDistrict?.name || "",
               representingUnit: r.representingUnit || "",
             };
           }
@@ -691,6 +692,8 @@ export default function TournamentDetailPage() {
   /** Save a hand-edited round robin schedule (pool order, pairings and play order decided by the organiser). */
   const [correctingKey, setCorrectingKey] = useState<string | null>(null);
   const [resettingKey, setResettingKey] = useState<string | null>(null);
+  /** Draw sheet: the finished match whose winner the organiser is changing. */
+  const [editingResult, setEditingResult] = useState<{ key: string; matchId: string } | null>(null);
   /** Players of a draw's category: those already in it plus approved players of the same category. */
   const categoryPlayersFor = (d: DrawCategory) => {
     const inDraw = new Set(d.rounds.flatMap((r) => r.flatMap((m) => [m.slotA.playerId, m.slotB.playerId])).filter((x): x is string => !!x));
@@ -713,6 +716,22 @@ export default function TournamentDetailPage() {
     setDraws((p) => ({ ...p, [key]: { ...d, rounds: normaliseRounds(saved), generated: true, saved: true } }));
     showToast(correction ? "Live draw corrected" : "Round robin updated", true);
   };
+
+  /** Organiser correction of a finished match's winner (from the draw sheet), with the knock-on changes. */
+  const saveEditedResult = async (key: string, d: DrawCategory, rounds: BracketMatch[][], matchId: string) => {
+    const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/draws`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ageGroup: d.ageGroup, exactAge: d.exactAge ?? 0, gender: d.gender, weightCategory: d.weightCategory, matNumber: d.matNumber ?? 1, rounds, resultEdit: matchId }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Could not save the result");
+    let saved = data?.draw?.rounds ?? rounds;
+    if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch { saved = rounds; } }
+    setDraws((p) => ({ ...p, [key]: { ...d, rounds: normaliseRounds(saved), generated: true, saved: true } }));
+    showToast("Result updated: bracket and placings refreshed", true);
+  };
+  const canEditResults = (d: DrawCategory | undefined) => !!d && d.saved && !!d.startedAt && !d.isConcluded;
 
   /** Drag-and-drop on the bracket: swap two first-round places (BYEs included) and save. */
   const swapFirstRound = async (key: string, d: DrawCategory, from: number, to: number) => {
@@ -2185,6 +2204,7 @@ export default function TournamentDetailPage() {
                               <BracketView
                                 rounds={draw.rounds}
                                 onOpenScoreboard={openScoreboard}
+                                onEditResult={canEditResults(draw) ? (m) => setEditingResult({ key, matchId: m.matchId }) : undefined}
                                 onSwapFirstRound={draw.saved && !draw.startedAt && !draw.isConcluded && canEditBracket(draw.rounds) ? (a, b) => swapFirstRound(key, draw, a, b) : undefined}
                                 players={catDrawPlayers}
                                 tournament={tournament}
@@ -2730,6 +2750,7 @@ export default function TournamentDetailPage() {
                       key={currentKey}
                       rounds={currentDraw.rounds}
                       onOpenScoreboard={openScoreboard}
+                      onEditResult={canEditResults(currentDraw) ? (m) => setEditingResult({ key: currentKey, matchId: m.matchId }) : undefined}
                       onSwapFirstRound={currentDraw.saved && !currentDraw.startedAt && !currentDraw.isConcluded && canEditBracket(currentDraw.rounds) ? (a, b) => swapFirstRound(currentKey, currentDraw, a, b) : undefined}
                       players={filteredPlayers}
                       tournament={tournament}
@@ -3724,6 +3745,20 @@ export default function TournamentDetailPage() {
               showToast(message, true);
               fetchDraws();
             }}
+          />
+        );
+      })()}
+      {editingResult && draws[editingResult.key] && (() => {
+        const d = draws[editingResult.key];
+        const m = d.rounds.flat().find((x) => x.matchId === editingResult.matchId);
+        if (!m) return null;
+        return (
+          <EditResultModal
+            match={m}
+            rounds={d.rounds}
+            title={`${d.ageGroup} · ${d.gender === "FEMALE" ? "Girls" : "Boys"} · ${d.weightCategory}`}
+            onClose={() => setEditingResult(null)}
+            onSave={(rounds) => saveEditedResult(editingResult.key, d, rounds, editingResult.matchId)}
           />
         );
       })()}

@@ -73,7 +73,7 @@ function DrawViewInner() {
           if (!id) continue;
           map[id] = {
             representing: r.representing || "",
-            representingDistrict: r.representingDistrict || "",
+            representingDistrict: r.representingDistrict || r.player?.representingDistrict?.name || "",
             representingUnit: r.representingUnit || "",
             district: r.player?.district?.name || r.district || "",
           };

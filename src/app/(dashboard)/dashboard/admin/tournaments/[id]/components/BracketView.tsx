@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Monitor, Printer, Download, GripVertical } from "lucide-react";
+import { Monitor, Printer, Download, GripVertical, Pencil } from "lucide-react";
 import type { BracketMatch, DrawCategory, RegisteredPlayer, Tournament } from "../types";
 import { getRoundLabel, mainBracketRoundCount, isMatchReady, compareWeights, getEliminationFormatLabel, detectDrawPlacements, PLACEMENT_ORDER, type Placement } from "../lib/bracketEngine";
 import { exportRoundRobinPoolSheet, exportCategoryReport, exportCategoryChartPDF } from "../lib/pdfExport";
@@ -36,6 +36,7 @@ export function BracketView({
   currentKey,
   currentDraw,
   onSwapFirstRound,
+  onEditResult,
   reveal,
   hideHeader,
 }: {
@@ -47,6 +48,8 @@ export function BracketView({
   hideHeader?: boolean;
   /** Omit for a view-only bracket (no Scoreboard buttons). */
   onOpenScoreboard?: (match: BracketMatch) => void;
+  /** When given, finished matches get an "Edit" button to change the winner (organiser correction). */
+  onEditResult?: (match: BracketMatch) => void;
   /** When given, first-round places can be dragged onto each other to swap them (BYEs included).
    *  Places are numbered match 1 A = 0, match 1 B = 1, match 2 A = 2, … */
   onSwapFirstRound?: (from: number, to: number) => void;
@@ -402,6 +405,15 @@ export function BracketView({
                       <span className="text-[8px] text-slate-400 font-semibold">
                         {match.status === "COMPLETED" && !revealing ? "✓ Done" : `Mat ${match.matNumber} · #${match.matchNumber}`}
                       </span>
+                      {onEditResult && !revealing && match.status === "COMPLETED" && !!match.winnerId && !match.slotA.isBye && !match.slotB.isBye && (
+                        <button
+                          onClick={() => onEditResult(match)}
+                          title={match.correctedFrom !== undefined ? "Result was corrected. Click to change the winner again" : "Change the winner of this match (later matches update)"}
+                          className="text-[8px] font-black transition-colors flex items-center gap-0.5 text-slate-400 hover:text-[#FF7400]"
+                        >
+                          <Pencil size={8} /> {match.correctedFrom !== undefined ? "Edited" : "Edit"}
+                        </button>
+                      )}
                       {onOpenScoreboard && isMatchReady(match) && (
                         <button
                           onClick={() => onOpenScoreboard(match)}

@@ -41,6 +41,8 @@ interface TNJAUser {
   districtName?: string;
   district?: { name: string };
   assignedDistrict?: { name: string };
+  /** Students: district they represent in tournaments, when not their home district */
+  representingDistrict?: { name: string } | null;
   tempId: string;
   permanentId: string | null;
   status: string;
@@ -147,6 +149,15 @@ function DistrictCell({ u }: { u: TNJAUser }) {
       <div className="text-xs">
         <p className="font-bold text-slate-700">{work}</p>
         {home && <p className="text-slate-400">Lives in {home}</p>}
+      </div>
+    );
+  }
+  const rep = u.representingDistrict?.name;
+  if (rep && rep !== home) {
+    return (
+      <div className="text-xs">
+        <p className="font-semibold text-slate-600">{home || "—"}</p>
+        <p className="font-bold text-blue-600">Represents {rep}</p>
       </div>
     );
   }

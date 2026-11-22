@@ -111,7 +111,7 @@ const BYE_SLOT: BracketSlot = { playerId: null, playerName: "BYE", club: "", isB
 const placeholderSlot = (label: string): BracketSlot => ({ playerId: null, playerName: label, club: "", isBye: false });
 const copySlot = (s: BracketSlot): BracketSlot =>
   ({ playerId: s.playerId, playerName: s.playerName, club: s.club, isBye: !!s.isBye, coachName: s.coachName, seedNumber: s.seedNumber });
-const VOID_RESULT = { winnerId: null, status: "PENDING" as const, scoreA: undefined, scoreB: undefined, winMethod: undefined, elapsedSeconds: undefined };
+const VOID_RESULT = { winnerId: null, status: "PENDING" as const, scoreA: undefined, scoreB: undefined, winMethod: undefined, elapsedSeconds: undefined, correctedFrom: undefined };
 const winnerInMatch = (m: BracketMatch) => !m.winnerId || m.winnerId === m.slotA.playerId || m.winnerId === m.slotB.playerId;
 
 /** Winner / loser slot of a finished match, or null while it hasn't been decided. */
@@ -224,6 +224,84 @@ export function applyMatchResult(
     if (target) r[ri + 1][ni] = { ...target, [mi % 2 === 0 ? "slotA" : "slotB"]: copySlot(win) };
   }
   return backfillBronzeMatches(syncRepechage(processByeMatches(r)));
+}
+
+const fightersOf = (m: BracketMatch | undefined) => `${m?.slotA.playerId ?? "-"}|${m?.slotB.playerId ?? "-"}`;
+/** Played for real (not a BYE walkover) or running. */
+export const isPlayedResult = (m: BracketMatch) =>
+  m.status === "IN_PROGRESS" || (m.status === "COMPLETED" && !m.slotA.isBye && !m.slotB.isBye);
+
+/**
+ * Organiser correction of a finished match: a new winner (and win method). The new winner moves on
+ * in place of the old one, and every later match that depended on the old result (the old winner's
+ * next fights, repechage / bronze places fed by the loser) goes back to "to be played" with its new
+ * fighters. Matches whose fighters stay the same keep their results.
+ * Returns the new rounds and the played matches that were reset.
+ */
+export function changeMatchResult(
+  raw: BracketMatch[][],
+  matchId: string,
+  winnerId: string,
+  winMethod: string,
+): { rounds: BracketMatch[][]; reset: BracketMatch[] } {
+  const rawById = new Map(raw.flat().map((m) => [m.matchId, m]));
+  const orig = rawById.get(matchId);
+  if (!orig || (winnerId !== orig.slotA.playerId && winnerId !== orig.slotB.playerId)) return { rounds: raw, reset: [] };
+
+  let r: BracketMatch[][] = raw.map((row) => row.map((m) => (m.matchId === matchId
+    ? { ...m, winnerId, status: "COMPLETED" as const, winMethod, correctedFrom: m.winnerId ?? null }
+    : { ...m })));
+  if (isRoundRobinRounds(r)) return { rounds: r, reset: [] };
+
+  const main = mainBracketRoundCount(r);
+  const fromMatch = (src: BracketMatch, slot: BracketSlot) => {
+    const o = rawById.get(src.matchId);
+    return !!slot.playerId && [src.slotA.playerId, src.slotB.playerId, o?.slotA.playerId, o?.slotB.playerId].includes(slot.playerId);
+  };
+  const plainBronze = !repechageKindOf(r) && main >= 2 && r[main - 1]?.length === 2 && r[main - 2]?.length === 2;
+
+  for (let pass = 0; pass < r.length + 4; pass++) {
+    // 1. main bracket: each decided winner into its next match; a slot whose source is undecided again empties
+    for (let ri = 0; ri + 1 < main; ri++) {
+      r[ri].forEach((src, mi) => {
+        const ni = Math.floor(mi / 2), side = mi % 2 === 0 ? "slotA" : "slotB";
+        const target = r[ri + 1][ni];
+        if (!target || target.matchId.startsWith("M_BRONZE_")) return;
+        const w = decided(src, "winner");
+        if (w) r[ri + 1][ni] = setSlot(target, side, w);
+        else if (fromMatch(src, target[side])) r[ri + 1][ni] = setSlot(target, side, placeholderSlot("TBD"));
+      });
+    }
+    // 2. plain bracket's 3rd-place match: the semi-final losers
+    if (plainBronze) {
+      [0, 1].forEach((mi) => {
+        const semi = r[main - 2][mi], side = mi === 0 ? "slotA" : "slotB";
+        const bronze = r[main - 1][1];
+        const l = decided(semi, "loser");
+        if (l?.playerId) r[main - 1][1] = setSlot(bronze, side, l);
+        else if (!l && fromMatch(semi, bronze[side])) r[main - 1][1] = setSlot(bronze, side, placeholderSlot("TBD"));
+      });
+    }
+    r = backfillBronzeMatches(syncRepechage(processByeMatches(r)));
+    // 3. a played / running match whose fighters changed is void: it must be fought again
+    let voided = false;
+    r = r.map((row) => row.map((m) => {
+      if (m.matchId === matchId || m.status === "PENDING" || m.slotA.isBye || m.slotB.isBye) return m;
+      const changed = fightersOf(m) !== fightersOf(rawById.get(m.matchId)) || !winnerInMatch(m);
+      if (!changed) return m;
+      voided = true;
+      return { ...m, ...VOID_RESULT };
+    }));
+    if (!voided) break;
+  }
+
+  const now = new Map(r.flat().map((m) => [m.matchId, m]));
+  const reset = raw.flat().filter((o) => {
+    if (o.matchId === matchId || !isPlayedResult(o)) return false;
+    const m = now.get(o.matchId);
+    return !m || m.status === "PENDING" || fightersOf(m) !== fightersOf(o);
+  });
+  return { rounds: r, reset };
 }
 
 // Backfill the auto-generated Bronze (3rd place) match with semifinal losers.
