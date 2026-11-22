@@ -5,12 +5,15 @@ import { createPortal } from "react-dom";
 import { AlertCircle, Grid3x3, Minus, Plus, Shuffle, Swords, Users, X } from "lucide-react";
 import type { RegisteredPlayer } from "../types";
 import { drawSetupFor } from "../lib/bracketEngine";
+import { PendingWeighIn } from "./PendingWeighIn";
 
 export interface DrawSetupChoice {
   /** Players who go straight to round 2, or null to pick them at random. */
   byeIds: string[] | null;
   /** First-round fights chosen by the organiser (byes = players − 2 × fights). */
   fights: number;
+  /** The category's players after any weigh-in done in this dialog (moved players left out). */
+  players: RegisteredPlayer[];
 }
 
 /**
@@ -20,19 +23,26 @@ export interface DrawSetupChoice {
 export function DrawSetupModal({
   title,
   formatLabel,
-  players,
+  players: initialPlayers,
   isRedraw,
   onCancel,
   onConfirm,
+  tournamentId,
+  onWeighInChanged,
 }: {
   title: string;
   formatLabel: string;
   players: RegisteredPlayer[];
+  tournamentId: string;
+  /** A weigh-in was saved from this dialog: refresh the page's registrations. */
+  onWeighInChanged?: () => void;
   isRedraw: boolean;
   onCancel: () => void;
   onConfirm: (choice: DrawSetupChoice) => void;
 }) {
-  const [fights, setFights] = useState(() => drawSetupFor(players.length).minFights);
+  const [players, setPlayers] = useState(initialPlayers);
+  const notWeighed = players.filter((p) => p.weighInStatus !== "PASSED").length;
+  const [fights, setFights] = useState(() => drawSetupFor(initialPlayers.length).minFights);
   const setup = drawSetupFor(players.length, fights);
   const [mode, setMode] = useState<"auto" | "choose">("auto");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -56,11 +66,19 @@ export function DrawSetupModal({
   };
 
   const confirm = () => {
+    if (notWeighed > 0) {
+      setError(`${notWeighed} player${notWeighed === 1 ? "" : "s"} still need weigh-in: confirm them above first.`);
+      return;
+    }
+    if (players.length < 3) {
+      setError("Fewer than 3 players are left in this category: close this and make the draw again.");
+      return;
+    }
     if (mode === "choose" && setup.byes > 0 && picked.size !== setup.byes) {
       setError(`Choose exactly ${setup.byes} player${setup.byes === 1 ? "" : "s"} for the byes (${picked.size} chosen).`);
       return;
     }
-    onConfirm({ byeIds: mode === "choose" && setup.byes > 0 ? [...picked] : null, fights: setup.firstRoundFights });
+    onConfirm({ byeIds: mode === "choose" && setup.byes > 0 ? [...picked].filter((id) => players.some((p) => p.id === id)) : null, fights: setup.firstRoundFights, players });
   };
 
   const stat = (icon: React.ReactNode, value: number | string, label: string, step?: { down: () => void; up: () => void; canDown: boolean; canUp: boolean }) => (
@@ -90,6 +108,12 @@ export function DrawSetupModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <PendingWeighIn
+            tournamentId={tournamentId}
+            players={players}
+            onPlayersChange={(next) => { setPlayers(next); setError(""); setPicked((prev) => new Set([...prev].filter((id) => next.some((p) => p.id === id)))); }}
+            onChanged={onWeighInChanged}
+          />
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 [&>*]:min-w-0">
             {stat(<Users size={13} />, players.length, "Players")}
             {stat(<Grid3x3 size={13} />, setup.size / 2, "Round-1 matches")}
@@ -186,7 +210,7 @@ export function DrawSetupModal({
 
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
           <button onClick={onCancel} className="h-10 px-5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100">Cancel</button>
-          <button onClick={confirm} className="h-10 inline-flex items-center gap-2 px-5 rounded-xl text-sm font-black text-white bg-[#FF7400] hover:bg-orange-600">
+          <button onClick={confirm} disabled={notWeighed > 0} title={notWeighed > 0 ? "Weigh everyone in first (above)" : undefined} className="h-10 inline-flex items-center gap-2 px-5 rounded-xl text-sm font-black text-white bg-[#FF7400] hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed">
             <Shuffle size={15} /> {isRedraw ? "Redraw" : "Generate draw"}
           </button>
         </div>

@@ -47,6 +47,7 @@ import { EditResultModal } from "./components/EditResultModal";
 /** A saved draw that can still be edited by hand: elimination (first round) or round robin (whole schedule). */
 const canEditDraw = (rounds: BracketMatch[][]) => canEditBracket(rounds) || canEditRoundRobin(rounds);
 import { DrawSetupModal, type DrawSetupChoice } from "./components/DrawSetupModal";
+import { WeighInGateModal } from "./components/PendingWeighIn";
 import { levelLabel } from "@/utils/tournamentLevel";
 
 /** One category, passed explicitly when drawing from a category card. */
@@ -669,6 +670,8 @@ export default function TournamentDetailPage() {
   /** Draw setup dialog (asked before an elimination draw): which format, and is it a redraw. */
   /** Draw setup dialog (fights / byes). `cat` is set when opened from a category card instead of the filtered view. */
   const [drawSetup, setDrawSetup] = useState<{ isRedraw: boolean; method: DrawMethod; cat?: DrawCat } | null>(null);
+  /** Players still to weigh in when a draw was asked for: weighed in a dialog, then the draw continues. */
+  const [weighGate, setWeighGate] = useState<{ title: string; players: RegisteredPlayer[]; onReady: (players: RegisteredPlayer[]) => void } | null>(null);
   const saveEditedDraw = async (key: string, d: DrawCategory, slots: (string | null)[]) => {
     const byId = new Map(players.map((p) => [p.id, p]));
     const main = bracketFromSlots(slots.map((id) => (id ? byId.get(id) ?? null : "BYE")));
@@ -788,11 +791,13 @@ export default function TournamentDetailPage() {
     explicitCat?: DrawCat,
     drawMethod?: DrawMethodType,
     /** From the draw setup dialog: who gets the byes (null = random). Uses the draw-number layout. */
-    setup?: DrawSetupChoice
+    setup?: DrawSetupChoice,
+    /** The category's players straight after a weigh-in done in a dialog (the page's list is still reloading). */
+    playersOverride?: RegisteredPlayer[]
   ) => {
     const activeKey = explicitCat ? explicitCat.key : currentKey;
     const activeDraw = explicitCat ? explicitCat.draw : currentDraw;
-    const activePlayers = explicitCat ? explicitCat.players : eligiblePlayers;
+    const activePlayers = playersOverride ?? setup?.players ?? (explicitCat ? explicitCat.players : eligiblePlayers);
     const activeAgeGrp = explicitCat ? explicitCat.ageGroup : ageFilter;
     const activeExactAge = explicitCat ? explicitCat.exactAge : exactAgeFilter;
     const activeGender = explicitCat ? explicitCat.gender : genderFilter;
@@ -806,7 +811,12 @@ export default function TournamentDetailPage() {
     // Every player in the category must clear weigh-in before the bracket is drawn
     const notWeighed = activePlayers.filter(p => p.weighInStatus !== "PASSED");
     if (notWeighed.length > 0) {
-      showToast(`${notWeighed.length} of ${activePlayers.length} players in this category still need weigh-in. Finish the Weigh-In tab first.`, false);
+      // Weigh them in right here, then carry on with the same draw
+      setWeighGate({
+        title: [activeAgeGrp, activeGender === "FEMALE" ? "Girls" : activeGender === "MALE" ? "Boys" : "", activeWeight !== "ALL" ? fmtKg(activeWeight) : ""].filter(Boolean).join(" · "),
+        players: activePlayers,
+        onReady: (ps) => handleGenerateAndSaveDraw(isShuffle, isConfirmed, explicitCat ? { ...explicitCat, players: ps } : undefined, drawMethod, setup && { ...setup, players: ps }, ps),
+      });
       return;
     }
 
@@ -835,7 +845,7 @@ export default function TournamentDetailPage() {
           warning: "All unsaved matches in this bracket will be lost.",
           confirmLabel: "Re-shuffle",
           tone: "danger",
-          action: () => handleGenerateAndSaveDraw(isShuffle, true, explicitCat, selectedMethod)
+          action: () => handleGenerateAndSaveDraw(isShuffle, true, explicitCat, selectedMethod, setup, playersOverride)
         });
         return;
       }
@@ -3706,12 +3716,24 @@ export default function TournamentDetailPage() {
           formatLabel={{ "straight-elimination": "Straight Elimination", "single-repechage": "Single Repechage", "double-repechage": "Double Repechage", "round-robin": "Round Robin" }[drawSetup.method]}
           players={drawSetup.cat ? drawSetup.cat.players : eligiblePlayers}
           isRedraw={drawSetup.isRedraw}
+          tournamentId={tournamentId}
+          onWeighInChanged={() => { fetchPlayers(); }}
           onCancel={() => setDrawSetup(null)}
           onConfirm={(choice) => {
             const { isRedraw, method, cat } = drawSetup;
             setDrawSetup(null);
-            handleGenerateAndSaveDraw(isRedraw, true, cat, method, choice);
+            handleGenerateAndSaveDraw(isRedraw, true, cat && { ...cat, players: choice.players }, method, choice);
           }}
+        />
+      )}
+      {weighGate && (
+        <WeighInGateModal
+          tournamentId={tournamentId}
+          title={weighGate.title}
+          players={weighGate.players}
+          onClose={() => setWeighGate(null)}
+          onChanged={() => { fetchPlayers(); }}
+          onReady={(ps) => { const go = weighGate.onReady; setWeighGate(null); go(ps); }}
         />
       )}
 
