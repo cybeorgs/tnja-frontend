@@ -389,6 +389,10 @@ export function clubSeparatedShuffle(players: RegisteredPlayer[]): RegisteredPla
 export type Placement = "FIRST" | "SECOND" | "THIRD" | "PARTICIPATION";
 export const PLACEMENT_ORDER: Record<string, number> = { FIRST: 1, SECOND: 2, THIRD: 3, PARTICIPATION: 4 };
 
+/** Key for the on-screen placements map: the registration, not the player. A player entered in
+ *  two categories has one id but two registrations, and each can earn its own medal. */
+export const placementKey = (p: Pick<RegisteredPlayer, "id" | "regId">) => p.regId || p.id;
+
 /**
  * Placements one draw's results give its players: everyone starts as PARTICIPATION; the final
  * gives Gold/Silver, and the bronze matches (or, without them, the semi-final losers) give Bronze.

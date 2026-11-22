@@ -2,7 +2,7 @@
 // DOM/window side effects (opens a print window), no React state.
 
 import type { BracketMatch, BracketSlot, DrawCategory, RegisteredPlayer, Tournament } from "../types";
-import { isDrawRoundRobin, roundName, getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel } from "./bracketEngine";
+import { isDrawRoundRobin, roundName, getRoundLabel, mainBracketRoundCount, getEliminationFormatLabel, placementKey } from "./bracketEngine";
 import { getLoadedDistrictCodes, representingOf } from "@/utils/districtCodes";
 
 /** Representing-district code per player id for the sheet being built (set by the export before rendering). */
@@ -943,9 +943,9 @@ export function exportOverallTournamentReport(
     const catFemale = catPlayers.filter(p => p.gender === "FEMALE").length;
     const catTotal = catPlayers.length;
 
-    const goldPlayers = catPlayers.filter(p => placements[p.id] === "FIRST");
-    const silverPlayers = catPlayers.filter(p => placements[p.id] === "SECOND");
-    const bronzePlayers = catPlayers.filter(p => placements[p.id] === "THIRD");
+    const goldPlayers = catPlayers.filter(p => placements[placementKey(p)] === "FIRST");
+    const silverPlayers = catPlayers.filter(p => placements[placementKey(p)] === "SECOND");
+    const bronzePlayers = catPlayers.filter(p => placements[placementKey(p)] === "THIRD");
 
     const formatWinners = (winners: typeof activePlayers) => {
       if (winners.length === 0) return "-";

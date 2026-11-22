@@ -19,7 +19,7 @@ import {
   categoryKey, clubSeparatedShuffle, findNextMatch, generateIJFBracket, generateRoundRobin,
   isDrawRoundRobin, processByeMatches, backfillBronzeMatches, getRoundLabel, shuffleArray, bracketFromSlots,
   getEliminationFormatLabel, appendRepechageRounds, repechageKindOf, tagSmallRepechage, slotsFromDrawSetup, roundRobinRepeats, isMatchReady, compareWeights,
-  applyMatchResult, mainBracketRoundCount, normaliseRounds, detectDrawPlacements, PLACEMENT_ORDER,
+  applyMatchResult, mainBracketRoundCount, normaliseRounds, detectDrawPlacements, PLACEMENT_ORDER, placementKey,
 } from "./lib/bracketEngine";
 import TimingModal from "./components/TimingModal";
 import Tip from "./components/Tip";
@@ -266,7 +266,7 @@ export default function TournamentDetailPage() {
     const detected: Record<string, "FIRST" | "SECOND" | "THIRD" | "PARTICIPATION"> = {};
 
     // Start everyone as PARTICIPATION
-    players.forEach((p) => { detected[p.id] = "PARTICIPATION"; });
+    players.forEach((p) => { detected[placementKey(p)] = "PARTICIPATION"; });
 
     // Iterate over every draw category to find final + semi-final losers/winners
     for (const draw of Object.values(draws)) {
@@ -278,9 +278,11 @@ export default function TournamentDetailPage() {
         p.gender === draw.gender &&
         String(p.weight) === draw.weightCategory
       );
-      // Medals only: a medal won in one draw is never reset by another draw the same player is in.
-      for (const [id, placement] of Object.entries(detectDrawPlacements(draw.rounds, catPlayers.map(p => p.id)))) {
-        if (placement !== "PARTICIPATION") detected[id] = placement;
+      // Keyed by registration: a player in two categories keeps a separate medal for each.
+      const drawPlacements = detectDrawPlacements(draw.rounds, catPlayers.map(p => p.id));
+      for (const p of catPlayers) {
+        const placement = drawPlacements[p.id];
+        if (placement && placement !== "PARTICIPATION") detected[placementKey(p)] = placement;
       }
     }
 
@@ -297,7 +299,7 @@ export default function TournamentDetailPage() {
     const results = catPlayers.map((p) => ({
       regId: p.regId,
       playerId: p.id,
-      placement: placements[p.id] || "PARTICIPATION",
+      placement: placements[placementKey(p)] || "PARTICIPATION",
     }));
 
     setSubmittingResults(true);
@@ -347,7 +349,8 @@ export default function TournamentDetailPage() {
       showToast("Generating certificate...");
       const params = new URLSearchParams({ regId: player.regId });
       // Before the category is concluded, use the placement currently picked on screen
-      if (placements[player.id]) params.set("placement", placements[player.id]);
+      const picked = placements[placementKey(player)];
+      if (picked) params.set("placement", picked);
       const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/certificate?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -3091,9 +3094,9 @@ export default function TournamentDetailPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
                     {/* Gold, Silver, Bronze, then participants (stable sort keeps their order otherwise). */}
                     {[...filteredPlayers]
-                      .sort((a, b) => (PLACEMENT_ORDER[placements[a.id] || "PARTICIPATION"] ?? 99) - (PLACEMENT_ORDER[placements[b.id] || "PARTICIPATION"] ?? 99))
+                      .sort((a, b) => (PLACEMENT_ORDER[placements[placementKey(a)] || "PARTICIPATION"] ?? 99) - (PLACEMENT_ORDER[placements[placementKey(b)] || "PARTICIPATION"] ?? 99))
                       .map((player) => {
-                      const placement = placements[player.id] || "PARTICIPATION";
+                      const placement = placements[placementKey(player)] || "PARTICIPATION";
                       // Medal cards: each place has its own metal, badge and glow
                       const medal: Record<string, { card: string; badge: string; tag: string; label: string; rank: string; name: string; sub: string }> = {
                         FIRST: {
@@ -3166,7 +3169,7 @@ export default function TournamentDetailPage() {
                                       <button
                                         key={opt.val}
                                         onClick={() => {
-                                          setPlacements(prev => ({ ...prev, [player.id]: opt.val as any }));
+                                          setPlacements(prev => ({ ...prev, [placementKey(player)]: opt.val as any }));
                                           setOpenDropdownId(null);
                                         }}
                                         className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
