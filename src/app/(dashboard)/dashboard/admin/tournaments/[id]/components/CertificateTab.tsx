@@ -19,6 +19,8 @@ interface Signatory {
   designation: string;
   organisation: string;
   signature: string;
+  /** Signature size on the certificate, % of the default (50–200). */
+  signatureScale: number;
 }
 
 interface CertificateConfig {
@@ -36,7 +38,9 @@ interface CertificateConfig {
 
 const auth = (): Record<string, string> => ({ Authorization: `Bearer ${localStorage.getItem("token")}` });
 
-const emptySignatory = (): Signatory => ({ name: "", qualification: "", designation: "", organisation: "", signature: "" });
+const SIG_SCALE_MIN = 50;
+const SIG_SCALE_MAX = 200;
+const emptySignatory = (): Signatory => ({ name: "", qualification: "", designation: "", organisation: "", signature: "", signatureScale: 100 });
 
 const normalise = (c: Partial<CertificateConfig> | undefined): CertificateConfig => ({
   referenceNo: c?.referenceNo ?? "",
@@ -406,7 +410,32 @@ export function CertificateTab({ tournamentId }: { tournamentId: string }) {
                   <Field label="Designation" value={s.designation} onChange={(v) => updateSignatory(i, { designation: v })} placeholder="Chief Executive Officer, TNJA Reg.No. 329/2017" />
                   <Field label="Organisation (optional 2nd line)" value={s.organisation} onChange={(v) => updateSignatory(i, { organisation: v })} placeholder="Tiruppur District Judo Association" />
                 </div>
-                <ImagePicker label="Signature" value={s.signature} onChange={(v) => updateSignatory(i, { signature: v })} hint="Optional." tall />
+                <div className="space-y-2">
+                  <ImagePicker label="Signature" value={s.signature} onChange={(v) => updateSignatory(i, { signature: v })} hint="Optional." tall />
+                  {s.signature && (
+                    <label className="block">
+                      <span className="flex items-center justify-between text-xs font-bold text-slate-600">
+                        Signature size
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-[#FF7400]">{s.signatureScale}%</span>
+                          {s.signatureScale !== 100 && (
+                            <button type="button" onClick={() => updateSignatory(i, { signatureScale: 100 })} className="text-[11px] font-bold text-slate-400 hover:text-[#FF7400]">Reset</button>
+                          )}
+                        </span>
+                      </span>
+                      <input
+                        type="range"
+                        min={SIG_SCALE_MIN}
+                        max={SIG_SCALE_MAX}
+                        step={5}
+                        value={s.signatureScale}
+                        onChange={(e) => updateSignatory(i, { signatureScale: Number(e.target.value) })}
+                        className="mt-1 w-full accent-[#FF7400]"
+                      />
+                      <span className="block text-[11px] font-medium text-slate-400">Use Preview to check it doesn&apos;t touch the text above.</span>
+                    </label>
+                  )}
+                </div>
               </div>
             </div>
           ))}

@@ -30,7 +30,7 @@ type CertFilter = "all" | "merit" | Recipient["placement"];
 
 const CERT_OPTIONS: { key: CertFilter; label: string }[] = [
   { key: "all", label: "All certificates" },
-  { key: "merit", label: "Merit (1st, 2nd, 3rd)" },
+  { key: "merit", label: "Merit (Gold to Bronze)" },
   { key: "FIRST", label: "1st · Merit" },
   { key: "SECOND", label: "2nd · Merit" },
   { key: "THIRD", label: "3rd · Merit" },
@@ -40,8 +40,21 @@ const CERT_OPTIONS: { key: CertFilter; label: string }[] = [
 const matchesCert = (r: Recipient, f: CertFilter) =>
   f === "all" || (f === "merit" ? r.placement !== "PARTICIPATION" : r.placement === f);
 
-/** "Mini Sub-Junior Age Group 1 · Girls · +26kg" → "Mini Sub-Junior Age Group 1" (used to group the category list). */
-const ageGroupOf = (category: string) => category.split(" · ")[0] || category;
+/** "Mini Sub-Junior Age Group 1 · Girls · +26kg" → { age: "Mini Sub-Junior Age Group 1", gender: "Girls", weight: "+26kg" } */
+const partsOf = (category: string) => {
+  const [age = category, gender = "", weight = ""] = category.split(" · ");
+  return { age, gender, weight };
+};
+const AGE_ORDER = ["Mini Sub-Junior Age Group 1", "Mini Sub-Junior Age Group 2", "Mini Sub-Junior Age Group 3", "Sub-Junior", "Cadet", "Junior", "Senior"];
+const ageSort = (a: string, b: string) => {
+  const ia = AGE_ORDER.indexOf(a), ib = AGE_ORDER.indexOf(b);
+  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+};
+/** "-57kg" → 57, "+78kg" → 78.5 so the open class sorts after the last limit. */
+const weightSort = (a: string, b: string) => {
+  const v = (w: string) => (parseFloat(w.replace(/[^\d.]/g, "")) || 0) + (w.startsWith("+") ? 0.5 : 0);
+  return v(a) - v(b);
+};
 
 const fmtSent = (iso: string) =>
   new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -60,7 +73,9 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("unsent");
   const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [genderFilter, setGenderFilter] = useState("all");
+  const [ageFilter, setAgeFilter] = useState("all");
+  const [weightFilter, setWeightFilter] = useState("all");
   const [certFilter, setCertFilter] = useState<CertFilter>("all");
   const [starting, setStarting] = useState(false);
 
@@ -104,23 +119,25 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
     return () => clearInterval(t);
   }, [running, load]);
 
-  /** Categories grouped by age group, for the category dropdown. */
-  const categoryGroups = useMemo(() => {
-    const groups = new Map<string, Set<string>>();
-    for (const r of recipients) {
-      const g = ageGroupOf(r.category);
-      if (!groups.has(g)) groups.set(g, new Set());
-      groups.get(g)!.add(r.category);
-    }
-    const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
-    return [...groups.entries()].sort(([a], [b]) => byName(a, b)).map(([g, cats]) => ({ group: g, categories: [...cats].sort(byName) }));
-  }, [recipients]);
+  // Each dropdown lists only what exists under the choices to its left (gender → age group → weight).
+  const genderOptions = useMemo(() => [...new Set(recipients.map((r) => partsOf(r.category).gender).filter(Boolean))].sort(), [recipients]);
+  const ageOptions = useMemo(() => [...new Set(recipients
+    .map((r) => partsOf(r.category))
+    .filter((p) => genderFilter === "all" || p.gender === genderFilter)
+    .map((p) => p.age))].sort(ageSort), [recipients, genderFilter]);
+  const weightOptions = useMemo(() => [...new Set(recipients
+    .map((r) => partsOf(r.category))
+    .filter((p) => (genderFilter === "all" || p.gender === genderFilter) && (ageFilter === "all" || p.age === ageFilter))
+    .map((p) => p.weight).filter(Boolean))].sort(weightSort), [recipients, genderFilter, ageFilter]);
 
-  /** Category + certificate filters (the status tabs and their counts apply on top of these). */
-  const narrowed = useMemo(() => recipients.filter((r) =>
-    (categoryFilter === "all" || r.category === categoryFilter || (categoryFilter.startsWith("group:") && ageGroupOf(r.category) === categoryFilter.slice(6))) &&
-    matchesCert(r, certFilter)
-  ), [recipients, categoryFilter, certFilter]);
+  /** Gender / age / weight / certificate filters (the status tabs and their counts apply on top of these). */
+  const narrowed = useMemo(() => recipients.filter((r) => {
+    const p = partsOf(r.category);
+    return (genderFilter === "all" || p.gender === genderFilter) &&
+      (ageFilter === "all" || p.age === ageFilter) &&
+      (weightFilter === "all" || p.weight === weightFilter) &&
+      matchesCert(r, certFilter);
+  }), [recipients, genderFilter, ageFilter, weightFilter, certFilter]);
 
   const counts = useMemo(() => ({
     all: narrowed.length,
@@ -181,7 +198,7 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
     }
   };
 
-  const filtered = categoryFilter !== "all" || certFilter !== "all";
+  const filtered = genderFilter !== "all" || ageFilter !== "all" || weightFilter !== "all" || certFilter !== "all";
   // With a category / certificate filter on, the main button sends only to that slice.
   const unsentIds = narrowed.filter((r) => r.ready && !r.emailedAt).map((r) => r.regId);
   const selectCls = "h-9 pl-3 pr-8 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-orange-100";
@@ -291,18 +308,31 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
-            className={`${selectCls} w-full sm:w-72`}
+            value={genderFilter}
+            onChange={(e) => { setGenderFilter(e.target.value); setAgeFilter("all"); setWeightFilter("all"); }}
+            aria-label="Filter by gender"
+            className={`${selectCls} w-full sm:w-32`}
           >
-            <option value="all">All categories</option>
-            {categoryGroups.map(({ group, categories }) => (
-              <optgroup key={group} label={group}>
-                <option value={`group:${group}`}>All of {group}</option>
-                {categories.map((c) => <option key={c} value={c}>{c.slice(group.length).replace(/^ · /, "") || c}</option>)}
-              </optgroup>
-            ))}
+            <option value="all">Boys & Girls</option>
+            {genderOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <select
+            value={ageFilter}
+            onChange={(e) => { setAgeFilter(e.target.value); setWeightFilter("all"); }}
+            aria-label="Filter by age group"
+            className={`${selectCls} w-full sm:w-56`}
+          >
+            <option value="all">All age groups</option>
+            {ageOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select
+            value={weightFilter}
+            onChange={(e) => setWeightFilter(e.target.value)}
+            aria-label="Filter by weight"
+            className={`${selectCls} w-full sm:w-32`}
+          >
+            <option value="all">All weights</option>
+            {weightOptions.map((w) => <option key={w} value={w}>{w}</option>)}
           </select>
           <select
             value={certFilter}
@@ -315,7 +345,7 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
           {filtered && (
             <button
               type="button"
-              onClick={() => { setCategoryFilter("all"); setCertFilter("all"); }}
+              onClick={() => { setGenderFilter("all"); setAgeFilter("all"); setWeightFilter("all"); setCertFilter("all"); }}
               className="h-9 px-3 rounded-lg text-xs font-bold text-slate-500 hover:text-[#FF7400]"
             >
               Clear
