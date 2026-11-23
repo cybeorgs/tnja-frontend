@@ -26,6 +26,22 @@ const PLACEMENT: Record<Recipient["placement"], { label: string; cls: string }> 
 };
 
 type Filter = "all" | "unsent" | "sent" | "notready";
+type CertFilter = "all" | "merit" | Recipient["placement"];
+
+const CERT_OPTIONS: { key: CertFilter; label: string }[] = [
+  { key: "all", label: "All certificates" },
+  { key: "merit", label: "Merit (1st, 2nd, 3rd)" },
+  { key: "FIRST", label: "1st · Merit" },
+  { key: "SECOND", label: "2nd · Merit" },
+  { key: "THIRD", label: "3rd · Merit" },
+  { key: "PARTICIPATION", label: "Participation" },
+];
+
+const matchesCert = (r: Recipient, f: CertFilter) =>
+  f === "all" || (f === "merit" ? r.placement !== "PARTICIPATION" : r.placement === f);
+
+/** "Mini Sub-Junior Age Group 1 · Girls · +26kg" → "Mini Sub-Junior Age Group 1" (used to group the category list). */
+const ageGroupOf = (category: string) => category.split(" · ")[0] || category;
 
 const fmtSent = (iso: string) =>
   new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -44,6 +60,8 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("unsent");
   const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [certFilter, setCertFilter] = useState<CertFilter>("all");
   const [starting, setStarting] = useState(false);
 
   const running = !!job && !job.finishedAt;
@@ -86,22 +104,40 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
     return () => clearInterval(t);
   }, [running, load]);
 
+  /** Categories grouped by age group, for the category dropdown. */
+  const categoryGroups = useMemo(() => {
+    const groups = new Map<string, Set<string>>();
+    for (const r of recipients) {
+      const g = ageGroupOf(r.category);
+      if (!groups.has(g)) groups.set(g, new Set());
+      groups.get(g)!.add(r.category);
+    }
+    const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+    return [...groups.entries()].sort(([a], [b]) => byName(a, b)).map(([g, cats]) => ({ group: g, categories: [...cats].sort(byName) }));
+  }, [recipients]);
+
+  /** Category + certificate filters (the status tabs and their counts apply on top of these). */
+  const narrowed = useMemo(() => recipients.filter((r) =>
+    (categoryFilter === "all" || r.category === categoryFilter || (categoryFilter.startsWith("group:") && ageGroupOf(r.category) === categoryFilter.slice(6))) &&
+    matchesCert(r, certFilter)
+  ), [recipients, categoryFilter, certFilter]);
+
   const counts = useMemo(() => ({
-    all: recipients.length,
-    unsent: recipients.filter((r) => r.ready && !r.emailedAt).length,
-    sent: recipients.filter((r) => r.emailedAt).length,
-    notready: recipients.filter((r) => !r.ready).length,
-  }), [recipients]);
+    all: narrowed.length,
+    unsent: narrowed.filter((r) => r.ready && !r.emailedAt).length,
+    sent: narrowed.filter((r) => r.emailedAt).length,
+    notready: narrowed.filter((r) => !r.ready).length,
+  }), [narrowed]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return recipients.filter((r) => {
+    return narrowed.filter((r) => {
       if (filter === "unsent" && !(r.ready && !r.emailedAt)) return false;
       if (filter === "sent" && !r.emailedAt) return false;
       if (filter === "notready" && r.ready) return false;
       return !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || r.category.toLowerCase().includes(q);
     });
-  }, [recipients, filter, query]);
+  }, [narrowed, filter, query]);
 
   const selectableVisible = visible.filter((r) => r.ready);
   const allVisibleSelected = selectableVisible.length > 0 && selectableVisible.every((r) => selected.has(r.regId));
@@ -145,7 +181,10 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
     }
   };
 
-  const unsentIds = recipients.filter((r) => r.ready && !r.emailedAt).map((r) => r.regId);
+  const filtered = categoryFilter !== "all" || certFilter !== "all";
+  // With a category / certificate filter on, the main button sends only to that slice.
+  const unsentIds = narrowed.filter((r) => r.ready && !r.emailedAt).map((r) => r.regId);
+  const selectCls = "h-9 pl-3 pr-8 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-orange-100";
   const tabs: { key: Filter; label: string }[] = [
     { key: "unsent", label: "Ready to send" },
     { key: "sent", label: "Sent" },
@@ -187,11 +226,11 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
           </button>
           <button
             type="button"
-            onClick={() => send(unsentIds, `all ${unsentIds.length} player${unsentIds.length === 1 ? "" : "s"} who haven't received one yet`)}
+            onClick={() => send(unsentIds, `${filtered ? "the" : "all"} ${unsentIds.length} player${unsentIds.length === 1 ? "" : "s"}${filtered ? " in this filter" : ""} who haven't received one yet`)}
             disabled={!unsentIds.length || running || starting}
             className="h-10 inline-flex items-center gap-2 px-4 rounded-xl text-sm font-black text-white bg-[#FF7400] hover:bg-orange-600 disabled:opacity-50"
           >
-            {starting ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Send to all not sent ({unsentIds.length})
+            {starting ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} {filtered ? "Send to filtered not sent" : "Send to all not sent"} ({unsentIds.length})
           </button>
         </div>
       </div>
@@ -250,15 +289,48 @@ export function EmailCertificatesPanel({ tournamentId, settingsDirty }: { tourna
             </button>
           ))}
         </div>
-        <label className="relative w-full sm:w-64">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, email or category"
-            className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-orange-100"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            aria-label="Filter by category"
+            className={`${selectCls} w-full sm:w-72`}
+          >
+            <option value="all">All categories</option>
+            {categoryGroups.map(({ group, categories }) => (
+              <optgroup key={group} label={group}>
+                <option value={`group:${group}`}>All of {group}</option>
+                {categories.map((c) => <option key={c} value={c}>{c.slice(group.length).replace(/^ · /, "") || c}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <select
+            value={certFilter}
+            onChange={(e) => setCertFilter(e.target.value as CertFilter)}
+            aria-label="Filter by certificate"
+            className={`${selectCls} w-full sm:w-48`}
+          >
+            {CERT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+          {filtered && (
+            <button
+              type="button"
+              onClick={() => { setCategoryFilter("all"); setCertFilter("all"); }}
+              className="h-9 px-3 rounded-lg text-xs font-bold text-slate-500 hover:text-[#FF7400]"
+            >
+              Clear
+            </button>
+          )}
+          <label className="relative w-full sm:w-64">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name, email or category"
+              className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-[#FF7400] focus:ring-2 focus:ring-orange-100"
+            />
+          </label>
+        </div>
       </div>
 
       {/* List */}

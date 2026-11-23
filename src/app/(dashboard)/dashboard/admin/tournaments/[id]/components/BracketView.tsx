@@ -23,7 +23,7 @@ const MEDAL_STYLE: Record<string, { title: string; icon: string; card: string; l
 };
 
 // ─── Bracket View Component (reference-style with SVG connectors) ─────────────
-const MATCH_H = 84;
+const MATCH_H = 92;
 const MATCH_W = 210;
 const CONN_W  = 44;
 const G0      = 28;
@@ -71,7 +71,7 @@ export function BracketView({
   const mainRoundsCount = mainBracketRoundCount(rounds);
   const hasBronze = !isRoundRobin && mainRoundsCount > 0 && rounds[mainRoundsCount - 1].length > 1;
   const rowsH   = Math.max(numR1 * (MATCH_H + G0) - G0, MATCH_H);
-  const BRONZE_CARD_H = 100;
+  const BRONZE_CARD_H = 108;
   const BRONZE_GAP    = 40;
 
   const totalH  = isRoundRobin
@@ -401,7 +401,7 @@ export function BracketView({
                     </div>
 
                     {/* Match info + Scoreboard button */}
-                    <div className="flex items-center justify-between px-2 py-0.5 bg-slate-50 border-t border-slate-100">
+                    <div className="flex items-center justify-between gap-1 px-2 py-[3px] min-h-[24px] bg-slate-50 border-t border-slate-100">
                       <span className="text-[8px] text-slate-400 font-semibold">
                         {match.status === "COMPLETED" && !revealing ? "✓ Done" : `Mat ${match.matNumber} · #${match.matchNumber}`}
                       </span>
@@ -418,9 +418,9 @@ export function BracketView({
                         <button
                           onClick={() => onOpenScoreboard(match)}
                           title="Open the scoreboard for this match"
-                          className="text-[8px] font-black transition-colors flex items-center gap-0.5 text-orange-500 hover:text-orange-700"
+                          className="h-[18px] px-2 rounded-md text-[10px] font-black flex items-center gap-1 text-white bg-[#FF7400] hover:bg-orange-600 active:scale-95 shadow-sm transition-all"
                         >
-                          <Monitor size={8} /> Scoreboard ↗
+                          <Monitor size={11} /> Scoreboard
                         </button>
                       )}
                     </div>
