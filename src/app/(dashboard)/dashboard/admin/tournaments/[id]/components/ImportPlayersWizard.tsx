@@ -98,7 +98,7 @@ export function ImportPlayersWizard({
             </div>
             <div>
               <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#0f172a" }}>{fatherMode ? "Add Father's Names" : "Player Bulk Import"}</h2>
-              <p style={{ margin: 0, fontSize: "12px", color: "#64748b", fontWeight: 600 }}>{fatherMode ? "Fill in missing father's names by Aadhaar number" : "Upload Excel to add players to this tournament"}</p>
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748b", fontWeight: 600 }}>{fatherMode ? "Fill in missing father's names by Aadhaar or Student ID" : "Upload Excel to add players to this tournament"}</p>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700 }}>
@@ -131,7 +131,7 @@ export function ImportPlayersWizard({
               </div>}
               {fatherMode && (
                 <div style={{ padding: "12px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "2px", color: "#1e3a8a", fontSize: "13px", lineHeight: 1.5 }}>
-                  The sheet needs an <b>Aadhaar Number</b> column (full 12 digits) and a <b>Father Name</b> column. Each row is matched to a player entered in this tournament by Aadhaar, and the father&apos;s name is added only if that player doesn&apos;t have one yet.
+                  The sheet needs a <b>Father&apos;s name</b> column and either a full 12-digit <b>Aadhaar</b> or the <b>Student ID</b> (the tournament&apos;s Entries export works as is). Each row is matched to a player entered in this tournament, and the father&apos;s name is added only if that player doesn&apos;t have one yet.
                   <b> Nothing else is changed</b>: no players or entries are added, and names, weights and categories stay as they are.
                 </div>
               )}

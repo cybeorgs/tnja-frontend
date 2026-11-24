@@ -1556,7 +1556,7 @@ export default function TournamentDetailPage() {
                     <button
                       type="button"
                       onClick={() => { setFatherNamesImport(true); setIsImportWizardOpen(true); }}
-                      title="Fill in missing father's names from an Excel sheet (matched by Aadhaar). Nothing else is changed."
+                      title="Fill in missing father's names from an Excel sheet (matched by Aadhaar or Student ID). Nothing else is changed."
                       className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all hover:bg-slate-50 active:scale-[0.98]"
                     >
                       <Upload size={16} />
