@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const adminStudentSchema = z.object({
   fullName: z.string().min(3, "Full name is required (min 3 chars)"),
+  fatherName: z.string().trim().max(100).optional(),
   email: z.string().trim().email("Enter a valid email address"),
   mobileNumber: z.string().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number starting with 6-9"),
   districtId: z.string().min(1, "District is required"),

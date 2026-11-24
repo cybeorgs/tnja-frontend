@@ -268,6 +268,7 @@ const PlayerRegistrationForm = () => {
     taluk: '',
     pincode: '',
     fullName: '',
+    fatherName: '',
     gender: '',
     dob: '',
     age: 0,
@@ -617,6 +618,15 @@ const PlayerRegistrationForm = () => {
                     required
                     icon={User}
                     value={formData.fullName}
+                    onChange={handleInputChange}
+                  />
+                  <InputField
+                    label="Father's Name"
+                    name="fatherName"
+                    placeholder="Enter Father's Name (printed on certificates)"
+                    required
+                    icon={User}
+                    value={formData.fatherName}
                     onChange={handleInputChange}
                   />
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

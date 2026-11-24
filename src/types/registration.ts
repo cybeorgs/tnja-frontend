@@ -4,6 +4,7 @@ export interface PlayerRegistrationData {
   taluk: string;
   pincode: string;
   fullName: string;
+  fatherName: string;
   gender: string;
   dob: string;
   age: number;

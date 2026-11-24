@@ -56,6 +56,7 @@ export function AddPlayerModal({
   const [clubs, setClubs] = useState<ClubOption[]>([]);
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [fullName, setFullName] = useState("");
+  const [fatherName, setFatherName] = useState("");
   const [gender, setGender] = useState(tournamentGender === "MALE" || tournamentGender === "FEMALE" ? tournamentGender : "");
   const [ageGroup, setAgeGroup] = useState("");
   const [weightClass, setWeightClass] = useState("");
@@ -184,6 +185,7 @@ export function AddPlayerModal({
     submitRegistration({
       newPlayer: {
         fullName: fullName.trim(),
+        fatherName: fatherName.trim() || undefined,
         gender,
         dob: dob || undefined,
         aadhaarNumber: aadhaarNumber.trim() || undefined,
@@ -318,6 +320,10 @@ export function AddPlayerModal({
               <div>
                 <label className={labelCls}>Full Name *</label>
                 <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g. Arjun Kumar" className={inputCls} autoFocus />
+              </div>
+              <div>
+                <label className={labelCls}>Father&apos;s Name</label>
+                <input value={fatherName} onChange={(e) => setFatherName(e.target.value)} maxLength={100} placeholder="Printed on the certificate" className={inputCls} />
               </div>
 
               <div className="space-y-3 rounded-2xl border border-slate-200 p-4">

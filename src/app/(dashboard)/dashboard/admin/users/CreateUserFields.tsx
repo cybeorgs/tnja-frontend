@@ -176,8 +176,8 @@ export function CreateUserFields({
         </Section>
       ) : (
         <Section title="Personal details">
-          {text("fullName", "Full name", { required: true, placeholder: "As on Aadhaar", span: createType === "STUDENT" ? 2 : 1 })}
-          {(createType === "COACH" || createType === "MEMBER") && text("fatherName", "Father's name", { required: req, placeholder: "Full name" })}
+          {text("fullName", "Full name", { required: true, placeholder: "As on Aadhaar" })}
+          {text("fatherName", "Father's name", { required: createType !== "STUDENT" && req, placeholder: createType === "STUDENT" ? "Printed on certificates" : "Full name" })}
           {select("gender", "Gender", [{ value: "MALE", label: "Male" }, { value: "FEMALE", label: "Female" }, { value: "OTHER", label: "Other" }], { required: req })}
           <FieldShell label="Date of birth" required={req} error={err("dob")}>
             <input
