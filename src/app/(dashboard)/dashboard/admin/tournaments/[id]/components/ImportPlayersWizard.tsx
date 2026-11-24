@@ -10,10 +10,13 @@ export function ImportPlayersWizard({
   tournamentId,
   onClose,
   onSuccess,
+  fatherNamesOnly = false,
 }: {
   tournamentId: string;
   onClose: () => void;
   onSuccess: () => void;
+  /** Open locked to the father's-names mode (used once registration has closed). */
+  fatherNamesOnly?: boolean;
 }) {
   const [step, setStep] = useState<"upload" | "validating" | "summary" | "importing" | "complete">("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -21,7 +24,10 @@ export function ImportPlayersWizard({
   const [errorMsg, setErrorMsg] = useState("");
   const [validateBefore, setValidateBefore] = useState(true);
   const [updateExisting, setUpdateExisting] = useState(true);
-  const [result, setResult] = useState<{ successCount: number; failedCount: number; errors: { row: number; error: string }[]; totalRows: number } | null>(null);
+  /** "fatherNames" only fills in missing father's names (matched by Aadhaar); it changes nothing else. */
+  const [mode, setMode] = useState<"players" | "fatherNames">(fatherNamesOnly ? "fatherNames" : "players");
+  const fatherMode = mode === "fatherNames";
+  const [result, setResult] = useState<{ successCount: number; failedCount: number; errors: { row: number; error: string }[]; totalRows: number; alreadyHadCount?: number } | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -46,7 +52,7 @@ export function ImportPlayersWizard({
       const fd = new FormData();
       fd.append("file", file);
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/registrations/bulk`, {
+      const res = await fetch(`${API_BASE}/tournaments/${tournamentId}/registrations/${fatherMode ? "father-names" : "bulk"}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
@@ -56,7 +62,12 @@ export function ImportPlayersWizard({
       clearInterval(progIv);
       setProgress(100);
       setTimeout(() => {
-        if (res.ok) {
+        if (res.ok && fatherMode) {
+          const filled = data.filledCount || 0, had = data.alreadyHadCount || 0, failed = data.failedCount || 0;
+          setResult({ successCount: filled, failedCount: failed, errors: data.errors || [], totalRows: filled + had + failed, alreadyHadCount: had });
+          setStep("complete");
+          onSuccess();
+        } else if (res.ok) {
           setResult({ successCount: data.successCount || 0, failedCount: data.failedCount || 0, errors: data.errors || [], totalRows: (data.successCount || 0) + (data.failedCount || 0) });
           setStep("complete");
           onSuccess();
@@ -86,8 +97,8 @@ export function ImportPlayersWizard({
               <Upload size={18} style={{ color: "#2563eb" }} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#0f172a" }}>Player Bulk Import</h2>
-              <p style={{ margin: 0, fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Upload Excel to add players to this tournament</p>
+              <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#0f172a" }}>{fatherMode ? "Add Father's Names" : "Player Bulk Import"}</h2>
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748b", fontWeight: 600 }}>{fatherMode ? "Fill in missing father's names by Aadhaar number" : "Upload Excel to add players to this tournament"}</p>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700 }}>
@@ -110,13 +121,27 @@ export function ImportPlayersWizard({
           {/* STEP 1: Upload */}
           {step === "upload" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              <a
+              {!fatherNamesOnly && <div role="tablist" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", border: "1px solid #e2e8f0", borderRadius: "2px", overflow: "hidden" }}>
+                {([["players", "Import players"], ["fatherNames", "Father's names only"]] as const).map(([m, label]) => (
+                  <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
+                    style={{ padding: "10px 12px", fontSize: "13px", fontWeight: 800, border: "none", cursor: "pointer", background: mode === m ? "#2563eb" : "#fff", color: mode === m ? "#fff" : "#334155" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>}
+              {fatherMode && (
+                <div style={{ padding: "12px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "2px", color: "#1e3a8a", fontSize: "13px", lineHeight: 1.5 }}>
+                  The sheet needs an <b>Aadhaar Number</b> column (full 12 digits) and a <b>Father Name</b> column. Each row is matched to a player entered in this tournament by Aadhaar, and the father&apos;s name is added only if that player doesn&apos;t have one yet.
+                  <b> Nothing else is changed</b>: no players or entries are added, and names, weights and categories stay as they are.
+                </div>
+              )}
+              {!fatherMode && <a
                 href="/templates/players_import_template.xlsx"
                 download
                 style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "8px 14px", borderRadius: "2px", textDecoration: "none" }}
               >
                 <Download size={14} /> Download Excel Template
-              </a>
+              </a>}
               {errorMsg && (
                 <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "2px", color: "#dc2626", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
                   <AlertCircle size={16} /> {errorMsg}
@@ -145,7 +170,7 @@ export function ImportPlayersWizard({
               </div>
               <input type="file" accept=".xlsx,.xls,.csv" ref={fileRef} style={{ display: "none" }} onChange={e => onFileChange(e.target.files?.[0] || null)} />
 
-              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "2px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              {!fatherMode && <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "2px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
                 <p style={{ margin: 0, fontSize: "11px", fontWeight: 900, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px" }}>Import Options</p>
                 <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                   <input type="checkbox" checked={validateBefore} onChange={e => setValidateBefore(e.target.checked)} style={{ width: "16px", height: "16px" }} />
@@ -155,7 +180,7 @@ export function ImportPlayersWizard({
                   <input type="checkbox" checked={updateExisting} onChange={e => setUpdateExisting(e.target.checked)} style={{ width: "16px", height: "16px" }} />
                   <span style={{ fontSize: "13px", fontWeight: 700, color: "#334155" }}>Create new player profile if Aadhaar not found</span>
                 </label>
-              </div>
+              </div>}
             </div>
           )}
 
@@ -164,7 +189,7 @@ export function ImportPlayersWizard({
             <div style={{ textAlign: "center", padding: "48px 0" }}>
               <Loader2 size={56} style={{ color: "#2563eb", margin: "0 auto 20px", animation: "spin 1s linear infinite" }} />
               <h3 style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a", margin: "0 0 8px" }}>
-                {step === "validating" ? "Validating Your File..." : "Importing Players..."}
+                {step === "validating" ? "Validating Your File..." : fatherMode ? "Adding Father's Names..." : "Importing Players..."}
               </h3>
               <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 24px" }}>{file?.name}</p>
               <div style={{ background: "#e2e8f0", borderRadius: "999px", height: "10px", maxWidth: "400px", margin: "0 auto 12px", overflow: "hidden" }}>
@@ -189,7 +214,7 @@ export function ImportPlayersWizard({
                 <CheckCircle2 size={24} style={{ color: "#2563eb", flexShrink: 0 }} />
                 <div>
                   <h4 style={{ margin: "0 0 4px", fontWeight: 900, color: "#1e3a8a" }}>File Scanned Successfully</h4>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#1d4ed8" }}>File looks valid. Click "Confirm & Import" to begin importing players into the tournament database.</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#1d4ed8" }}>{fatherMode ? "Click \"Confirm & Import\" to add the missing father's names. Nothing else will be changed." : "File looks valid. Click \"Confirm & Import\" to begin importing players into the tournament database."}</p>
                 </div>
               </div>
               <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "2px", padding: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -207,11 +232,14 @@ export function ImportPlayersWizard({
                 <div>
                   <h3 style={{ margin: "0 0 4px", fontSize: "22px", fontWeight: 900, color: result.failedCount === 0 ? "#065f46" : "#92400e" }}>Import Complete!</h3>
                   <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: result.failedCount === 0 ? "#059669" : "#b45309" }}>Processed {result.totalRows} rows from {file?.name}</p>
+                  {fatherMode && !!result.alreadyHadCount && (
+                    <p style={{ margin: "4px 0 0", fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{result.alreadyHadCount} player(s) already had a father&apos;s name and were left unchanged.</p>
+                  )}
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "2px", padding: "20px", textAlign: "center" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#059669" }}>Successfully Imported</p>
+                  <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 700, color: "#059669" }}>{fatherMode ? "Father's Names Added" : "Successfully Imported"}</p>
                   <p style={{ margin: 0, fontSize: "36px", fontWeight: 900, color: "#047857" }}>{result.successCount}</p>
                 </div>
                 <div style={{ background: result.failedCount > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${result.failedCount > 0 ? "#fecaca" : "#e2e8f0"}`, borderRadius: "2px", padding: "20px", textAlign: "center" }}>

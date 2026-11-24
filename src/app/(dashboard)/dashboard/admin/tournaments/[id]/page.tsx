@@ -156,6 +156,8 @@ export default function TournamentDetailPage() {
   const [saving, setSaving] = useState(false);
 
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
+  /** Import dialog opened only to fill in father's names (allowed after registration closes). */
+  const [fatherNamesImport, setFatherNamesImport] = useState(false);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [drawPhase, setDrawPhase] = useState<"idle" | "shuffling" | "dealing" | "done">("idle");
@@ -1546,10 +1548,21 @@ export default function TournamentDetailPage() {
                 <div className="w-px h-8 bg-slate-200 hidden md:block mx-1"></div>
                 {/* Once the tournament has started no new players can be entered */}
                 {tournament?.registrationClosed ? (
-                  <span className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-500 font-bold rounded-xl text-sm">
-                    <Lock size={16} />
-                    <span className="hidden md:inline">Registration closed</span>
-                  </span>
+                  <>
+                    <span className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-500 font-bold rounded-xl text-sm">
+                      <Lock size={16} />
+                      <span className="hidden md:inline">Registration closed</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setFatherNamesImport(true); setIsImportWizardOpen(true); }}
+                      title="Fill in missing father's names from an Excel sheet (matched by Aadhaar). Nothing else is changed."
+                      className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-all hover:bg-slate-50 active:scale-[0.98]"
+                    >
+                      <Upload size={16} />
+                      <span className="hidden md:inline">Father&apos;s names</span>
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
@@ -1562,7 +1575,7 @@ export default function TournamentDetailPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setIsImportWizardOpen(true)}
+                      onClick={() => { setFatherNamesImport(false); setIsImportWizardOpen(true); }}
                       className="flex flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2.5 bg-[#FF7400] text-white font-bold rounded-xl text-sm transition-all shadow-sm shadow-[#FF7400]/20 hover:scale-[1.02] active:scale-[0.98]"
                     >
                       <Upload size={16} />
@@ -3956,6 +3969,7 @@ export default function TournamentDetailPage() {
           tournamentId={tournamentId}
           onClose={() => setIsImportWizardOpen(false)}
           onSuccess={() => { fetchPlayers(); }}
+          fatherNamesOnly={fatherNamesImport}
         />
       )}
 
