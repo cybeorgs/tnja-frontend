@@ -25,6 +25,7 @@ import {
   Medal,
   Swords,
   X,
+  Ban,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000/api";
@@ -578,6 +579,19 @@ export default function PlayerTournamentsPage() {
                               PARTICIPATION: { label: "Participation",      cls: "bg-blue-50 text-blue-700 border-blue-200", icon: <Award size={16} /> },
                             };
                             const entry = cfg[p] ?? cfg["PARTICIPATION"];
+
+                            // Disqualified (absent / failed weigh-in): no placement and no certificate.
+                            if (r.status === "DISQUALIFIED") {
+                              return (
+                                <div key={r.id} className="space-y-2 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                                  <div className="text-xs font-black text-slate-500 uppercase tracking-wider text-center">{r.ageGroup}</div>
+                                  <div className="w-full py-2 flex items-center justify-center gap-2 text-sm font-black rounded-xl border bg-red-50 text-red-600 border-red-200">
+                                    <Ban size={16} /> Disqualified
+                                  </div>
+                                  <p className="text-[11px] font-semibold text-slate-400 text-center">No certificate is issued for this category.</p>
+                                </div>
+                              );
+                            }
 
                             return (
                               <div key={r.id} className="space-y-2 p-3 bg-slate-50 border border-slate-100 rounded-2xl">

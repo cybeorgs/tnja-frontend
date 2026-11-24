@@ -21,6 +21,10 @@ export interface RegisteredPlayer {
   weight: number; weightLabel?: string; ageGroup: string; exactAge?: number; gender: string; belt: string;
   seedNumber?: number; coachName?: string; placement?: string; status?: string;
   regId?: string;
+  /** Merit certificate number typed by the organiser (1st–3rd) */
+  meritCertificateNo?: string;
+  /** Participation certificate number, assigned automatically, e.g. "SUB-JUNIOR 001" */
+  participationCertificateNo?: string;
   permanentId?: string; tempId?: string; tnjaId?: string;
   clubId?: string | null; coachId?: string | null; isPaid?: boolean; registeredAt?: string;
   rawWeight?: string | null; rawHeight?: string | null;

@@ -34,6 +34,7 @@ import { DisqualifyTab } from "./components/DisqualifyTab";
 import { WeighInTab } from "./components/WeighInTab";
 import { PointsTab } from "./components/PointsTab";
 import { CertificateTab } from "./components/CertificateTab";
+import { MeritCertificateNoInput } from "./components/MeritCertificateNoInput";
 import { ContestSheet } from "./components/ContestSheet";
 import { BestPerformanceTab } from "./components/BestPerformanceTab";
 import { DrawCategoryFilters } from "./components/DrawCategoryFilters";
@@ -338,6 +339,10 @@ export default function TournamentDetailPage() {
     }
   };
 
+  /** Keeps the on-screen player list in step after a merit certificate number is saved. */
+  const setPlayerMeritNo = (regId: string, meritCertificateNo: string) =>
+    setPlayers((prev) => prev.map((p) => (p.regId === regId ? { ...p, meritCertificateNo } : p)));
+
   const handleDownloadCertificate = async (player: RegisteredPlayer, mode: "download" | "view" = "download") => {
     if (!player.regId) {
       showToast("This player has no registration record, so no certificate can be generated", false);
@@ -541,6 +546,8 @@ export default function TournamentDetailPage() {
               placement: r.placement || "PARTICIPATION",
               status: r.status || "APPROVED",
               regId: r.id,
+              meritCertificateNo: r.meritCertificateNo || "",
+              participationCertificateNo: r.participationCertificateNo || "",
               permanentId: r.player?.permanentId,
               tempId: r.player?.tempId,
               tnjaId: r.player?.permanentId || r.player?.tempId || "N/A",
@@ -3137,6 +3144,11 @@ export default function TournamentDetailPage() {
                             </div>
                             <p className={`text-[11px] font-semibold truncate ${md.sub}`}>{player.club || player.district}</p>
                           </div>
+                          {player.status === "DISQUALIFIED" ? (
+                            <span title="Disqualified players get no placement or certificate" className="shrink-0 inline-flex items-center gap-1.5 text-xs font-black text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-1.5">
+                              <Ban size={14} /> Disqualified
+                            </span>
+                          ) : (<>
                           <div className="relative shrink-0">
                             <button
                               onClick={() => setOpenDropdownId(openDropdownId === player.id ? null : player.id)}
@@ -3182,6 +3194,15 @@ export default function TournamentDetailPage() {
                               )}
                             </AnimatePresence>
                           </div>
+                          {player.regId && ["FIRST", "SECOND", "THIRD"].includes(placement) && (
+                            <MeritCertificateNoInput
+                              tournamentId={tournamentId}
+                              regId={player.regId}
+                              value={player.meritCertificateNo || ""}
+                              onSaved={(v) => setPlayerMeritNo(player.regId!, v)}
+                              onMessage={(text, ok) => showToast(text, ok)}
+                            />
+                          )}
                           <button
                             onClick={() => handleDownloadCertificate(player, "view")}
                             title="View certificate"
@@ -3196,6 +3217,7 @@ export default function TournamentDetailPage() {
                           >
                             <Download size={14} />
                           </button>
+                          </>)}
                         </motion.div>
                       );
                     })}
@@ -3294,12 +3316,33 @@ export default function TournamentDetailPage() {
                               <span className={`text-sm font-black ${placementColors[placement].split(' ')[2]} uppercase tracking-widest`}>
                                 {placementLabels[placement]}
                               </span>
-                              <button
-                                onClick={() => handleDownloadCertificate(player)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 text-slate-500 rounded-lg text-[11px] font-bold hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
-                              >
-                                <Download size={12} /> Certificate
-                              </button>
+                              {player.status !== "DISQUALIFIED" && player.regId && (
+                                ["FIRST", "SECOND", "THIRD"].includes(placement) ? (
+                                  <MeritCertificateNoInput
+                                    tournamentId={tournamentId}
+                                    regId={player.regId}
+                                    value={player.meritCertificateNo || ""}
+                                    onSaved={(v) => setPlayerMeritNo(player.regId!, v)}
+                                    onMessage={(text, ok) => showToast(text, ok)}
+                                  />
+                                ) : player.participationCertificateNo ? (
+                                  <span title="Participation certificate number (automatic)" className="text-[11px] font-bold text-slate-500">
+                                    No. {player.participationCertificateNo}
+                                  </span>
+                                ) : null
+                              )}
+                              {player.status === "DISQUALIFIED" ? (
+                                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 rounded-lg text-[11px] font-bold">
+                                  <Ban size={12} /> Disqualified · no certificate
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleDownloadCertificate(player)}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 text-slate-500 rounded-lg text-[11px] font-bold hover:border-[#FF7400] hover:text-[#FF7400] transition-colors"
+                                >
+                                  <Download size={12} /> Certificate
+                                </button>
+                              )}
                             </div>
                           </motion.div>
                         );

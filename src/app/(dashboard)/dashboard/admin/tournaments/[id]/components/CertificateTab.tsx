@@ -352,7 +352,7 @@ export function CertificateTab({ tournamentId }: { tournamentId: string }) {
           <Field label="Date line" value={config.dateText} onChange={(v) => update({ dateText: v })}
             placeholder="20-11-2026 Friday & 21-11-2026 Saturday" hint="Printed on the Date row exactly as typed." />
           <Field label="Reference number (top right)" value={config.referenceNo} onChange={(v) => update({ referenceNo: v })}
-            placeholder="TNJA329/2017/SUBJUN@2026 P :" hint="Small text beside the JSW logo. Optional." />
+            placeholder="TNJA329/2017/SUBJUN@2026 P :" hint='Small text at the top right, followed by the certificate number. A trailing "P :" prints as "M :" on merit certificates. Optional.' />
         </div>
       </div>
 
